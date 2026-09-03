@@ -4,7 +4,7 @@
     "name": "pm",
     "key": "PM"
   },
-  "next_id": 11,
+  "next_id": 16,
   "tickets": [
     {
       "id": 1,
@@ -168,6 +168,79 @@
       "assignee": null,
       "created": 1788448829,
       "updated": 1788448829,
+      "anchors": [],
+      "comments": []
+    },
+    {
+      "id": 11,
+      "title": "A button to close tickets, a viewing mode to see closed tickets",
+      "body": "",
+      "status": "open",
+      "priority": "normal",
+      "labels": [],
+      "assignee": null,
+      "created": 1788448971,
+      "updated": 1788448971,
+      "anchors": [],
+      "comments": []
+    },
+    {
+      "id": 12,
+      "title": "pm app icon next to the menu bar like in vscode",
+      "body": "",
+      "status": "open",
+      "priority": "normal",
+      "labels": [],
+      "assignee": null,
+      "created": 1788449064,
+      "updated": 1788449064,
+      "anchors": [],
+      "comments": []
+    },
+    {
+      "id": 13,
+      "title": "pm app icon in the about",
+      "body": "",
+      "status": "open",
+      "priority": "normal",
+      "labels": [],
+      "assignee": null,
+      "created": 1788449071,
+      "updated": 1788449071,
+      "anchors": [],
+      "comments": []
+    },
+    {
+      "id": 14,
+      "title": "installscript for windows, and github pointed auto update system",
+      "body": "",
+      "status": "open",
+      "priority": "normal",
+      "labels": [],
+      "assignee": null,
+      "created": 1788449089,
+      "updated": 1788449099,
+      "anchors": [],
+      "comments": [
+        {
+          "id": 1,
+          "author": "reaganiwadha",
+          "created": 1788449099,
+          "body": "This needs further elaboration on how I want it",
+          "anchor": null
+        }
+      ]
+    },
+    {
+      "id": 15,
+      "title": "Author of tickets and author of comments, so someone via MCP can pose as someone, and someone with pm gui can pose as someone",
+      "body": "",
+      "status": "open",
+      "priority": "normal",
+      "labels": [],
+      "assignee": null,
+      "created": 1788449204,
+      "updated": 1788449204,
       "anchors": [],
       "comments": []
     }
