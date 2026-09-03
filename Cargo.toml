@@ -12,8 +12,8 @@ similar = "2"
 anyhow = "1"
 
 [profile.dev]
-# gpui is large; a touch of optimization keeps the UI responsive while iterating.
-opt-level = 1
+# gpui does real per-frame layout/text work; unoptimized it feels laggy.
+opt-level = 2
 
 [profile.dev.package."*"]
 opt-level = 2

@@ -11,8 +11,8 @@ use std::path::PathBuf;
 use diff::{side_by_side, DiffRow, RowKind};
 use git::Repo;
 use gpui::{
-    div, prelude::*, px, rgb, size, App, Bounds, Context, MouseButton, Rgba, SharedString, Window,
-    WindowBounds, WindowOptions,
+    div, prelude::*, px, rgb, size, uniform_list, App, Bounds, Context, MouseButton, Rgba,
+    SharedString, Window, WindowBounds, WindowOptions,
 };
 use gpui_platform::application;
 
@@ -24,6 +24,9 @@ const DIM: u32 = 0x808080;
 const SELECT: u32 = 0x094771;
 const ADD_BG: u32 = 0x18321f;
 const DEL_BG: u32 = 0x3a1d1d;
+
+/// Fixed diff-row height, in px. Matches the line-height so rows tile with no gaps.
+const ROW_H: f32 = 18.0;
 
 struct Pm {
     repo: Repo,
@@ -79,7 +82,7 @@ impl Render for Pm {
             .font_family("Segoe UI")
             .text_size(px(13.))
             .child(self.sidebar(cx))
-            .child(self.diff_pane())
+            .child(self.diff_pane(cx))
     }
 }
 
@@ -110,25 +113,32 @@ impl Pm {
                     ),
             );
 
-        let rows = self.files.iter().enumerate().map(|(i, path)| {
-            let selected = self.selected == Some(i);
-            div()
-                .id(("file", i))
-                .flex()
-                .px_3()
-                .py_1()
-                .cursor_pointer()
-                .when(selected, |s| s.bg(rgb(SELECT)))
-                .hover(|s| s.bg(rgb(BORDER)))
-                .child(SharedString::from(path.to_string_lossy().into_owned()))
-                .on_mouse_down(
-                    MouseButton::Left,
-                    cx.listener(move |pm, _, _, cx| {
-                        pm.select(i);
-                        cx.notify();
-                    }),
-                )
-        });
+        let list = uniform_list(
+            "file-list",
+            self.files.len(),
+            cx.processor(|pm, range: std::ops::Range<usize>, _window, cx| {
+                range
+                    .map(|i| {
+                        let selected = pm.selected == Some(i);
+                        let name = pm.files[i].to_string_lossy().into_owned();
+                        div()
+                            .id(("file", i))
+                            .flex()
+                            .px_3()
+                            .py_1()
+                            .cursor_pointer()
+                            .when(selected, |s| s.bg(rgb(SELECT)))
+                            .hover(|s| s.bg(rgb(BORDER)))
+                            .child(SharedString::from(name))
+                            .on_click(cx.listener(move |pm, _, _, cx| {
+                                pm.select(i);
+                                cx.notify();
+                            }))
+                    })
+                    .collect()
+            }),
+        )
+        .flex_1();
 
         div()
             .flex()
@@ -139,10 +149,10 @@ impl Pm {
             .border_r_1()
             .border_color(rgb(BORDER))
             .child(header)
-            .child(div().flex().flex_col().overflow_y_scroll().children(rows))
+            .child(list)
     }
 
-    fn diff_pane(&self) -> impl IntoElement {
+    fn diff_pane(&self, cx: &mut Context<Self>) -> impl IntoElement {
         let title = self
             .selected
             .and_then(|i| self.files.get(i))
@@ -164,19 +174,22 @@ impl Pm {
                     .child(SharedString::from(title)),
             )
             .child(
-                div()
-                    .flex()
-                    .flex_col()
-                    .flex_1()
-                    .overflow_scroll()
-                    .font_family("Consolas")
-                    .text_size(px(12.5))
-                    .children(self.rows.iter().map(row_view)),
+                uniform_list(
+                    "diff-rows",
+                    self.rows.len(),
+                    cx.processor(|pm, range: std::ops::Range<usize>, _window, _cx| {
+                        range.map(|i| row_view(&pm.rows[i])).collect()
+                    }),
+                )
+                .flex_1()
+                .font_family("Consolas")
+                .text_size(px(12.5))
+                .line_height(px(ROW_H)),
             )
     }
 }
 
-fn row_view(row: &DiffRow) -> impl IntoElement {
+fn row_view(row: &DiffRow) -> gpui::Div {
     let (left_bg, right_bg) = match row.kind {
         RowKind::Equal => (rgb(BG), rgb(BG)),
         RowKind::Add => (rgb(BG), rgb(ADD_BG)),
@@ -187,12 +200,13 @@ fn row_view(row: &DiffRow) -> impl IntoElement {
     div()
         .flex()
         .w_full()
+        .h(px(ROW_H))
         .child(cell(row.left_no, row.left.as_deref(), left_bg))
-        .child(div().w(px(1.)).bg(rgb(BORDER)))
+        .child(div().w(px(1.)).h_full().bg(rgb(BORDER)))
         .child(cell(row.right_no, row.right.as_deref(), right_bg))
 }
 
-fn cell(number: Option<usize>, text: Option<&str>, bg: Rgba) -> impl IntoElement {
+fn cell(number: Option<usize>, text: Option<&str>, bg: Rgba) -> gpui::Div {
     let gutter = number
         .map(|n| SharedString::from(n.to_string()))
         .unwrap_or_default();
@@ -202,6 +216,8 @@ fn cell(number: Option<usize>, text: Option<&str>, bg: Rgba) -> impl IntoElement
         .flex()
         .flex_1()
         .min_w_0()
+        .h_full()
+        .items_center()
         .bg(bg)
         .child(
             div()
@@ -211,7 +227,14 @@ fn cell(number: Option<usize>, text: Option<&str>, bg: Rgba) -> impl IntoElement
                 .text_color(rgb(DIM))
                 .child(gutter),
         )
-        .child(div().flex_1().px_2().whitespace_nowrap().child(content))
+        .child(
+            div()
+                .flex_1()
+                .px_2()
+                .overflow_hidden()
+                .whitespace_nowrap()
+                .child(content),
+        )
 }
 
 fn main() {

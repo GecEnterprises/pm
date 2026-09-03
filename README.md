@@ -27,3 +27,5 @@ Click a file in the sidebar to diff it. `⟳` rescans for changes.
 Bootstrap. Working: repo discovery, change list, side-by-side line diff, file
 switching, rescan. Not yet: editing, staging/unstaging hunks, syntax
 highlighting, virtualized scrolling, word-level intra-line diff.
+
+<!-- try me: edit this line and rescan in pm -->
