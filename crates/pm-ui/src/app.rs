@@ -660,6 +660,9 @@ impl Render for Pm {
                         cx.listener(|pm, _, _, cx| {
                             pm.open_menu = None;
                             cx.notify();
+                            // Stop the click reaching the menu button underneath,
+                            // whose toggle would otherwise reopen the menu.
+                            cx.stop_propagation();
                         }),
                     ),
                 ))

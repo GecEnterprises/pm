@@ -48,7 +48,10 @@ impl Pm {
             .flex_row()
             .relative()
             .bg(rgb(BG))
-            // Click-away closer for the filter / status popovers.
+            // Click-away closer for the filter / status popovers. It sits above
+            // everything (deferred), so it also catches a second click on the
+            // trigger button — `stop_propagation` then keeps that button's own
+            // toggle from re-opening the menu in the same event.
             .when(self.filter_menu_open || self.status_menu_open, |d| {
                 d.child(deferred(
                     div().absolute().inset_0().on_mouse_down(
@@ -57,6 +60,7 @@ impl Pm {
                             pm.filter_menu_open = false;
                             pm.status_menu_open = false;
                             cx.notify();
+                            cx.stop_propagation();
                         }),
                     ),
                 ))
