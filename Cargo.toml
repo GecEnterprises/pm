@@ -10,6 +10,8 @@ gpui_platform = { git = "https://github.com/zed-industries/zed", branch = "main"
 git2 = "0.20"
 similar = "2"
 anyhow = "1"
+# default-fancy = pure-Rust regex engine, no oniguruma C dependency
+syntect = { version = "5", default-features = false, features = ["default-fancy"] }
 
 [profile.dev]
 # gpui does real per-frame layout/text work; unoptimized it feels laggy.

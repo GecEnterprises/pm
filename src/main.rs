@@ -2,37 +2,87 @@
 //!
 //! Opens a folder (arg 1, or the current directory), finds the enclosing git
 //! repository, and shows changed files with a side-by-side line diff.
+//!
+//! The diff body and the file list are each a single custom gpui [`Element`]
+//! (see [`diff_view`] / [`list_view`]) that owns a pixel scroll offset and paints
+//! only the visible rows — an editor-style scroll surface rather than a
+//! virtualized list of flex rows.
 
 mod diff;
+mod diff_view;
 mod git;
+mod highlight;
+mod list_view;
+mod scroll;
 
 use std::path::PathBuf;
 
-use diff::{side_by_side, DiffRow, RowKind};
+use diff::{side_by_side, DiffRow};
+use diff_view::{diff_view, ShapeCache};
 use git::Repo;
 use gpui::{
-    div, prelude::*, px, rgb, size, uniform_list, App, Bounds, Context, MouseButton, Rgba,
-    SharedString, Window, WindowBounds, WindowOptions,
+    div, prelude::*, px, rgb, size, App, Bounds, Context, MouseButton, SharedString, Window,
+    WindowBounds, WindowOptions,
 };
 use gpui_platform::application;
+use highlight::{Highlighter, Line};
+use list_view::list_view;
+use scroll::{ScrollDrag, ScrollState};
 
-const BG: u32 = 0x1e1e1e;
-const PANEL: u32 = 0x252526;
-const BORDER: u32 = 0x333333;
-const TEXT: u32 = 0xd4d4d4;
-const DIM: u32 = 0x808080;
-const SELECT: u32 = 0x094771;
-const ADD_BG: u32 = 0x18321f;
-const DEL_BG: u32 = 0x3a1d1d;
+pub(crate) const BG: u32 = 0x1e1e1e;
+pub(crate) const PANEL: u32 = 0x252526;
+pub(crate) const BORDER: u32 = 0x333333;
+pub(crate) const TEXT: u32 = 0xd4d4d4;
+pub(crate) const DIM: u32 = 0x808080;
+pub(crate) const SELECT: u32 = 0x094771;
+pub(crate) const ADD_BG: u32 = 0x18321f;
+pub(crate) const DEL_BG: u32 = 0x3a1d1d;
 
-/// Fixed diff-row height, in px. Matches the line-height so rows tile with no gaps.
-const ROW_H: f32 = 18.0;
+/// Diff row height / line-height, in px.
+pub(crate) const ROW_H: f32 = 18.0;
+/// Sidebar row height, in px.
+pub(crate) const LIST_ROW_H: f32 = 24.0;
+/// Scrollbar track thickness, in px.
+pub(crate) const BAR: f32 = 12.0;
+/// Line-number column width, in px.
+pub(crate) const GUTTER_W: f32 = 52.0;
+/// Line-number column right padding, in px.
+pub(crate) const GUTTER_PAD: f32 = 8.0;
+/// Text left padding inside a column, in px.
+pub(crate) const TEXT_PAD_L: f32 = 8.0;
+/// Centre divider width, in px.
+pub(crate) const DIVIDER_W: f32 = 1.0;
+/// Monospace font for diff text.
+pub(crate) const BODY_FONT: &str = "Consolas";
+pub(crate) const BODY_FONT_SIZE: f32 = 12.5;
+/// Hard cap on the number of diff rows laid out.
+pub(crate) const MAX_ROWS: usize = 200_000;
 
-struct Pm {
+/// Scroll state for the diff body: one shared vertical offset, one horizontal
+/// offset per column.
+#[derive(Default)]
+pub(crate) struct DiffScroll {
+    pub y: ScrollState,
+    pub x: [ScrollState; 2],
+    pub drag: Option<ScrollDrag>,
+}
+
+pub(crate) struct Pm {
     repo: Repo,
+    hl: Highlighter,
     files: Vec<PathBuf>,
     selected: Option<usize>,
     rows: Vec<DiffRow>,
+    /// Highlighted lines of the HEAD and working-tree versions of the current
+    /// file, indexed by `DiffRow::left_no` / `right_no` (1-based).
+    old_lines: Vec<Line>,
+    new_lines: Vec<Line>,
+    /// Shaped diff lines for the current file (cleared on file switch).
+    shaped: ShapeCache,
+    diff: DiffScroll,
+    list_scroll: ScrollState,
+    list_drag: Option<ScrollDrag>,
+    hover_file: Option<usize>,
 }
 
 impl Pm {
@@ -40,9 +90,17 @@ impl Pm {
         let files = repo.changed_files().unwrap_or_default();
         let mut pm = Self {
             repo,
+            hl: Highlighter::new(),
             files,
             selected: None,
             rows: Vec::new(),
+            old_lines: Vec::new(),
+            new_lines: Vec::new(),
+            shaped: ShapeCache::default(),
+            diff: DiffScroll::default(),
+            list_scroll: ScrollState::default(),
+            list_drag: None,
+            hover_file: None,
         };
         if !pm.files.is_empty() {
             pm.select(0);
@@ -57,16 +115,25 @@ impl Pm {
         self.selected = Some(index);
         let old = self.repo.head_content(&rel);
         let new = self.repo.working_content(&rel);
+        self.old_lines = self.hl.highlight(&rel, &old);
+        self.new_lines = self.hl.highlight(&rel, &new);
         self.rows = side_by_side(&old, &new);
+        self.shaped.clear();
+        self.diff = DiffScroll::default();
     }
 
     fn refresh(&mut self) {
         self.files = self.repo.changed_files().unwrap_or_default();
+        self.hover_file = None;
         match self.selected {
             Some(i) if i < self.files.len() => self.select(i),
             _ => {
                 self.selected = None;
                 self.rows.clear();
+                self.old_lines.clear();
+                self.new_lines.clear();
+                self.shaped.clear();
+                self.diff = DiffScroll::default();
             }
         }
     }
@@ -90,6 +157,7 @@ impl Pm {
     fn sidebar(&self, cx: &mut Context<Self>) -> impl IntoElement {
         let header = div()
             .flex()
+            .flex_none()
             .justify_between()
             .items_center()
             .px_3()
@@ -113,33 +181,6 @@ impl Pm {
                     ),
             );
 
-        let list = uniform_list(
-            "file-list",
-            self.files.len(),
-            cx.processor(|pm, range: std::ops::Range<usize>, _window, cx| {
-                range
-                    .map(|i| {
-                        let selected = pm.selected == Some(i);
-                        let name = pm.files[i].to_string_lossy().into_owned();
-                        div()
-                            .id(("file", i))
-                            .flex()
-                            .px_3()
-                            .py_1()
-                            .cursor_pointer()
-                            .when(selected, |s| s.bg(rgb(SELECT)))
-                            .hover(|s| s.bg(rgb(BORDER)))
-                            .child(SharedString::from(name))
-                            .on_click(cx.listener(move |pm, _, _, cx| {
-                                pm.select(i);
-                                cx.notify();
-                            }))
-                    })
-                    .collect()
-            }),
-        )
-        .flex_1();
-
         div()
             .flex()
             .flex_col()
@@ -149,15 +190,24 @@ impl Pm {
             .border_r_1()
             .border_color(rgb(BORDER))
             .child(header)
-            .child(list)
+            .child(
+                div()
+                    .flex_1()
+                    .relative()
+                    .overflow_hidden()
+                    .child(list_view(cx.entity())),
+            )
     }
 
     fn diff_pane(&self, cx: &mut Context<Self>) -> impl IntoElement {
-        let title = self
+        let mut title = self
             .selected
             .and_then(|i| self.files.get(i))
             .map(|p| p.to_string_lossy().into_owned())
             .unwrap_or_else(|| "no file selected".to_string());
+        if self.rows.len() > MAX_ROWS {
+            title = format!("{title}  (showing first {MAX_ROWS} rows)");
+        }
 
         div()
             .flex()
@@ -166,6 +216,7 @@ impl Pm {
             .h_full()
             .child(
                 div()
+                    .flex_none()
                     .px_3()
                     .py_2()
                     .border_b_1()
@@ -174,67 +225,13 @@ impl Pm {
                     .child(SharedString::from(title)),
             )
             .child(
-                uniform_list(
-                    "diff-rows",
-                    self.rows.len(),
-                    cx.processor(|pm, range: std::ops::Range<usize>, _window, _cx| {
-                        range.map(|i| row_view(&pm.rows[i])).collect()
-                    }),
-                )
-                .flex_1()
-                .font_family("Consolas")
-                .text_size(px(12.5))
-                .line_height(px(ROW_H)),
+                div()
+                    .flex_1()
+                    .relative()
+                    .overflow_hidden()
+                    .child(diff_view(cx.entity())),
             )
     }
-}
-
-fn row_view(row: &DiffRow) -> gpui::Div {
-    let (left_bg, right_bg) = match row.kind {
-        RowKind::Equal => (rgb(BG), rgb(BG)),
-        RowKind::Add => (rgb(BG), rgb(ADD_BG)),
-        RowKind::Remove => (rgb(DEL_BG), rgb(BG)),
-        RowKind::Modify => (rgb(DEL_BG), rgb(ADD_BG)),
-    };
-
-    div()
-        .flex()
-        .w_full()
-        .h(px(ROW_H))
-        .child(cell(row.left_no, row.left.as_deref(), left_bg))
-        .child(div().w(px(1.)).h_full().bg(rgb(BORDER)))
-        .child(cell(row.right_no, row.right.as_deref(), right_bg))
-}
-
-fn cell(number: Option<usize>, text: Option<&str>, bg: Rgba) -> gpui::Div {
-    let gutter = number
-        .map(|n| SharedString::from(n.to_string()))
-        .unwrap_or_default();
-    let content = SharedString::from(text.unwrap_or("").to_string());
-
-    div()
-        .flex()
-        .flex_1()
-        .min_w_0()
-        .h_full()
-        .items_center()
-        .bg(bg)
-        .child(
-            div()
-                .w(px(48.))
-                .flex_none()
-                .px_2()
-                .text_color(rgb(DIM))
-                .child(gutter),
-        )
-        .child(
-            div()
-                .flex_1()
-                .px_2()
-                .overflow_hidden()
-                .whitespace_nowrap()
-                .child(content),
-        )
 }
 
 fn main() {

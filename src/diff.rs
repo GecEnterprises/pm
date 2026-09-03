@@ -17,9 +17,7 @@ pub enum RowKind {
 
 pub struct DiffRow {
     pub left_no: Option<usize>,
-    pub left: Option<String>,
     pub right_no: Option<usize>,
-    pub right: Option<String>,
     pub kind: RowKind,
 }
 
@@ -34,19 +32,17 @@ pub fn side_by_side(old: &str, new: &str) -> Vec<DiffRow> {
     let mut inss: Vec<String> = Vec::new();
 
     for change in diff.iter_all_changes() {
-        let value = change.value().trim_end_matches('\n').to_string();
+        let line = change.value().trim_end_matches('\n').to_string();
         match change.tag() {
-            ChangeTag::Delete => dels.push(value),
-            ChangeTag::Insert => inss.push(value),
+            ChangeTag::Delete => dels.push(line),
+            ChangeTag::Insert => inss.push(line),
             ChangeTag::Equal => {
                 flush(&mut rows, &mut left_no, &mut right_no, &mut dels, &mut inss);
                 left_no += 1;
                 right_no += 1;
                 rows.push(DiffRow {
                     left_no: Some(left_no),
-                    left: Some(value.clone()),
                     right_no: Some(right_no),
-                    right: Some(value),
                     kind: RowKind::Equal,
                 });
             }
@@ -67,31 +63,37 @@ fn flush(
 ) {
     let n = dels.len().max(inss.len());
     for i in 0..n {
-        let left = dels.get(i).cloned();
-        let right = inss.get(i).cloned();
-        let (ln, rn, kind) = match (&left, &right) {
-            (Some(_), Some(_)) => {
+        let has_left = i < dels.len();
+        let has_right = i < inss.len();
+        let row = match (has_left, has_right) {
+            (true, true) => {
                 *left_no += 1;
                 *right_no += 1;
-                (Some(*left_no), Some(*right_no), RowKind::Modify)
+                DiffRow {
+                    left_no: Some(*left_no),
+                    right_no: Some(*right_no),
+                    kind: RowKind::Modify,
+                }
             }
-            (Some(_), None) => {
+            (true, false) => {
                 *left_no += 1;
-                (Some(*left_no), None, RowKind::Remove)
+                DiffRow {
+                    left_no: Some(*left_no),
+                    right_no: None,
+                    kind: RowKind::Remove,
+                }
             }
-            (None, Some(_)) => {
+            (false, true) => {
                 *right_no += 1;
-                (None, Some(*right_no), RowKind::Add)
+                DiffRow {
+                    left_no: None,
+                    right_no: Some(*right_no),
+                    kind: RowKind::Add,
+                }
             }
-            (None, None) => unreachable!(),
+            (false, false) => unreachable!(),
         };
-        rows.push(DiffRow {
-            left_no: ln,
-            left,
-            right_no: rn,
-            right,
-            kind,
-        });
+        rows.push(row);
     }
     dels.clear();
     inss.clear();
