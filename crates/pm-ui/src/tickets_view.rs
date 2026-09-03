@@ -1,17 +1,21 @@
-//! The Tickets pane: a read + create view over `.pm/pm.json5`.
+//! The Tickets pane: list, read, create, comment, and set status.
 //!
-//! Scope for now: list tickets, read a ticket, add comments, create new tickets.
-//! No field editing, no deleting, no diff-gutter anchoring yet (all next-pass).
+//! No diff-gutter anchoring yet (that's PM-2), no priority editing yet (PM-4).
 
 use std::path::PathBuf;
 
-use gpui::{div, prelude::*, px, rgb, Context, MouseButton, SharedString};
+use gpui::{deferred, div, prelude::*, px, rgb, Context, MouseButton, SharedString};
 
-use pm_core::Ticket;
+use pm_core::{Status, Ticket};
 
 use crate::app::{Compose, Pm, View};
 use crate::history_view::rel_time;
 use crate::theme::*;
+
+/// What a dropdown row does when clicked.
+type MenuAct = Box<dyn Fn(&mut Pm, &mut Context<Pm>)>;
+/// One dropdown row: label, status-dot colour, checked, action.
+type MenuRow = (SharedString, u32, bool, MenuAct);
 
 fn chip(text: impl Into<SharedString>, color: u32) -> impl IntoElement {
     div()
@@ -42,14 +46,153 @@ impl Pm {
             .min_h_0()
             .flex()
             .flex_row()
+            .relative()
             .bg(rgb(BG))
+            // Click-away closer for the filter / status popovers.
+            .when(self.filter_menu_open || self.status_menu_open, |d| {
+                d.child(deferred(
+                    div().absolute().inset_0().on_mouse_down(
+                        MouseButton::Left,
+                        cx.listener(|pm, _, _, cx| {
+                            pm.filter_menu_open = false;
+                            pm.status_menu_open = false;
+                            cx.notify();
+                        }),
+                    ),
+                ))
+            })
             .child(self.ticket_list(cx))
             .child(self.ticket_detail(cx))
     }
 
+    /// A dropdown panel body: one row per `(label, dot colour, checked, action)`,
+    /// with an optional leading check column. The caller positions it (a
+    /// `deferred` absolute wrapper).
+    fn menu_panel(
+        &self,
+        cx: &mut Context<Self>,
+        checks: bool,
+        rows: Vec<MenuRow>,
+    ) -> impl IntoElement {
+        let mut panel = div()
+            .occlude()
+            .flex()
+            .flex_col()
+            .min_w(px(160.0))
+            .py_1()
+            .bg(rgb(PANEL))
+            .border_1()
+            .border_color(rgb(BORDER))
+            .rounded_md()
+            .shadow_lg()
+            .text_color(rgb(TEXT))
+            .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation());
+
+        for (i, (label, color, on, act)) in rows.into_iter().enumerate() {
+            panel = panel.child(
+                div()
+                    .id(("menu-row", i))
+                    .flex()
+                    .flex_row()
+                    .items_center()
+                    .gap_2()
+                    .px_2()
+                    .py_1()
+                    .cursor_pointer()
+                    .hover(|s| s.bg(rgb(SELECT)))
+                    .when(checks, |d| {
+                        d.child(
+                            div()
+                                .w(px(12.0))
+                                .text_color(rgb(CHANGED))
+                                .child(if on { "\u{2713}" } else { "" }),
+                        )
+                    })
+                    .child(
+                        div()
+                            .text_color(rgb(color))
+                            .child(SharedString::from("\u{25cf}"))
+                            .text_size(px(9.0)),
+                    )
+                    .child(label)
+                    .on_mouse_down(
+                        MouseButton::Left,
+                        cx.listener(move |pm, _, _, cx| {
+                            act(pm, cx);
+                            cx.stop_propagation();
+                        }),
+                    ),
+            );
+        }
+        panel
+    }
+
+    /// The list-header `Filter (n/5) ▾` button + its status-checklist popover.
+    fn filter_button(&self, cx: &mut Context<Self>) -> impl IntoElement {
+        let open = self.filter_menu_open;
+        let rows: Vec<MenuRow> = Status::ALL
+            .iter()
+            .map(|&s| {
+                let on = self.ticket_filter.contains(&s);
+                let act: MenuAct = Box::new(move |pm, cx| {
+                    if !pm.ticket_filter.remove(&s) {
+                        pm.ticket_filter.insert(s);
+                    }
+                    cx.notify();
+                });
+                (SharedString::from(s.label()), s.color(), on, act)
+            })
+            .collect();
+
+        div()
+            .relative()
+            .child(
+                div()
+                    .id("ticket-filter")
+                    .px_1()
+                    .rounded_sm()
+                    .cursor_pointer()
+                    .text_color(rgb(TEXT))
+                    .when(open, |s| s.bg(rgb(BORDER)))
+                    .hover(|s| s.bg(rgb(BORDER)))
+                    .child(SharedString::from(format!(
+                        "Filter ({}/5) \u{25be}",
+                        self.ticket_filter.len()
+                    )))
+                    .on_mouse_down(
+                        MouseButton::Left,
+                        cx.listener(|pm, _, _, cx| {
+                            pm.filter_menu_open = !pm.filter_menu_open;
+                            pm.status_menu_open = false;
+                            cx.notify();
+                            cx.stop_propagation();
+                        }),
+                    ),
+            )
+            .when(open, |d| {
+                d.child(deferred(
+                    div()
+                        .absolute()
+                        .top_full()
+                        .right_0()
+                        .mt(px(2.0))
+                        .child(self.menu_panel(cx, true, rows)),
+                ))
+            })
+    }
+
     fn ticket_list(&self, cx: &mut Context<Self>) -> impl IntoElement {
         let pm = &self.state.pm;
-        let n = pm.tickets.len();
+        let shown: Vec<&Ticket> = pm
+            .tickets
+            .iter()
+            .filter(|t| self.ticket_filter.contains(&t.status))
+            .collect();
+        let count = if shown.len() == pm.tickets.len() {
+            format!("Tickets  ({})", shown.len())
+        } else {
+            format!("Tickets  ({} of {})", shown.len(), pm.tickets.len())
+        };
 
         let header = div()
             .flex()
@@ -60,35 +203,54 @@ impl Pm {
             .h(px(SECTION_HEADER_H))
             .px_2()
             .text_color(rgb(DIM))
-            .child(SharedString::from(format!("Tickets  ({n})")))
+            .child(SharedString::from(count))
             .child(
                 div()
-                    .id("new-ticket")
-                    .px_1()
-                    .rounded_sm()
-                    .cursor_pointer()
-                    .text_color(rgb(TEXT))
-                    .hover(|s| s.bg(rgb(BORDER)))
-                    .child("+ New")
-                    .on_mouse_down(
-                        MouseButton::Left,
-                        cx.listener(|pm, _, window, cx| {
-                            pm.composing = Some(Compose::NewTicket);
-                            pm.selected_ticket = None;
-                            pm.new_ticket_body.update(cx, |ti, cx| ti.reset(cx));
-                            pm.new_ticket_title.update(cx, |ti, cx| {
-                                ti.reset(cx);
-                                ti.focus(window, cx);
-                            });
-                            cx.notify();
-                        }),
+                    .flex()
+                    .flex_row()
+                    .items_center()
+                    .gap_1()
+                    .child(self.filter_button(cx))
+                    .child(
+                        div()
+                            .id("new-ticket")
+                            .px_1()
+                            .rounded_sm()
+                            .cursor_pointer()
+                            .text_color(rgb(TEXT))
+                            .hover(|s| s.bg(rgb(BORDER)))
+                            .child("+ New")
+                            .on_mouse_down(
+                                MouseButton::Left,
+                                cx.listener(|pm, _, window, cx| {
+                                    pm.composing = Some(Compose::NewTicket);
+                                    pm.selected_ticket = None;
+                                    pm.filter_menu_open = false;
+                                    pm.status_menu_open = false;
+                                    pm.new_ticket_body.update(cx, |ti, cx| ti.reset(cx));
+                                    pm.new_ticket_title.update(cx, |ti, cx| {
+                                        ti.reset(cx);
+                                        ti.focus(window, cx);
+                                    });
+                                    cx.notify();
+                                }),
+                            ),
                     ),
             );
 
         let mut list = div().id("ticket-list").flex_1().overflow_y_scroll();
-        for (i, t) in pm.tickets.iter().enumerate() {
+        if shown.is_empty() {
+            list = list.child(
+                div()
+                    .p_2()
+                    .text_color(rgb(DIM))
+                    .child(SharedString::from("No tickets match the filter.")),
+            );
+        }
+        for (i, t) in shown.into_iter().enumerate() {
             let id = t.id;
             let selected = self.selected_ticket == Some(id);
+            let closed = t.status.is_closed();
             list = list.child(
                 div()
                     .id(("ticket", i))
@@ -116,11 +278,16 @@ impl Pm {
                                     .child(SharedString::from("\u{25cf}")),
                             )
                             .child(SharedString::from(pm.display_id(t)))
-                            .child(SharedString::from(t.priority.label())),
+                            .child(SharedString::from(format!(
+                                "{}  \u{00b7}  {}",
+                                t.status.label(),
+                                t.priority.label()
+                            ))),
                     )
                     .child(
                         div()
-                            .text_color(rgb(TEXT))
+                            .text_color(rgb(if closed { DIM } else { TEXT }))
+                            .when(closed, |d| d.line_through())
                             .child(SharedString::from(t.title.clone())),
                     )
                     .on_mouse_down(
@@ -128,6 +295,7 @@ impl Pm {
                         cx.listener(move |pm, _, _, cx| {
                             pm.selected_ticket = Some(id);
                             pm.composing = None;
+                            pm.status_menu_open = false;
                             pm.comment_box.update(cx, |ti, cx| ti.reset(cx));
                             cx.notify();
                         }),
@@ -242,6 +410,60 @@ impl Pm {
             )
     }
 
+    /// The clickable status chip + its status-picker popover.
+    fn status_button(&self, tid: u64, current: Status, cx: &mut Context<Self>) -> impl IntoElement {
+        let open = self.status_menu_open;
+        let rows: Vec<MenuRow> = Status::ALL
+            .iter()
+            .map(|&s| {
+                let act: MenuAct = Box::new(move |pm, cx| {
+                    pm.state.set_ticket_status(tid, s);
+                    pm.status_menu_open = false;
+                    cx.notify();
+                });
+                (SharedString::from(s.label()), s.color(), s == current, act)
+            })
+            .collect();
+
+        div()
+            .relative()
+            .child(
+                div()
+                    .id("status-picker")
+                    .flex()
+                    .flex_row()
+                    .items_center()
+                    .gap_1()
+                    .px_1()
+                    .rounded_sm()
+                    .bg(rgb(BORDER))
+                    .text_color(rgb(current.color()))
+                    .text_size(px(11.0))
+                    .cursor_pointer()
+                    .hover(|s| s.bg(rgb(SELECT)))
+                    .child(SharedString::from(format!("{}  \u{25be}", current.label())))
+                    .on_mouse_down(
+                        MouseButton::Left,
+                        cx.listener(|pm, _, _, cx| {
+                            pm.status_menu_open = !pm.status_menu_open;
+                            pm.filter_menu_open = false;
+                            cx.notify();
+                            cx.stop_propagation();
+                        }),
+                    ),
+            )
+            .when(open, |d| {
+                d.child(deferred(
+                    div()
+                        .absolute()
+                        .top_full()
+                        .left_0()
+                        .mt(px(2.0))
+                        .child(self.menu_panel(cx, true, rows)),
+                ))
+            })
+    }
+
     fn ticket_card(&self, t: &Ticket, cx: &mut Context<Self>) -> impl IntoElement {
         let pm = &self.state.pm;
         let tid = t.id;
@@ -257,7 +479,7 @@ impl Pm {
                     .text_color(rgb(DIM))
                     .child(SharedString::from(pm.display_id(t))),
             )
-            .child(chip(t.status.label(), t.status.color()))
+            .child(self.status_button(tid, t.status, cx))
             .child(chip(t.priority.label(), t.priority.color()));
         for label in &t.labels {
             meta = meta.child(chip(label.clone(), CHANGED));

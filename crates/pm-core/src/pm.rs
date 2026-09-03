@@ -24,7 +24,7 @@ pub fn now_unix() -> i64 {
 }
 
 /// Lifecycle state of a ticket.
-#[derive(Clone, Copy, PartialEq, Eq, Debug, Default, Serialize, Deserialize)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug, Default, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Status {
     #[default]
@@ -63,6 +63,11 @@ impl Status {
         Status::Done,
         Status::Wontfix,
     ];
+
+    /// Whether the ticket is finished (hidden from the list by default).
+    pub fn is_closed(self) -> bool {
+        matches!(self, Status::Done | Status::Wontfix)
+    }
 }
 
 /// How urgent a ticket is.
@@ -284,6 +289,19 @@ impl PmData {
         match self.project.key.as_deref().filter(|k| !k.is_empty()) {
             Some(key) => format!("{key}-{}", t.id),
             None => format!("#{}", t.id),
+        }
+    }
+
+    /// Set a ticket's status, touching `updated`. Returns whether anything
+    /// changed (unknown ticket / same status → `false`).
+    pub fn set_status(&mut self, ticket_id: u64, status: Status, now: i64) -> bool {
+        match self.ticket_mut(ticket_id) {
+            Some(t) if t.status != status => {
+                t.status = status;
+                t.updated = now;
+                true
+            }
+            _ => false,
         }
     }
 

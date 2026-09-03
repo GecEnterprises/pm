@@ -4,7 +4,7 @@
     "name": "pm",
     "key": "PM"
   },
-  "next_id": 36,
+  "next_id": 38,
   "tickets": [
     {
       "id": 5,
@@ -56,16 +56,31 @@
       "id": 11,
       "title": "A button to close tickets, a viewing mode to see closed tickets",
       "body": "",
-      "status": "open",
+      "status": "in_progress",
       "priority": "high",
       "labels": [
         "tickets"
       ],
       "assignee": null,
       "created": 1788448971,
-      "updated": 1788449287,
-      "anchors": [],
-      "comments": []
+      "updated": 1788465000,
+      "anchors": [
+        {
+          "file": "crates/pm-ui/src/tickets_view.rs",
+          "start_line": 1,
+          "end_line": 1,
+          "rev": "working"
+        }
+      ],
+      "comments": [
+        {
+          "id": 1,
+          "author": "reaganiwadha",
+          "created": 1788465000,
+          "body": "Implemented per the agreed design. Status: the meta-row chip in the detail pane is now a button; click it for a dropdown of the 5 statuses (check on current), which persists + bumps updated. Closed view: a 'Filter (n/5)' dropdown in the list header is a multi-check of the 5 statuses; unchecked ones are hidden. Default hides Done/Won't Fix. Closed rows that are shown render dim + struck through; header count shows 'N of M' when filtered. Scope kept to PM-11 - no sort (PM-29), no priority editing (PM-4). Needs a run to confirm the popovers behave.",
+          "anchor": null
+        }
+      ]
     },
     {
       "id": 4,
@@ -627,6 +642,40 @@
       "updated": 1788475270,
       "anchors": [],
       "comments": []
+    },
+    {
+      "id": 36,
+      "title": "CTRL + + and CTRL + - to scale text and increase scaling factor like how in vscode",
+      "body": "",
+      "status": "open",
+      "priority": "normal",
+      "labels": [],
+      "assignee": null,
+      "created": 1788476788,
+      "updated": 1788476788,
+      "anchors": [],
+      "comments": []
+    },
+    {
+      "id": 37,
+      "title": "The comment text input doesn't get cleared when jumping between comments? State bug? UI state bug perhaps?",
+      "body": "",
+      "status": "open",
+      "priority": "normal",
+      "labels": [],
+      "assignee": null,
+      "created": 1788476825,
+      "updated": 1788476871,
+      "anchors": [],
+      "comments": [
+        {
+          "id": 1,
+          "author": "reaganiwadha",
+          "created": 1788476871,
+          "body": "It happens when i have a comment in something, i didn't comment on it, jumped to creating a new ticket and when i posted the new ticket my comment from previous ticket still there",
+          "anchor": null
+        }
+      ]
     }
   ]
 }

@@ -11,7 +11,7 @@ use gpui::{
 
 use pm_core::text::{BufferPos, DiffCursor};
 use pm_core::watch::Sentinel;
-use pm_core::{AppState, Repo};
+use pm_core::{AppState, Repo, Status};
 
 use pm_core::state::Content;
 
@@ -156,6 +156,12 @@ pub struct Pm {
     pub new_ticket_body: Entity<TextInput>,
     pub comment_box: Entity<TextInput>,
     pub ticket_hover: Option<usize>,
+    /// Statuses shown in the ticket list (the header filter dropdown).
+    pub ticket_filter: std::collections::HashSet<Status>,
+    /// The list-header status-filter popover is open.
+    pub filter_menu_open: bool,
+    /// The selected ticket's status-picker popover is open.
+    pub status_menu_open: bool,
 }
 
 impl Pm {
@@ -216,6 +222,12 @@ impl Pm {
             new_ticket_body,
             comment_box,
             ticket_hover: None,
+            // Active work by default; closed tickets hidden until asked for.
+            ticket_filter: [Status::Open, Status::InProgress, Status::Blocked]
+                .into_iter()
+                .collect(),
+            filter_menu_open: false,
+            status_menu_open: false,
         }
     }
 
