@@ -65,6 +65,30 @@ impl ShapeCache {
         self.lines.insert(key, shaped);
     }
 
+    /// Cleaned text of a shaped line (`None` for a blank / absent side).
+    pub fn line(&self, col: usize, row: usize) -> Option<&str> {
+        self.lines
+            .get(&(col == 1, row))
+            .and_then(|o| o.as_ref())
+            .map(|sl| sl.text.as_ref())
+    }
+
+    /// x offset (px, column-local) of byte `byte` within a shaped line.
+    pub fn line_x(&self, col: usize, row: usize, byte: usize) -> Option<f32> {
+        self.lines
+            .get(&(col == 1, row))
+            .and_then(|o| o.as_ref())
+            .map(|sl| f32::from(sl.x_for_index(byte.min(sl.len()))))
+    }
+
+    /// Byte index nearest column-local x (px) within a shaped line.
+    pub fn byte_at_x(&self, col: usize, row: usize, x: f32) -> usize {
+        match self.lines.get(&(col == 1, row)).and_then(|o| o.as_ref()) {
+            Some(sl) if x > 0.0 => sl.index_for_x(px(x)).unwrap_or(sl.len()),
+            _ => 0,
+        }
+    }
+
     fn ensure_num(&mut self, n: usize, ts: &WindowTextSystem, font: &Font, size: Pixels) {
         if self.nums.contains_key(&n) {
             return;
@@ -128,6 +152,16 @@ impl IntoElement for DiffView {
     }
 }
 
+/// Caret + selection geometry for the visible window, resolved in prepaint.
+struct CaretView {
+    col: usize,
+    focused: bool,
+    /// per visible row: column-local selection x-range (before `-off_x`).
+    sel: Vec<Option<(f32, f32)>>,
+    /// (index into the visible window, column-local x) of the caret head.
+    head: Option<(usize, f32)>,
+}
+
 pub struct DiffPrepaint {
     mid: f32,
     left: f32,
@@ -135,6 +169,7 @@ pub struct DiffPrepaint {
     width: f32,
     height: f32,
     first: usize,
+    row_count: usize,
     off_y: f32,
     off_x: [f32; 2],
     col_text_w: [f32; 2],
@@ -151,6 +186,8 @@ pub struct DiffPrepaint {
     left_nums: Vec<Option<ShapedLine>>,
     right_nums: Vec<Option<ShapedLine>>,
     kinds: Vec<RowKind>,
+    caret: Option<CaretView>,
+    autoscroll: Option<(f32, f32)>,
 }
 
 impl Element for DiffView {
@@ -230,6 +267,8 @@ impl Element for DiffView {
             left_nums,
             right_nums,
             kinds,
+            caret,
+            autoscroll,
         ) = self.pm.update(cx, |pm, _cx| {
                 let ts = window.text_system();
                 let Pm {
@@ -238,9 +277,15 @@ impl Element for DiffView {
                     new_lines,
                     shaped,
                     diff,
+                    caret,
+                    diff_focus,
+                    autoscroll,
+                    mouse_pos,
+                    diff_viewport_h,
                     ..
                 } = pm;
                 let row_count = rows.len().min(MAX_ROWS);
+                *diff_viewport_h = h;
 
                 // One-time measurement pass so `max_w` (and the H-thumb size) is exact.
                 if shaped.lines.is_empty() && row_count > 0 {
@@ -250,6 +295,22 @@ impl Element for DiffView {
                         let r = rows[i].right_no.and_then(|k| new_lines.get(k - 1));
                         shaped.ensure((true, i), r, ts, &body_font, font_size);
                     }
+                }
+
+                // Middle-click autoscroll: pan proportional to distance from origin.
+                if let Some((ox, oy)) = *autoscroll {
+                    let (mx, my) = *mouse_pos;
+                    let dead = 12.0;
+                    let vel = |d: f32| {
+                        if d.abs() > dead {
+                            (d - d.signum() * dead) * 0.05
+                        } else {
+                            0.0
+                        }
+                    };
+                    let col = if ox < mid { 0 } else { 1 };
+                    diff.y.offset.y = diff.y.offset.y + px(vel(my - oy));
+                    diff.x[col].offset.x = diff.x[col].offset.x + px(vel(mx - ox));
                 }
 
                 diff.y.content = size(px(0.0), px(row_count as f32 * ROW_H));
@@ -298,6 +359,55 @@ impl Element for DiffView {
                     kinds.push(rows[i].kind);
                 }
 
+                let caret_view = (*caret).map(|cur| {
+                    let (a, b) = cur.ordered();
+                    // File line shown at display row `i` in the caret's column, if any.
+                    let file_row = |i: usize| match cur.col {
+                        0 => rows[i].left_no,
+                        _ => rows[i].right_no,
+                    }
+                    .map(|n| n - 1);
+
+                    let sel = visible
+                        .clone()
+                        .map(|i| {
+                            let fr = file_row(i)?;
+                            if !cur.has_selection() || fr < a.file_row || fr > b.file_row {
+                                return None;
+                            }
+                            let line_w = shaped
+                                .line(cur.col, i)
+                                .and_then(|s| shaped.line_x(cur.col, i, s.len()))
+                                .unwrap_or(0.0);
+                            let x0 = if fr == a.file_row {
+                                shaped.line_x(cur.col, i, a.byte).unwrap_or(0.0)
+                            } else {
+                                0.0
+                            };
+                            let x1 = if fr == b.file_row {
+                                shaped.line_x(cur.col, i, b.byte).unwrap_or(0.0)
+                            } else {
+                                line_w + 4.0
+                            };
+                            Some((x0, x1))
+                        })
+                        .collect();
+
+                    let head = visible.clone().find(|&i| file_row(i) == Some(cur.head.file_row)).map(|i| {
+                        (
+                            i - visible.start,
+                            shaped.line_x(cur.col, i, cur.head.byte).unwrap_or(0.0),
+                        )
+                    });
+
+                    CaretView {
+                        col: cur.col,
+                        focused: diff_focus.is_focused(window),
+                        sel,
+                        head,
+                    }
+                });
+
                 (
                     row_count,
                     first,
@@ -309,6 +419,8 @@ impl Element for DiffView {
                     left_nums,
                     right_nums,
                     kinds,
+                    caret_view,
+                    *autoscroll,
                 )
             });
 
@@ -393,6 +505,7 @@ impl Element for DiffView {
             width: w,
             height: h,
             first,
+            row_count,
             off_y,
             off_x,
             col_text_w,
@@ -408,6 +521,8 @@ impl Element for DiffView {
             left_nums,
             right_nums,
             kinds,
+            caret,
+            autoscroll,
         }
     }
 
@@ -467,28 +582,50 @@ impl Element for DiffView {
                 }
             }
 
-            let left_text = p.left_text;
-            window.with_content_mask(Some(ContentMask { bounds: left_text }), |window| {
-                for (k, line) in p.left_lines.iter().enumerate() {
-                    if let Some(sl) = line {
-                        let y = px(top + (p.first + k) as f32 * ROW_H - p.off_y);
-                        let x = px(left + GUTTER_W + TEXT_PAD_L - p.off_x[0]);
-                        sl.paint(point(x, y), line_height, TextAlign::Left, None, window, cx)
-                            .ok();
+            for (col, text_rect, lines, col_x0, off) in [
+                (0usize, p.left_text, &p.left_lines, left + GUTTER_W + TEXT_PAD_L, p.off_x[0]),
+                (1usize, p.right_text, &p.right_lines, mid + GUTTER_W + TEXT_PAD_L, p.off_x[1]),
+            ] {
+                let caret = p.caret.as_ref().filter(|cv| cv.col == col);
+                window.with_content_mask(Some(ContentMask { bounds: text_rect }), |window| {
+                    if let Some(cv) = caret {
+                        for (k, span) in cv.sel.iter().enumerate() {
+                            if let Some((x0, x1)) = span {
+                                let y = top + (p.first + k) as f32 * ROW_H - p.off_y;
+                                window.paint_quad(fill(
+                                    Bounds::new(
+                                        point(px(col_x0 - off + x0), px(y)),
+                                        size(px((x1 - x0).max(1.5)), px(ROW_H)),
+                                    ),
+                                    rgba(0x3a5f8a99),
+                                ));
+                            }
+                        }
                     }
-                }
-            });
-            let right_text = p.right_text;
-            window.with_content_mask(Some(ContentMask { bounds: right_text }), |window| {
-                for (k, line) in p.right_lines.iter().enumerate() {
-                    if let Some(sl) = line {
-                        let y = px(top + (p.first + k) as f32 * ROW_H - p.off_y);
-                        let x = px(mid + GUTTER_W + TEXT_PAD_L - p.off_x[1]);
-                        sl.paint(point(x, y), line_height, TextAlign::Left, None, window, cx)
-                            .ok();
+                    for (k, line) in lines.iter().enumerate() {
+                        if let Some(sl) = line {
+                            let y = px(top + (p.first + k) as f32 * ROW_H - p.off_y);
+                            let x = px(col_x0 - off);
+                            sl.paint(point(x, y), line_height, TextAlign::Left, None, window, cx)
+                                .ok();
+                        }
                     }
-                }
-            });
+                    if let Some(cv) = caret {
+                        if cv.focused {
+                            if let Some((k, hx)) = cv.head {
+                                let y = top + (p.first + k) as f32 * ROW_H - p.off_y;
+                                window.paint_quad(fill(
+                                    Bounds::new(
+                                        point(px(col_x0 - off + hx), px(y + 1.0)),
+                                        size(px(1.5), px(ROW_H - 2.0)),
+                                    ),
+                                    rgb(0xd4d4d4),
+                                ));
+                            }
+                        }
+                    }
+                });
+            }
 
             let h = p.height;
             for idx in 0..3 {
@@ -525,7 +662,18 @@ impl Element for DiffView {
                     if hovered { rgb(0x7a7a7a) } else { rgb(0x5a5a5a) },
                 ));
             }
+
+            if let Some((ox, oy)) = p.autoscroll {
+                window.paint_quad(fill(
+                    Bounds::new(point(px(ox - 5.0), px(oy - 5.0)), size(px(10.0), px(10.0))),
+                    rgba(0xd4d4d466),
+                ));
+            }
         });
+
+        if p.autoscroll.is_some() {
+            window.request_animation_frame();
+        }
 
         // A window-wide cursor keeps it stable while dragging (the pointer leaves
         // the thin handle); otherwise only show it on hover. Both are paint-only.
@@ -547,9 +695,21 @@ impl DiffView {
         let bar_ids = p.bar_ids;
         let mid = p.mid;
         let left = p.left;
+        let top = p.top;
         let width = p.width;
         let page_y = p.height;
         let page_x = p.col_text_w;
+        let row_count = p.row_count;
+        let text_lo = [left + GUTTER_W, mid + GUTTER_W];
+
+        // Resolve a window-space point to (column, visual row, column-local x px).
+        let hit = move |px_x: f32, px_y: f32, off_y: f32, off_x: [f32; 2]| {
+            let col = if px_x < mid { 0usize } else { 1 };
+            let row = (((px_y - top + off_y) / ROW_H).floor().max(0.0) as usize)
+                .min(row_count.saturating_sub(1));
+            let x_local = px_x - text_lo[col] - TEXT_PAD_L + off_x[col];
+            (col, row, x_local)
+        };
 
         {
             let pm = pm.clone();
@@ -584,7 +744,22 @@ impl DiffView {
         {
             let pm = pm.clone();
             window.on_mouse_event(move |e: &MouseDownEvent, phase, window, cx| {
-                if phase != DispatchPhase::Bubble || e.button != MouseButton::Left {
+                if phase != DispatchPhase::Bubble {
+                    return;
+                }
+
+                // Middle click toggles autoscroll (pan) mode.
+                if e.button == MouseButton::Middle && body_id.is_hovered(window) {
+                    let origin = (f32::from(e.position.x), f32::from(e.position.y));
+                    pm.update(cx, |pm, cx| {
+                        pm.autoscroll = if pm.autoscroll.is_some() { None } else { Some(origin) };
+                        cx.notify();
+                    });
+                    cx.stop_propagation();
+                    return;
+                }
+
+                if e.button != MouseButton::Left {
                     return;
                 }
                 if divider_id.is_hovered(window) {
@@ -636,7 +811,28 @@ impl DiffView {
                         cx.notify();
                     });
                     cx.stop_propagation();
-                    break;
+                    return;
+                }
+
+                // Not on a bar or the divider — place / extend the caret.
+                if body_id.is_hovered(window) {
+                    let mx = f32::from(e.position.x);
+                    let my = f32::from(e.position.y);
+                    let clicks = e.click_count;
+                    let shift = e.modifiers.shift;
+                    let focus = pm.read(cx).diff_focus.clone();
+                    window.focus(&focus, cx);
+                    pm.update(cx, |pm, cx| {
+                        pm.autoscroll = None;
+                        let off_y = f32::from(pm.diff.y.offset.y);
+                        let off_x = [
+                            f32::from(pm.diff.x[0].offset.x),
+                            f32::from(pm.diff.x[1].offset.x),
+                        ];
+                        let (col, row, x_local) = hit(mx, my, off_y, off_x);
+                        pm.click_text(col, row, x_local, shift, clicks, cx);
+                    });
+                    cx.stop_propagation();
                 }
             });
         }
@@ -647,6 +843,40 @@ impl DiffView {
                 if phase != DispatchPhase::Bubble {
                     return;
                 }
+
+                let mx = f32::from(e.position.x);
+                let my = f32::from(e.position.y);
+                let (dragging_text, panning) = {
+                    let pm = pm.read(cx);
+                    (pm.text_drag, pm.autoscroll.is_some())
+                };
+                if panning {
+                    pm.update(cx, |pm, cx| {
+                        pm.mouse_pos = (mx, my);
+                        cx.notify();
+                    });
+                }
+                if dragging_text {
+                    if e.pressed_button != Some(MouseButton::Left) {
+                        pm.update(cx, |pm, cx| {
+                            pm.text_drag = false;
+                            cx.notify();
+                        });
+                        return;
+                    }
+                    pm.update(cx, |pm, cx| {
+                        let off_y = f32::from(pm.diff.y.offset.y);
+                        let off_x = [
+                            f32::from(pm.diff.x[0].offset.x),
+                            f32::from(pm.diff.x[1].offset.x),
+                        ];
+                        let (_, row, x_local) = hit(mx, my, off_y, off_x);
+                        pm.drag_text(row, x_local, cx);
+                    });
+                    cx.stop_propagation();
+                    return;
+                }
+
                 if pm.read(cx).diff_split_drag.is_some() {
                     let mut consumed = false;
                     pm.update(cx, |pm, cx| {
@@ -719,7 +949,9 @@ impl DiffView {
                 pm.update(cx, |pm, cx| {
                     let a = pm.diff.drag.take().is_some();
                     let b = pm.diff_split_drag.take().is_some();
-                    if a || b {
+                    let c = pm.text_drag;
+                    pm.text_drag = false;
+                    if a || b || c {
                         cx.notify();
                     }
                 });
