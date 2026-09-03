@@ -211,13 +211,19 @@ impl Pm {
             .flex_row()
             .items_center()
             .h_full()
-            .flex_none()
-            .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation());
+            .flex_none();
 
         #[cfg(target_os = "windows")]
         {
-            let button = |glyph: &'static str, area: WindowControlArea, close: bool| {
+            // The Win32 backend turns these into native caption buttons via
+            // WM_NCHITTEST (Close/Min/Max + Snap Layouts), so they carry a
+            // `window_control_area` and an occluding hitbox but no `on_click` —
+            // the OS performs the action. `.occlude()` is what makes the hitbox
+            // register; without it clicks fall through to the drag region.
+            let button = |id: &'static str, glyph: &'static str, area: WindowControlArea, close: bool| {
                 div()
+                    .id(id)
+                    .occlude()
                     .w(px(46.0))
                     .h_full()
                     .flex()
@@ -226,16 +232,20 @@ impl Pm {
                     .font_family("Segoe Fluent Icons")
                     .text_size(px(10.0))
                     .window_control_area(area)
-                    .hover(|s| s.bg(rgb(if close { CLOSE_HOVER } else { BORDER })))
+                    .hover(|s| {
+                        s.bg(rgb(if close { CLOSE_HOVER } else { BORDER }))
+                            .text_color(rgb(TEXT))
+                    })
                     .child(glyph)
             };
-            row.child(button("\u{e921}", WindowControlArea::Min, false))
+            row.child(button("min", "\u{e921}", WindowControlArea::Min, false))
                 .child(button(
+                    "max",
                     if maximized { "\u{e923}" } else { "\u{e922}" },
                     WindowControlArea::Max,
                     false,
                 ))
-                .child(button("\u{e8bb}", WindowControlArea::Close, true))
+                .child(button("close", "\u{e8bb}", WindowControlArea::Close, true))
         }
         #[cfg(not(target_os = "windows"))]
         {
@@ -243,6 +253,7 @@ impl Pm {
             let mk = |id: &'static str, glyph: &'static str, close: bool| {
                 div()
                     .id(id)
+                    .occlude()
                     .w(px(40.0))
                     .h_full()
                     .flex()
