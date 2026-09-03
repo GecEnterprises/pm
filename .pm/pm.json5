@@ -656,14 +656,29 @@
       "id": 34,
       "title": "pm.json5 alternative storage engine/option.",
       "body": "Users can choose whether to store database of pm work in .pm in the repository, or store it locally in ~/.pm/path-to-project-in-strips/. For this to work, we need a layer of persistance working. Keyval db works no need sqlite i think.",
-      "status": "open",
+      "status": "in_progress",
       "priority": "normal",
       "labels": [],
       "assignee": null,
       "created": 1788475247,
-      "updated": 1788475247,
-      "anchors": [],
-      "comments": []
+      "updated": 1788467000,
+      "anchors": [
+        {
+          "file": "crates/pm-core/src/config.rs",
+          "start_line": 1,
+          "end_line": 1,
+          "rev": "working"
+        }
+      ],
+      "comments": [
+        {
+          "id": 1,
+          "author": "reaganiwadha",
+          "created": 1788467000,
+          "body": "Persistence layer done (needed before PM-36). crates/pm-core/src/config.rs is a plain-JSON key/value document - no sqlite - at ~/.pm/config.json, with atomic writes and defaults on missing/broken. crates/pm-ui/src/config.rs exposes it as a gpui global: ConfigStore::get(cx) / ConfigStore::update(cx, |c| ...) (persist + refresh_windows). Loaded in main.rs; writes the default file on first run. First field is ui_scale. Verified: unit tests + hand-edited ui_scale=1.75 survives a restart. Still open on this ticket: letting the user choose where PROJECT ticket data lives (in-repo .pm/pm.json5 vs ~/.pm/<slug>/) - that needs pm_core::pm load/save to take a path.",
+          "anchor": null
+        }
+      ]
     },
     {
       "id": 35,
