@@ -207,17 +207,30 @@ impl Pm {
                     .child(SharedString::from("New ticket")),
             )
             .child(
-                text_input("nt-title", &self.new_ticket_title, "Title", title_focused).on_key_down(
-                    cx.listener(|pm, e: &KeyDownEvent, w, cx| {
+                text_input("nt-title", &self.new_ticket_title, "Title", title_focused)
+                    .on_mouse_down(
+                        MouseButton::Left,
+                        cx.listener(|pm, _, w, cx| {
+                            w.focus(&pm.new_ticket_title.focus, cx);
+                            cx.notify();
+                        }),
+                    )
+                    .on_key_down(cx.listener(|pm, e: &KeyDownEvent, w, cx| {
                         if pm.new_ticket_title.key(e, w, cx) {
                             pm.submit_new_ticket(cx);
                         }
                         cx.notify();
-                    }),
-                ),
+                    })),
             )
             .child(
                 text_input("nt-body", &self.new_ticket_body, "Description (optional)", body_focused)
+                    .on_mouse_down(
+                        MouseButton::Left,
+                        cx.listener(|pm, _, w, cx| {
+                            w.focus(&pm.new_ticket_body.focus, cx);
+                            cx.notify();
+                        }),
+                    )
                     .on_key_down(cx.listener(|pm, e: &KeyDownEvent, w, cx| {
                         pm.new_ticket_body.key(e, w, cx);
                         cx.notify();
@@ -384,6 +397,13 @@ impl Pm {
                 .mt_2()
                 .child(
                     text_input("comment-box", &self.comment_box, "Add a comment\u{2026}", comment_focused)
+                        .on_mouse_down(
+                            MouseButton::Left,
+                            cx.listener(|pm, _, w, cx| {
+                                w.focus(&pm.comment_box.focus, cx);
+                                cx.notify();
+                            }),
+                        )
                         .on_key_down(cx.listener(|pm, e: &KeyDownEvent, w, cx| {
                             pm.comment_box.key(e, w, cx);
                             cx.notify();

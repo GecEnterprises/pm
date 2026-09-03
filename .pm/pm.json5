@@ -4,7 +4,7 @@
     "name": "pm",
     "key": "PM"
   },
-  "next_id": 16,
+  "next_id": 21,
   "tickets": [
     {
       "id": 5,
@@ -94,16 +94,31 @@
       "id": 7,
       "title": "The textbox when making a ticket doesn't feel nice",
       "body": "Also I can't ctrl+a copy paste or what",
-      "status": "open",
+      "status": "in_progress",
       "priority": "high",
       "labels": [
         "tickets"
       ],
       "assignee": null,
       "created": 1788448806,
-      "updated": 1788449287,
-      "anchors": [],
-      "comments": []
+      "updated": 1788449600,
+      "anchors": [
+        {
+          "file": "crates/pm-ui/src/text_input.rs",
+          "start_line": 1,
+          "end_line": 1,
+          "rev": "working"
+        }
+      ],
+      "comments": [
+        {
+          "id": 1,
+          "author": "reaganiwadha",
+          "created": 1788449600,
+          "body": "Rewrote text_input: selection model + shift-motions, Ctrl+A, cut/copy/paste, Ctrl+Backspace word delete, Up/Down in multiline, and a 1px caret quad that no longer shifts the text. Click focuses the field. Still missing: click-to-place-caret mid-text (needs glyph geometry) — tracked as follow-up.",
+          "anchor": null
+        }
+      ]
     },
     {
       "id": 6,
@@ -261,6 +276,71 @@
       "assignee": null,
       "created": 1756900300,
       "updated": 1756900300,
+      "anchors": [],
+      "comments": []
+    },
+    {
+      "id": 16,
+      "title": "Tab navigation",
+      "body": "",
+      "status": "open",
+      "priority": "normal",
+      "labels": [],
+      "assignee": null,
+      "created": 1788449479,
+      "updated": 1788449479,
+      "anchors": [],
+      "comments": []
+    },
+    {
+      "id": 17,
+      "title": "GitBranch switching",
+      "body": "",
+      "status": "open",
+      "priority": "normal",
+      "labels": [],
+      "assignee": null,
+      "created": 1788449498,
+      "updated": 1788449498,
+      "anchors": [],
+      "comments": []
+    },
+    {
+      "id": 18,
+      "title": "Color Scheming System",
+      "body": "Very low priority",
+      "status": "open",
+      "priority": "normal",
+      "labels": [],
+      "assignee": null,
+      "created": 1788449551,
+      "updated": 1788449551,
+      "anchors": [],
+      "comments": []
+    },
+    {
+      "id": 19,
+      "title": "ctrl+tab and ctrl+shift+tab to switch between summary file-to-file and tickets",
+      "body": "",
+      "status": "open",
+      "priority": "normal",
+      "labels": [],
+      "assignee": null,
+      "created": 1788449625,
+      "updated": 1788449625,
+      "anchors": [],
+      "comments": []
+    },
+    {
+      "id": 20,
+      "title": "shift shift to open global filename search and ticket search like spotlight in jetbrains app",
+      "body": "",
+      "status": "open",
+      "priority": "normal",
+      "labels": [],
+      "assignee": null,
+      "created": 1788449664,
+      "updated": 1788449664,
       "anchors": [],
       "comments": []
     }
