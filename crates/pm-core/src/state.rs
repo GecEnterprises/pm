@@ -129,11 +129,24 @@ impl AppState {
             content: Content::Text,
         };
         s.rebuild_visible();
-        if let Some(first) = s.changes.first().map(|c| c.rel.clone()) {
-            s.tree_selected = Some(first.clone());
-            s.open_path(first);
+        // Open the first changed file, or — with no git — the first file in the
+        // tree, so the window isn't blank.
+        let first = s.changes.first().map(|c| c.rel.clone()).or_else(|| {
+            s.tree
+                .iter()
+                .find(|e| !e.is_dir)
+                .map(|e| e.rel.clone())
+        });
+        if let Some(rel) = first {
+            s.tree_selected = Some(rel.clone());
+            s.open_path(rel);
         }
         s
+    }
+
+    /// Whether the open folder is inside a git repository.
+    pub fn is_git(&self) -> bool {
+        self.repo.is_git()
     }
 
         pub fn open_path(&mut self, rel: PathBuf) {

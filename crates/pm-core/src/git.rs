@@ -12,8 +12,10 @@ use ignore::WalkBuilder;
 /// How many commits `log()` returns.
 pub const LOG_LIMIT: usize = 500;
 
+/// A folder pm is showing. `inner` is `None` when the folder isn't inside a git
+/// repository — pm still opens, the Explorer works, and files show plainly.
 pub struct Repo {
-    inner: Repository,
+    inner: Option<Repository>,
     root: PathBuf,
 }
 
@@ -151,14 +153,33 @@ fn dfs_cmp(a: &Path, b: &Path) -> Ordering {
 }
 
 impl Repo {
-    /// Walk up from `path` looking for a `.git` directory.
+    /// Walk up from `path` looking for a `.git` directory. Errors if there is none.
     pub fn discover(path: &Path) -> Result<Self> {
         let inner = Repository::discover(path)?;
         let root = inner
             .workdir()
             .map(Path::to_path_buf)
             .unwrap_or_else(|| path.to_path_buf());
-        Ok(Self { inner, root })
+        Ok(Self { inner: Some(inner), root })
+    }
+
+    /// Open `path` — as a git repo if it's inside one, otherwise as a plain
+    /// folder (`is_git()` is then false and every git query yields nothing).
+    pub fn open(path: &Path) -> Self {
+        match Repository::discover(path) {
+            Ok(inner) => {
+                let root = inner
+                    .workdir()
+                    .map(Path::to_path_buf)
+                    .unwrap_or_else(|| path.to_path_buf());
+                Self { inner: Some(inner), root }
+            }
+            Err(_) => Self { inner: None, root: path.to_path_buf() },
+        }
+    }
+
+    pub fn is_git(&self) -> bool {
+        self.inner.is_some()
     }
 
     pub fn root(&self) -> &Path {
@@ -168,6 +189,9 @@ impl Repo {
     /// Paths (relative to the repo root) with unstaged or staged changes, or that
     /// are untracked. Sorted and de-duplicated.
     pub fn changed_files(&self) -> Result<Vec<PathBuf>> {
+        let Some(inner) = &self.inner else {
+            return Ok(Vec::new());
+        };
         let mut opts = StatusOptions::new();
         opts.include_untracked(true)
             .recurse_untracked_dirs(true)
@@ -183,7 +207,7 @@ impl Repo {
             | Status::INDEX_RENAMED;
 
         let mut out = Vec::new();
-        for entry in self.inner.statuses(Some(&mut opts))?.iter() {
+        for entry in inner.statuses(Some(&mut opts))?.iter() {
             if entry.status().intersects(interesting) {
                 if let Some(p) = entry.path() {
                     out.push(PathBuf::from(p));
@@ -197,7 +221,10 @@ impl Repo {
 
     /// Recent commits reachable from HEAD, newest first (up to `limit`).
     pub fn log(&self, limit: usize) -> Vec<CommitInfo> {
-        let Ok(mut walk) = self.inner.revwalk() else {
+        let Some(inner) = &self.inner else {
+            return Vec::new();
+        };
+        let Ok(mut walk) = inner.revwalk() else {
             return Vec::new();
         };
         let _ = walk.set_sorting(Sort::TIME | Sort::TOPOLOGICAL);
@@ -207,7 +234,7 @@ impl Repo {
         walk.filter_map(Result::ok)
             .take(limit)
             .filter_map(|oid| {
-                let c = self.inner.find_commit(oid).ok()?;
+                let c = inner.find_commit(oid).ok()?;
                 let hex = oid.to_string();
                 let summary = c.summary().unwrap_or("").to_string();
                 let author = c.author().name().unwrap_or("").to_string();
@@ -225,6 +252,9 @@ impl Repo {
 
     /// Every changed file for `target`, with its status and ±line counts.
     pub fn changes(&self, target: DiffTarget) -> Vec<FileChange> {
+        let Some(inner) = &self.inner else {
+            return Vec::new();
+        };
         let mut opts = DiffOptions::new();
         opts.include_untracked(true)
             .recurse_untracked_dirs(true)
@@ -233,18 +263,16 @@ impl Repo {
 
         let diff = match target {
             DiffTarget::WorkingTree => {
-                let head_tree = self.inner.head().ok().and_then(|h| h.peel_to_tree().ok());
-                self.inner
-                    .diff_tree_to_workdir_with_index(head_tree.as_ref(), Some(&mut opts))
+                let head_tree = inner.head().ok().and_then(|h| h.peel_to_tree().ok());
+                inner.diff_tree_to_workdir_with_index(head_tree.as_ref(), Some(&mut opts))
             }
             DiffTarget::Commit(oid) => {
-                let Ok(commit) = self.inner.find_commit(oid) else {
+                let Ok(commit) = inner.find_commit(oid) else {
                     return Vec::new();
                 };
                 let new_tree = commit.tree().ok();
                 let old_tree = commit.parent(0).ok().and_then(|p| p.tree().ok());
-                self.inner
-                    .diff_tree_to_tree(old_tree.as_ref(), new_tree.as_ref(), Some(&mut opts))
+                inner.diff_tree_to_tree(old_tree.as_ref(), new_tree.as_ref(), Some(&mut opts))
             }
         };
         let Ok(diff) = diff else {
@@ -256,13 +284,15 @@ impl Repo {
     /// The pair of trees `target` compares. `None` = an empty tree (root commit /
     /// unborn HEAD); the working-tree side is `None` here — callers read it off disk.
     fn target_trees(&self, target: DiffTarget) -> (Option<Tree<'_>>, Option<Tree<'_>>) {
+        let Some(inner) = &self.inner else {
+            return (None, None);
+        };
         match target {
-            DiffTarget::WorkingTree => (
-                self.inner.head().ok().and_then(|h| h.peel_to_tree().ok()),
-                None,
-            ),
+            DiffTarget::WorkingTree => {
+                (inner.head().ok().and_then(|h| h.peel_to_tree().ok()), None)
+            }
             DiffTarget::Commit(oid) => {
-                let commit = self.inner.find_commit(oid).ok();
+                let commit = inner.find_commit(oid).ok();
                 let new = commit.as_ref().and_then(|c| c.tree().ok());
                 let old = commit
                     .as_ref()
@@ -274,14 +304,26 @@ impl Repo {
     }
 
     fn blob_in_tree(&self, tree: Option<&Tree<'_>>, rel: &Path) -> Vec<u8> {
+        let Some(inner) = &self.inner else {
+            return Vec::new();
+        };
         tree.and_then(|t| t.get_path(rel).ok())
-            .and_then(|e| self.inner.find_blob(e.id()).ok())
+            .and_then(|e| inner.find_blob(e.id()).ok())
             .map(|b| b.content().to_vec())
             .unwrap_or_default()
     }
 
-    /// "Before" bytes for `target` (HEAD blob / parent-commit blob).
+    fn disk_bytes(&self, rel: &Path) -> Vec<u8> {
+        std::fs::read(self.root.join(rel)).unwrap_or_default()
+    }
+
+    /// "Before" bytes for `target` (HEAD blob / parent-commit blob). With no
+    /// repo the file has no history, so the "before" side mirrors the file
+    /// itself — it displays plainly instead of as one big addition.
     pub fn old_bytes(&self, target: DiffTarget, rel: &Path) -> Vec<u8> {
+        if !self.is_git() {
+            return self.disk_bytes(rel);
+        }
         let (old, _) = self.target_trees(target);
         self.blob_in_tree(old.as_ref(), rel)
     }
@@ -289,7 +331,7 @@ impl Repo {
     /// "After" bytes for `target` (the working copy on disk / the commit's blob).
     pub fn new_bytes(&self, target: DiffTarget, rel: &Path) -> Vec<u8> {
         match target {
-            DiffTarget::WorkingTree => std::fs::read(self.root.join(rel)).unwrap_or_default(),
+            DiffTarget::WorkingTree => self.disk_bytes(rel),
             DiffTarget::Commit(_) => {
                 let (_, new) = self.target_trees(target);
                 self.blob_in_tree(new.as_ref(), rel)
@@ -311,6 +353,7 @@ impl Repo {
     /// if HEAD can't be resolved (e.g. an unborn branch in a fresh repo).
     pub fn branch(&self) -> Option<String> {
         self.inner
+            .as_ref()?
             .head()
             .ok()
             .and_then(|h| h.shorthand().map(str::to_owned))
@@ -396,6 +439,33 @@ mod tests {
         assert!(!log.is_empty());
         assert_eq!(log[0].short_id.len(), 7);
         assert!(!log[0].summary.is_empty());
+    }
+
+    #[test]
+    fn plain_folder_opens_without_git() {
+        let dir = std::env::temp_dir().join(format!("pm-test-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("hello.txt"), b"hi\nthere\n").unwrap();
+
+        let repo = Repo::open(&dir);
+        if repo.is_git() {
+            // The temp dir turned out to be inside a repo — nothing to test.
+            let _ = std::fs::remove_dir_all(&dir);
+            return;
+        }
+        assert!(repo.changes(DiffTarget::WorkingTree).is_empty());
+        assert!(repo.log(10).is_empty());
+        assert!(repo.branch().is_none());
+        assert!(repo.walk_tree().iter().any(|e| e.rel == Path::new("hello.txt")));
+        // The "before" side mirrors the file so it renders plainly.
+        let rel = Path::new("hello.txt");
+        assert_eq!(
+            repo.old_bytes(DiffTarget::WorkingTree, rel),
+            repo.new_bytes(DiffTarget::WorkingTree, rel)
+        );
+
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]

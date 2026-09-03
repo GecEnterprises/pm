@@ -68,7 +68,13 @@ impl Pm {
             );
         }
 
-        if let Some(branch) = &self.state.branch {
+        if !self.state.is_git() {
+            row = row.child(
+                div()
+                    .text_color(rgb(0xe2c08d))
+                    .child(SharedString::from("\u{26a0} not a git repository")),
+            );
+        } else if let Some(branch) = &self.state.branch {
             row = row.child(SharedString::from(format!("\u{2387} {branch}")));
         }
 

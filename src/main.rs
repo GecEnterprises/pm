@@ -33,11 +33,6 @@ fn main() {
         .or_else(|| std::env::current_dir().ok())
         .expect("could not determine a folder to open");
 
-    if Repo::discover(&path).is_err() {
-        eprintln!("pm: {} is not inside a git repository", path.display());
-        std::process::exit(1);
-    }
-
     let icon = image::load_from_memory(include_bytes!("../assets/icon.png"))
         .ok()
         .map(|img| Arc::new(img.into_rgba8()));
@@ -75,16 +70,15 @@ fn main() {
     });
 }
 
-/// Open a pm window rooted at the git repository enclosing `path`.
+/// Open a pm window for `path` — as a git repo if it's inside one, otherwise as
+/// a plain folder browser.
 fn open_pm_window(cx: &mut App, path: &Path) {
-    let repo = match Repo::discover(path) {
-        Ok(repo) => repo,
-        Err(err) => {
-            eprintln!("pm: {} is not inside a git repository ({err})", path.display());
-            return;
-        }
-    };
-    eprintln!("pm: opened {}", repo.root().display());
+    let repo = Repo::open(path);
+    eprintln!(
+        "pm: opened {}{}",
+        repo.root().display(),
+        if repo.is_git() { "" } else { " (not a git repository)" }
+    );
 
     let bounds = Bounds::centered(None, size(px(1100.), px(720.)), cx);
     let icon = ICON.get().cloned().flatten();
