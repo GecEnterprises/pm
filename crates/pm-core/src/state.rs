@@ -69,6 +69,8 @@ pub struct AppState {
     pub tree_selected: Option<PathBuf>,
     /// Read-only caret + selection over the open diff.
     pub caret: Option<DiffCursor>,
+    /// Checked-out branch name, refreshed alongside git state.
+    pub branch: Option<String>,
 }
 
 impl AppState {
@@ -77,12 +79,14 @@ impl AppState {
         let change_names = compute_change_names(&changes);
         let changed = repo.changed_set();
         let tree = repo.walk_tree();
+        let branch = repo.branch();
         let mut s = Self {
             repo,
             hl: Highlighter::new(),
             changes,
             change_names,
             changed,
+            branch,
             open: None,
             rows: Vec::new(),
             old_lines: Vec::new(),
@@ -155,6 +159,7 @@ impl AppState {
         self.change_names = compute_change_names(&self.changes);
         self.changed = self.repo.changed_set();
         self.tree = self.repo.walk_tree();
+        self.branch = self.repo.branch();
         self.rebuild_visible();
         match self.open.clone() {
             Some(rel)
@@ -182,6 +187,7 @@ impl AppState {
         self.change_names = compute_change_names(&self.changes);
         self.changed = self.repo.changed_set();
         self.tree = self.repo.walk_tree();
+        self.branch = self.repo.branch();
         self.rebuild_visible();
 
         let rel = self.open.clone()?;

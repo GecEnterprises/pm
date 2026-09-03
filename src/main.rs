@@ -10,12 +10,21 @@
 
 mod fonts;
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
+use std::sync::{Arc, OnceLock};
 
-use gpui::{prelude::*, px, size, App, Bounds, WindowBounds, WindowOptions};
+use gpui::{
+    point, prelude::*, px, size, App, Bounds, KeyBinding, PathPromptOptions, TitlebarOptions,
+    WindowBackgroundAppearance, WindowBounds, WindowDecorations, WindowOptions,
+};
 use gpui_platform::application;
+use image::RgbaImage;
 use pm_core::Repo;
-use pm_ui::Pm;
+use pm_ui::{OpenFolder, Pm, Quit};
+
+/// Loaded once at startup so every window (including ones opened via
+/// File → Open Folder) gets the same taskbar icon.
+static ICON: OnceLock<Option<Arc<RgbaImage>>> = OnceLock::new();
 
 fn main() {
     let path = std::env::args()
@@ -24,37 +33,85 @@ fn main() {
         .or_else(|| std::env::current_dir().ok())
         .expect("could not determine a folder to open");
 
-    let repo = match Repo::discover(&path) {
+    if Repo::discover(&path).is_err() {
+        eprintln!("pm: {} is not inside a git repository", path.display());
+        std::process::exit(1);
+    }
+
+    let icon = image::load_from_memory(include_bytes!("../assets/icon.png"))
+        .ok()
+        .map(|img| Arc::new(img.into_rgba8()));
+
+    application().run(move |cx: &mut App| {
+        let _ = ICON.set(icon.clone());
+        fonts::load(cx);
+
+        cx.set_menus(pm_ui::app_menus());
+        cx.bind_keys([
+            KeyBinding::new("ctrl-o", OpenFolder, None),
+            KeyBinding::new("ctrl-r", pm_ui::Refresh, None),
+            KeyBinding::new("ctrl-q", Quit, None),
+        ]);
+        cx.on_action(|_: &Quit, cx| cx.quit());
+        cx.on_action(|_: &OpenFolder, cx| {
+            let paths = cx.prompt_for_paths(PathPromptOptions {
+                files: false,
+                directories: true,
+                multiple: false,
+                prompt: Some("Open".into()),
+            });
+            cx.spawn(async move |cx| {
+                if let Ok(Ok(Some(mut dirs))) = paths.await {
+                    if let Some(dir) = dirs.pop() {
+                        cx.update(|cx| open_pm_window(cx, &dir));
+                    }
+                }
+            })
+            .detach();
+        });
+
+        open_pm_window(cx, &path);
+        cx.activate(true);
+    });
+}
+
+/// Open a pm window rooted at the git repository enclosing `path`.
+fn open_pm_window(cx: &mut App, path: &Path) {
+    let repo = match Repo::discover(path) {
         Ok(repo) => repo,
         Err(err) => {
             eprintln!("pm: {} is not inside a git repository ({err})", path.display());
-            std::process::exit(1);
+            return;
         }
     };
     eprintln!("pm: opened {}", repo.root().display());
 
-    let icon = image::load_from_memory(include_bytes!("../assets/icon.png"))
-        .ok()
-        .map(|img| std::sync::Arc::new(img.into_rgba8()));
-
-    application().run(move |cx: &mut App| {
-        fonts::load(cx);
-        let bounds = Bounds::centered(None, size(px(1100.), px(720.)), cx);
-        cx.open_window(
-            WindowOptions {
-                window_bounds: Some(WindowBounds::Windowed(bounds)),
-                icon: icon.clone(),
-                ..Default::default()
-            },
-            |_window, cx| {
-                cx.new(|cx| {
-                    let mut pm = Pm::new(repo, cx);
-                    pm.start_watch(cx);
-                    pm
-                })
-            },
-        )
-        .unwrap();
-        cx.activate(true);
-    });
+    let bounds = Bounds::centered(None, size(px(1100.), px(720.)), cx);
+    let icon = ICON.get().cloned().flatten();
+    cx.open_window(
+        WindowOptions {
+            window_bounds: Some(WindowBounds::Windowed(bounds)),
+            titlebar: Some(TitlebarOptions {
+                title: None,
+                appears_transparent: true,
+                traffic_light_position: Some(point(px(9.0), px(9.0))),
+            }),
+            window_decorations: Some(WindowDecorations::Client),
+            window_background: WindowBackgroundAppearance::Opaque,
+            window_min_size: Some(size(px(480.0), px(320.0))),
+            icon,
+            ..Default::default()
+        },
+        |window, cx| {
+            let view = cx.new(|cx| {
+                let mut pm = Pm::new(repo, cx);
+                pm.start_watch(cx);
+                pm
+            });
+            let focus = view.read(cx).root_focus.clone();
+            window.focus(&focus, cx);
+            view
+        },
+    )
+    .unwrap();
 }

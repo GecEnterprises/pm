@@ -5,7 +5,7 @@ use std::path::PathBuf;
 use std::time::Duration;
 
 use gpui::{
-    canvas, deferred, div, prelude::*, px, rgb, Bounds, ClipboardItem, Context, DragMoveEvent,
+    canvas, deferred, div, prelude::*, px, rgb, rgba, Bounds, ClipboardItem, Context, DragMoveEvent,
     Empty, FocusHandle, KeyDownEvent, MouseButton, SharedString, Window,
 };
 
@@ -13,8 +13,10 @@ use pm_core::text::{BufferPos, DiffCursor};
 use pm_core::watch::Sentinel;
 use pm_core::{AppState, Repo};
 
+use crate::decorations::client_side_decorations;
 use crate::diff_view::{diff_view, ShapeCache};
 use crate::list_view::list_view;
+use crate::menu::{About, Copy, Refresh, SelectAll, ToggleChanges, ToggleExplorer};
 use crate::scroll::{ScrollDrag, ScrollState};
 use crate::theme::*;
 use crate::tree_view::tree_view;
@@ -94,6 +96,17 @@ pub struct Pm {
     pub diff_viewport_h: f32,
     /// Last window title we pushed, to avoid redundant `set_window_title` calls.
     title: String,
+
+    /// Focus target for the root so menu actions / keybindings have a dispatch
+    /// path even before the diff pane is focused.
+    pub root_focus: FocusHandle,
+    /// Which top-level title-bar menu is open (index into `menu::menu_groups`).
+    pub open_menu: Option<usize>,
+    /// Armed by a mouse-down on the title bar, consumed by the next move to
+    /// start a window drag (Zed's `should_move`).
+    pub window_drag_armed: bool,
+    /// Whether the About overlay is showing.
+    pub show_about: bool,
 }
 
 impl Pm {
@@ -125,12 +138,16 @@ impl Pm {
             mouse_pos: (0.0, 0.0),
             diff_viewport_h: 0.0,
             title: String::new(),
+            root_focus: cx.focus_handle(),
+            open_menu: None,
+            window_drag_armed: false,
+            show_about: false,
         }
     }
 
     /// VS Code-style window title: `file — repo — pm`, dropping the file segment
     /// when nothing is open.
-    fn window_title(&self) -> String {
+    pub(crate) fn window_title(&self) -> String {
         let app = "pm";
         let repo = self
             .state
@@ -326,18 +343,12 @@ impl Pm {
 
         match key {
             "c" if ctrl => {
-                if let Some(text) = self.state.selected_text() {
-                    cx.write_to_clipboard(ClipboardItem::new_string(text));
-                }
+                self.copy_selection(cx);
                 cx.stop_propagation();
                 return;
             }
             "a" if ctrl => {
-                cur.anchor = BufferPos { file_row: 0, byte: 0 };
-                cur.head = BufferPos { file_row: last, byte: self.state.line_len(cur.col, last) };
-                cur.goal_x = None;
-                self.state.caret = Some(cur);
-                cx.notify();
+                self.select_all(cx);
                 cx.stop_propagation();
                 return;
             }
@@ -408,6 +419,35 @@ impl Pm {
         cx.notify();
         cx.stop_propagation();
     }
+
+    /// Copy the current diff selection to the clipboard.
+    pub(crate) fn copy_selection(&mut self, cx: &mut Context<Self>) {
+        if let Some(text) = self.state.selected_text() {
+            cx.write_to_clipboard(ClipboardItem::new_string(text));
+        }
+    }
+
+    /// Select the whole of the side the caret is on (or the working side).
+    pub(crate) fn select_all(&mut self, cx: &mut Context<Self>) {
+        let col = self
+            .state
+            .caret
+            .map(|c| c.col)
+            .unwrap_or(if self.state.text.line_count(1) > 0 { 1 } else { 0 });
+        let lines = self.state.text.line_count(col);
+        if lines == 0 {
+            return;
+        }
+        let last = lines - 1;
+        self.state.caret = Some(DiffCursor {
+            col,
+            anchor: BufferPos { file_row: 0, byte: 0 },
+            head: BufferPos { file_row: last, byte: self.state.line_len(col, last) },
+            goal_x: None,
+        });
+        cx.notify();
+    }
+
 }
 
 impl Render for Pm {
@@ -419,15 +459,17 @@ impl Render for Pm {
         }
 
         let entity = cx.entity();
-        div()
-            .id("pm-root")
+
+        // Sidebar + diff, side by side. The `root_bounds` canvas lives here (not
+        // on the window root) so the resize-handle math and `clamp_layout` see
+        // the area between the title and status bars.
+        let body = div()
+            .id("pm-body")
+            .relative()
             .flex()
             .flex_row()
-            .size_full()
-            .bg(rgb(BG))
-            .text_color(rgb(TEXT))
-            .font_family(UI_FONT)
-            .text_size(px(13.))
+            .flex_1()
+            .min_h_0()
             .child(
                 canvas(
                     {
@@ -458,7 +500,59 @@ impl Render for Pm {
                 },
             ))
             .child(self.left_column(cx))
-            .child(self.diff_pane(cx))
+            .child(self.diff_pane(cx));
+
+        let root = div()
+            .id("pm-root")
+            .track_focus(&self.root_focus)
+            .flex()
+            .flex_col()
+            .size_full()
+            .bg(rgb(BG))
+            .text_color(rgb(TEXT))
+            .font_family(UI_FONT)
+            .text_size(px(13.))
+            .on_action(cx.listener(|pm, _: &Refresh, _, cx| {
+                pm.refresh();
+                cx.notify();
+            }))
+            .on_action(cx.listener(|pm, _: &About, _, cx| {
+                pm.show_about = true;
+                cx.notify();
+            }))
+            .on_action(cx.listener(|pm, _: &ToggleChanges, _, cx| {
+                pm.changes_collapsed = !pm.changes_collapsed;
+                cx.notify();
+            }))
+            .on_action(cx.listener(|pm, _: &ToggleExplorer, _, cx| {
+                pm.explorer_collapsed = !pm.explorer_collapsed;
+                cx.notify();
+            }))
+            .on_action(cx.listener(|pm, _: &Copy, _, cx| pm.copy_selection(cx)))
+            .on_action(cx.listener(|pm, _: &SelectAll, _, cx| pm.select_all(cx)))
+            .on_key_down(cx.listener(|pm, e: &KeyDownEvent, _, cx| {
+                if pm.open_menu.is_some() && e.keystroke.key == "escape" {
+                    pm.open_menu = None;
+                    cx.notify();
+                }
+            }))
+            .when(self.open_menu.is_some(), |r| {
+                r.child(deferred(
+                    div().absolute().inset_0().on_mouse_down(
+                        MouseButton::Left,
+                        cx.listener(|pm, _, _, cx| {
+                            pm.open_menu = None;
+                            cx.notify();
+                        }),
+                    ),
+                ))
+            })
+            .child(self.title_bar(window, cx))
+            .child(body)
+            .when(self.show_about, |r| r.child(self.about_overlay(cx)))
+            .child(self.status_bar(window, cx));
+
+        client_side_decorations(root, window, cx)
     }
 }
 
@@ -605,38 +699,63 @@ impl Pm {
     }
 
     fn diff_pane(&self, cx: &mut Context<Self>) -> impl IntoElement {
-        let mut title = self.state.open
-            .as_ref()
-            .map(|p| p.to_string_lossy().into_owned())
-            .unwrap_or_else(|| "no file selected".to_string());
-        if self.state.rows.len() > pm_core::MAX_ROWS {
-            title = format!("{title}  (showing first {} rows)", pm_core::MAX_ROWS);
-        }
-
+        // The open path + row-truncation note now live in the status bar.
         div()
-            .flex()
-            .flex_col()
+            .id("pm-diff")
             .flex_1()
-            .h_full()
-            .child(
-                div()
-                    .flex_none()
-                    .px_3()
-                    .py_2()
-                    .border_b_1()
-                    .border_color(rgb(BORDER))
-                    .text_color(rgb(DIM))
-                    .child(SharedString::from(title)),
-            )
-            .child(
-                div()
-                    .id("pm-diff")
-                    .flex_1()
-                    .relative()
-                    .overflow_hidden()
-                    .track_focus(&self.diff_focus)
-                    .on_key_down(cx.listener(Self::on_diff_key))
-                    .child(diff_view(cx.entity())),
-            )
+            .relative()
+            .overflow_hidden()
+            .track_focus(&self.diff_focus)
+            .on_key_down(cx.listener(Self::on_diff_key))
+            .child(diff_view(cx.entity()))
+    }
+
+    fn about_overlay(&self, cx: &mut Context<Self>) -> impl IntoElement {
+        deferred(
+            div()
+                .absolute()
+                .inset_0()
+                .flex()
+                .items_center()
+                .justify_center()
+                .bg(rgba(0x0000_00aa))
+                .on_mouse_down(
+                    MouseButton::Left,
+                    cx.listener(|pm, _, _, cx| {
+                        pm.show_about = false;
+                        cx.notify();
+                    }),
+                )
+                .child(
+                    div()
+                        .occlude()
+                        .flex()
+                        .flex_col()
+                        .gap_2()
+                        .w(px(360.0))
+                        .p_4()
+                        .bg(rgb(PANEL))
+                        .border_1()
+                        .border_color(rgb(BORDER))
+                        .rounded_lg()
+                        .shadow_lg()
+                        .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
+                        .child(
+                            div()
+                                .text_size(px(16.0))
+                                .text_color(rgb(TEXT))
+                                .child("pm \u{2014} Plus Minus"),
+                        )
+                        .child(
+                            div().text_color(rgb(DIM)).child(SharedString::from(format!(
+                                "version {}",
+                                env!("CARGO_PKG_VERSION")
+                            ))),
+                        )
+                        .child(div().text_color(rgb(DIM)).child(SharedString::from(
+                            self.state.repo.root().display().to_string(),
+                        ))),
+                ),
+        )
     }
 }

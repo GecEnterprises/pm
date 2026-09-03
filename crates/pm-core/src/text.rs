@@ -60,6 +60,12 @@ impl DiffText {
             .map_or("", |r| &self.src[col][r.clone()])
     }
 
+    /// 1-based character column of `pos` within its line (for a status readout).
+    pub fn char_col(&self, col: usize, pos: BufferPos) -> usize {
+        let line = self.line(col, pos.file_row);
+        line[..pos.byte.min(line.len())].chars().count() + 1
+    }
+
     /// Absolute byte offset in `src[col]` of `byte` within line `file_row`,
     /// clamped to the line's end.
     pub(crate) fn offset(&self, col: usize, file_row: usize, byte: usize) -> usize {

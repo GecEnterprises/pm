@@ -1,9 +1,16 @@
 pub mod app;
+pub mod decorations;
 pub mod diff_view;
 pub mod icons;
 pub mod list_view;
+pub mod menu;
 pub mod scroll;
+pub mod status_bar;
 pub mod theme;
+pub mod title_bar;
 pub mod tree_view;
 
 pub use app::Pm;
+pub use menu::{
+    app_menus, About, Copy, OpenFolder, Quit, Refresh, SelectAll, ToggleChanges, ToggleExplorer,
+};

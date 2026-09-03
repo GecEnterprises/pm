@@ -205,6 +205,15 @@ impl Repo {
             .unwrap_or_default()
     }
 
+    /// Short name of the checked-out branch (`"HEAD"` when detached), or `None`
+    /// if HEAD can't be resolved (e.g. an unborn branch in a fresh repo).
+    pub fn branch(&self) -> Option<String> {
+        self.inner
+            .head()
+            .ok()
+            .and_then(|h| h.shorthand().map(str::to_owned))
+    }
+
     /// gitignore-aware DFS pre-order walk of the working tree. Siblings sorted
     /// by name, directories interleaved with files.
     pub fn walk_tree(&self) -> Vec<TreeEntry> {
@@ -266,5 +275,11 @@ mod tests {
         // .git excluded, target/ gitignored
         assert!(!tree.iter().any(|e| e.rel.starts_with(".git")));
         assert!(!tree.iter().any(|e| e.rel.starts_with("target")));
+    }
+
+    #[test]
+    fn branch_of_own_repo() {
+        let repo = Repo::discover(Path::new(".")).unwrap();
+        assert!(repo.branch().is_some());
     }
 }

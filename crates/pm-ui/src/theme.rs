@@ -37,7 +37,6 @@ pub const BODY_FONT: &str = "JetBrains Mono";
 pub const BODY_FONT_SIZE: f32 = 12.5;
 /// Proportional font for UI chrome (sidebar, headers). Also vendored.
 pub const UI_FONT: &str = "Roboto";
-/// Hard cap on the number of diff rows laid out.
 
 pub const SIDEBAR_MIN: f32 = 180.0;
 /// The diff pane always keeps at least this many px.
@@ -47,3 +46,14 @@ pub const SECTION_SPLIT_H: f32 = 6.0;
 pub const RESIZE_HANDLE_W: f32 = 6.0;
 pub const DIFF_SPLIT_MIN: f32 = 0.15;
 pub const DIFF_SPLIT_MAX: f32 = 0.85;
+
+/// Custom title bar height, in px (matches Zed's Windows title bar).
+pub const TITLE_BAR_H: f32 = 32.0;
+/// Status bar height, in px.
+pub const STATUS_BAR_H: f32 = 24.0;
+/// Corner radius for client-side window decorations (Linux), in px.
+pub const CLIENT_DECORATION_ROUNDING: f32 = 10.0;
+/// Shadow / resize-grip inset for client-side decorations (Linux), in px.
+pub const CLIENT_DECORATION_SHADOW: f32 = 10.0;
+/// Hover fill for the window close button.
+pub const CLOSE_HOVER: u32 = 0xc42b1c;
