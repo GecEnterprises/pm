@@ -7,25 +7,18 @@
   "next_id": 16,
   "tickets": [
     {
-      "id": 1,
-      "title": "Summary view is a placeholder",
-      "body": "The Summary switcher tab renders a stub. It should show a whole-diff\noverview: every changed file, ± counts, and jump-to-file.",
+      "id": 5,
+      "title": "MCP for PM",
+      "body": "Description pending",
       "status": "open",
-      "priority": "normal",
+      "priority": "high",
       "labels": [
-        "ui"
+        "mcp"
       ],
       "assignee": null,
-      "created": 1756900000,
-      "updated": 1756900000,
-      "anchors": [
-        {
-          "file": "crates/pm-ui/src/app.rs",
-          "start_line": 1,
-          "end_line": 1,
-          "rev": "working"
-        }
-      ],
+      "created": 1788448748,
+      "updated": 1788449287,
+      "anchors": [],
       "comments": []
     },
     {
@@ -60,15 +53,17 @@
       ]
     },
     {
-      "id": 3,
-      "title": "pm.json5 loses hand-written comments on save",
-      "body": "Accepted trade-off for v1 (serde round-trip). Revisit with a\ncomment-preserving JSON5 writer if it becomes annoying.",
-      "status": "wontfix",
-      "priority": "low",
-      "labels": [],
+      "id": 11,
+      "title": "A button to close tickets, a viewing mode to see closed tickets",
+      "body": "",
+      "status": "open",
+      "priority": "high",
+      "labels": [
+        "tickets"
+      ],
       "assignee": null,
-      "created": 1756900300,
-      "updated": 1756900300,
+      "created": 1788448971,
+      "updated": 1788449287,
       "anchors": [],
       "comments": []
     },
@@ -77,11 +72,13 @@
       "title": "Ticket priority markers",
       "body": "",
       "status": "open",
-      "priority": "normal",
-      "labels": [],
+      "priority": "high",
+      "labels": [
+        "tickets"
+      ],
       "assignee": null,
       "created": 1788448518,
-      "updated": 1788448537,
+      "updated": 1788449287,
       "anchors": [],
       "comments": [
         {
@@ -94,15 +91,17 @@
       ]
     },
     {
-      "id": 5,
-      "title": "MCP for PM",
-      "body": "Description pending",
+      "id": 7,
+      "title": "The textbox when making a ticket doesn't feel nice",
+      "body": "Also I can't ctrl+a copy paste or what",
       "status": "open",
-      "priority": "normal",
-      "labels": [],
+      "priority": "high",
+      "labels": [
+        "tickets"
+      ],
       "assignee": null,
-      "created": 1788448748,
-      "updated": 1788448748,
+      "created": 1788448806,
+      "updated": 1788449287,
       "anchors": [],
       "comments": []
     },
@@ -111,24 +110,50 @@
       "title": "Cursor focus fix",
       "body": "Description pending",
       "status": "open",
-      "priority": "normal",
-      "labels": [],
+      "priority": "high",
+      "labels": [
+        "bug"
+      ],
       "assignee": null,
       "created": 1788448762,
-      "updated": 1788448762,
+      "updated": 1788449287,
       "anchors": [],
       "comments": []
     },
     {
-      "id": 7,
-      "title": "The textbox when making a ticket doesn't feel nice",
-      "body": "Also I can't ctrl+a copy paste or what",
+      "id": 1,
+      "title": "Summary view is a placeholder",
+      "body": "The Summary switcher tab renders a stub. It should show a whole-diff\noverview: every changed file, ± counts, and jump-to-file.",
       "status": "open",
       "priority": "normal",
-      "labels": [],
+      "labels": [
+        "ui"
+      ],
       "assignee": null,
-      "created": 1788448806,
-      "updated": 1788448806,
+      "created": 1756900000,
+      "updated": 1756900000,
+      "anchors": [
+        {
+          "file": "crates/pm-ui/src/app.rs",
+          "start_line": 1,
+          "end_line": 1,
+          "rev": "working"
+        }
+      ],
+      "comments": []
+    },
+    {
+      "id": 10,
+      "title": "Summary mode needs to look like diffity",
+      "body": "",
+      "status": "open",
+      "priority": "normal",
+      "labels": [
+        "ui"
+      ],
+      "assignee": null,
+      "created": 1788448829,
+      "updated": 1788448829,
       "anchors": [],
       "comments": []
     },
@@ -138,7 +163,9 @@
       "body": "",
       "status": "open",
       "priority": "normal",
-      "labels": [],
+      "labels": [
+        "tickets"
+      ],
       "assignee": null,
       "created": 1788448814,
       "updated": 1788448814,
@@ -159,28 +186,17 @@
       "comments": []
     },
     {
-      "id": 10,
-      "title": "Summary mode needs to look like diffity",
+      "id": 15,
+      "title": "Author of tickets and author of comments, so someone via MCP can pose as someone, and someone with pm gui can pose as someone",
       "body": "",
       "status": "open",
       "priority": "normal",
-      "labels": [],
+      "labels": [
+        "mcp"
+      ],
       "assignee": null,
-      "created": 1788448829,
-      "updated": 1788448829,
-      "anchors": [],
-      "comments": []
-    },
-    {
-      "id": 11,
-      "title": "A button to close tickets, a viewing mode to see closed tickets",
-      "body": "",
-      "status": "open",
-      "priority": "normal",
-      "labels": [],
-      "assignee": null,
-      "created": 1788448971,
-      "updated": 1788448971,
+      "created": 1788449204,
+      "updated": 1788449204,
       "anchors": [],
       "comments": []
     },
@@ -189,11 +205,13 @@
       "title": "pm app icon next to the menu bar like in vscode",
       "body": "",
       "status": "open",
-      "priority": "normal",
-      "labels": [],
+      "priority": "low",
+      "labels": [
+        "ui"
+      ],
       "assignee": null,
       "created": 1788449064,
-      "updated": 1788449064,
+      "updated": 1788449287,
       "anchors": [],
       "comments": []
     },
@@ -202,11 +220,13 @@
       "title": "pm app icon in the about",
       "body": "",
       "status": "open",
-      "priority": "normal",
-      "labels": [],
+      "priority": "low",
+      "labels": [
+        "ui"
+      ],
       "assignee": null,
       "created": 1788449071,
-      "updated": 1788449071,
+      "updated": 1788449287,
       "anchors": [],
       "comments": []
     },
@@ -215,11 +235,11 @@
       "title": "installscript for windows, and github pointed auto update system",
       "body": "",
       "status": "open",
-      "priority": "normal",
+      "priority": "low",
       "labels": [],
       "assignee": null,
       "created": 1788449089,
-      "updated": 1788449099,
+      "updated": 1788449287,
       "anchors": [],
       "comments": [
         {
@@ -232,15 +252,15 @@
       ]
     },
     {
-      "id": 15,
-      "title": "Author of tickets and author of comments, so someone via MCP can pose as someone, and someone with pm gui can pose as someone",
-      "body": "",
-      "status": "open",
-      "priority": "normal",
+      "id": 3,
+      "title": "pm.json5 loses hand-written comments on save",
+      "body": "Accepted trade-off for v1 (serde round-trip). Revisit with a\ncomment-preserving JSON5 writer if it becomes annoying.",
+      "status": "wontfix",
+      "priority": "low",
       "labels": [],
       "assignee": null,
-      "created": 1788449204,
-      "updated": 1788449204,
+      "created": 1756900300,
+      "updated": 1756900300,
       "anchors": [],
       "comments": []
     }
