@@ -5,6 +5,7 @@ use std::collections::HashSet;
 use std::ffi::OsStr;
 use std::path::PathBuf;
 
+use crate::content::{FileKind, ImageKind};
 use crate::diff::{side_by_side, DiffRow};
 use crate::git::{FileChange, Repo, TreeEntry};
 use crate::highlight::{Highlighter, Line};
@@ -12,6 +13,23 @@ use crate::text::{BufferPos, DiffCursor, DiffText};
 
 /// Hard cap on the number of diff rows laid out.
 pub const MAX_ROWS: usize = 200_000;
+
+/// How the open file should be presented. `Text` means the line-diff fields
+/// (`rows` / `old_lines` / `new_lines` / `text`) are populated; the other
+/// variants leave them empty and drive a dedicated viewer.
+#[derive(Default)]
+pub enum Content {
+    #[default]
+    Text,
+    Image {
+        kind: ImageKind,
+        /// Raw image bytes per side (`None` when that side doesn't exist).
+        old: Option<Vec<u8>>,
+        new: Option<Vec<u8>>,
+    },
+    /// A binary blob pm won't try to diff or render.
+    Binary,
+}
 
 /// Display names for the Changes list: just the file name, disambiguated with the
 /// parent directory only when two changed files share a base name.
@@ -71,6 +89,8 @@ pub struct AppState {
     pub caret: Option<DiffCursor>,
     /// Checked-out branch name, refreshed alongside git state.
     pub branch: Option<String>,
+    /// Which viewer the open file needs (text / image / unviewable).
+    pub content: Content,
 }
 
 impl AppState {
@@ -98,6 +118,7 @@ impl AppState {
             visible: Vec::new(),
             tree_selected: None,
             caret: None,
+            content: Content::Text,
         };
         s.rebuild_visible();
         if let Some(first) = s.changes.first().map(|c| c.rel.clone()) {
@@ -108,15 +129,45 @@ impl AppState {
     }
 
         pub fn open_path(&mut self, rel: PathBuf) {
-        let old = self.repo.head_content(&rel);
-        let new = self.repo.working_content(&rel);
-        self.old_lines = self.hl.highlight(&rel, &old);
-        self.new_lines = self.hl.highlight(&rel, &new);
-        self.rows = side_by_side(&old, &new);
-        self.rebuild_col_display();
-        self.text = DiffText::build(old, new);
-        self.open = Some(rel);
+        self.open = Some(rel.clone());
         self.caret = None;
+
+        let old_bytes = self.repo.head_bytes(&rel);
+        let new_bytes = self.repo.working_bytes(&rel);
+
+        match FileKind::detect(&rel, &old_bytes, &new_bytes) {
+            FileKind::Text => {
+                let old = self.repo.head_content(&rel);
+                let new = self.repo.working_content(&rel);
+                self.old_lines = self.hl.highlight(&rel, &old);
+                self.new_lines = self.hl.highlight(&rel, &new);
+                self.rows = side_by_side(&old, &new);
+                self.rebuild_col_display();
+                self.text = DiffText::build(old, new);
+                self.content = Content::Text;
+            }
+            FileKind::Image(kind) => {
+                self.clear_text_content();
+                self.content = Content::Image {
+                    kind,
+                    old: (!old_bytes.is_empty()).then_some(old_bytes),
+                    new: (!new_bytes.is_empty()).then_some(new_bytes),
+                };
+            }
+            FileKind::Binary => {
+                self.clear_text_content();
+                self.content = Content::Binary;
+            }
+        }
+    }
+
+    /// Drop the line-diff working set (used when the open file isn't text).
+    fn clear_text_content(&mut self) {
+        self.rows.clear();
+        self.old_lines.clear();
+        self.new_lines.clear();
+        self.text = DiffText::default();
+        self.col_display = [Vec::new(), Vec::new()];
     }
 
         /// Rebuild `col_display` from `rows` (call whenever `rows` changes).
@@ -170,12 +221,9 @@ impl AppState {
             }
             _ => {
                 self.open = None;
-                self.rows.clear();
-                self.old_lines.clear();
-                self.new_lines.clear();
-                self.text = DiffText::default();
-                self.col_display = [Vec::new(), Vec::new()];
+                self.clear_text_content();
                 self.caret = None;
+                self.content = Content::Text;
             }
         }
     }
@@ -198,7 +246,7 @@ impl AppState {
                 .map(|r| r.starts_with(".git"))
                 .unwrap_or(false)
         });
-        (git_touched || changed.iter().any(|p| *p == abs)).then_some(rel)
+        (git_touched || changed.contains(&abs)).then_some(rel)
     }
 
     pub fn diff_rows(&self) -> usize {

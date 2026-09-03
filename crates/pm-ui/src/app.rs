@@ -13,8 +13,11 @@ use pm_core::text::{BufferPos, DiffCursor};
 use pm_core::watch::Sentinel;
 use pm_core::{AppState, Repo};
 
+use pm_core::state::Content;
+
 use crate::decorations::client_side_decorations;
 use crate::diff_view::{diff_view, ShapeCache};
+use crate::image_view::ImageView;
 use crate::list_view::list_view;
 use crate::menu::{About, Copy, Refresh, SelectAll, ToggleChanges, ToggleExplorer};
 use crate::scroll::{ScrollDrag, ScrollState};
@@ -32,14 +35,16 @@ pub struct DiffScroll {
 
 /// Drag payload for the panel resize handles.
 #[derive(Clone)]
-enum ResizeHandle {
+pub(crate) enum ResizeHandle {
     Sidebar,
     SectionSplit,
+    /// The centre divider of the image diff (text diff has its own in-element one).
+    DiffSplit,
 }
 
 /// The (invisible) drag-preview view required by `on_drag`.
 #[derive(Clone)]
-struct DragPreview;
+pub(crate) struct DragPreview;
 impl Render for DragPreview {
     fn render(&mut self, _window: &mut Window, _cx: &mut Context<Self>) -> impl IntoElement {
         Empty
@@ -107,6 +112,12 @@ pub struct Pm {
     pub window_drag_armed: bool,
     /// Whether the About overlay is showing.
     pub show_about: bool,
+    /// Shared zoom / pan for the image diff viewer.
+    pub image_view: ImageView,
+    /// Active pan gesture in the image viewer: last pointer position.
+    pub image_drag: Option<(f32, f32)>,
+    /// Bounds of the image diff pane, sampled each frame (for pan clamping).
+    pub image_pane: Bounds<gpui::Pixels>,
 }
 
 impl Pm {
@@ -142,6 +153,9 @@ impl Pm {
             open_menu: None,
             window_drag_armed: false,
             show_about: false,
+            image_view: ImageView::default(),
+            image_drag: None,
+            image_pane: Bounds::default(),
         }
     }
 
@@ -171,6 +185,8 @@ impl Pm {
         self.diff.drag = None;
         self.text_drag = false;
         self.autoscroll = None;
+        self.image_view = ImageView::default();
+        self.image_drag = None;
     }
 
     pub fn refresh(&mut self) {
@@ -494,6 +510,12 @@ impl Render for Pm {
                     match ev.drag(cx) {
                         ResizeHandle::Sidebar => pm.sidebar_w = x,
                         ResizeHandle::SectionSplit => pm.changes_h = y - SECTION_HEADER_H,
+                        ResizeHandle::DiffSplit => {
+                            let pane_w = f32::from(root.size.width) - pm.sidebar_w;
+                            if pane_w > 1.0 {
+                                pm.diff_split = ((x - pm.sidebar_w) / pane_w).clamp(0.05, 0.95);
+                            }
+                        }
                     }
                     pm.clamp_layout(root);
                     cx.notify();
@@ -700,14 +722,45 @@ impl Pm {
 
     fn diff_pane(&self, cx: &mut Context<Self>) -> impl IntoElement {
         // The open path + row-truncation note now live in the status bar.
-        div()
+        // The container is the same for every viewer — it just swaps its child
+        // based on the detected file kind.
+        let pane = div()
             .id("pm-diff")
             .flex_1()
             .relative()
             .overflow_hidden()
             .track_focus(&self.diff_focus)
-            .on_key_down(cx.listener(Self::on_diff_key))
-            .child(diff_view(cx.entity()))
+            .on_key_down(cx.listener(Self::on_diff_key));
+
+        match self.state.content {
+            Content::Text => pane.child(diff_view(cx.entity())).into_any_element(),
+            Content::Image { .. } => pane.child(self.image_diff_pane(cx)).into_any_element(),
+            Content::Binary => pane.child(self.unviewable_pane()).into_any_element(),
+        }
+    }
+
+    fn unviewable_pane(&self) -> impl IntoElement {
+        let name = self
+            .state
+            .open
+            .as_ref()
+            .map(|p| p.to_string_lossy().into_owned())
+            .unwrap_or_default();
+        div()
+            .size_full()
+            .flex()
+            .flex_col()
+            .items_center()
+            .justify_center()
+            .gap_1()
+            .bg(rgb(BG))
+            .text_color(rgb(DIM))
+            .child(SharedString::from("Binary file — not shown"))
+            .child(
+                div()
+                    .text_size(px(11.0))
+                    .child(SharedString::from(name)),
+            )
     }
 
     fn about_overlay(&self, cx: &mut Context<Self>) -> impl IntoElement {

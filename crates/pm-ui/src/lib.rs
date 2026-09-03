@@ -2,6 +2,7 @@ pub mod app;
 pub mod decorations;
 pub mod diff_view;
 pub mod icons;
+pub mod image_view;
 pub mod list_view;
 pub mod menu;
 pub mod scroll;

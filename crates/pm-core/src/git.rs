@@ -186,23 +186,31 @@ impl Repo {
         out
     }
 
-    /// File contents at HEAD, or empty string if the file is new / unreadable.
-    pub fn head_content(&self, rel: &Path) -> String {
-        self.try_head_content(rel).unwrap_or_default()
+    /// Raw file bytes at HEAD, or empty if the file is new / unreadable.
+    pub fn head_bytes(&self, rel: &Path) -> Vec<u8> {
+        self.try_head_bytes(rel).unwrap_or_default()
     }
 
-    fn try_head_content(&self, rel: &Path) -> Result<String> {
+    fn try_head_bytes(&self, rel: &Path) -> Result<Vec<u8>> {
         let tree = self.inner.head()?.peel_to_tree()?;
         let entry = tree.get_path(rel)?;
         let blob = self.inner.find_blob(entry.id())?;
-        Ok(normalize_eol(&String::from_utf8_lossy(blob.content())))
+        Ok(blob.content().to_vec())
     }
 
-    /// Current on-disk contents, or empty string if the file was deleted.
+    /// Raw on-disk file bytes, or empty if the file was deleted.
+    pub fn working_bytes(&self, rel: &Path) -> Vec<u8> {
+        std::fs::read(self.root.join(rel)).unwrap_or_default()
+    }
+
+    /// File text at HEAD (lossy UTF-8, CRLF normalised), empty if new / unreadable.
+    pub fn head_content(&self, rel: &Path) -> String {
+        normalize_eol(&String::from_utf8_lossy(&self.head_bytes(rel)))
+    }
+
+    /// Current on-disk text (lossy UTF-8, CRLF normalised), empty if deleted.
     pub fn working_content(&self, rel: &Path) -> String {
-        std::fs::read_to_string(self.root.join(rel))
-            .map(|s| normalize_eol(&s))
-            .unwrap_or_default()
+        normalize_eol(&String::from_utf8_lossy(&self.working_bytes(rel)))
     }
 
     /// Short name of the checked-out branch (`"HEAD"` when detached), or `None`
