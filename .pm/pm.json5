@@ -1,0 +1,175 @@
+{
+  "version": 1,
+  "project": {
+    "name": "pm",
+    "key": "PM"
+  },
+  "next_id": 11,
+  "tickets": [
+    {
+      "id": 1,
+      "title": "Summary view is a placeholder",
+      "body": "The Summary switcher tab renders a stub. It should show a whole-diff\noverview: every changed file, ± counts, and jump-to-file.",
+      "status": "open",
+      "priority": "normal",
+      "labels": [
+        "ui"
+      ],
+      "assignee": null,
+      "created": 1756900000,
+      "updated": 1756900000,
+      "anchors": [
+        {
+          "file": "crates/pm-ui/src/app.rs",
+          "start_line": 1,
+          "end_line": 1,
+          "rev": "working"
+        }
+      ],
+      "comments": []
+    },
+    {
+      "id": 2,
+      "title": "Tickets: wire line-anchored comments from the diff gutter",
+      "body": "Next pass. Hovering a diff line should offer 'comment on lines N–M',\ncreating a Comment (or Ticket) with an Anchor { file, start_line, end_line, rev }.",
+      "status": "open",
+      "priority": "high",
+      "labels": [
+        "tickets",
+        "mcp"
+      ],
+      "assignee": null,
+      "created": 1756900100,
+      "updated": 1756900100,
+      "anchors": [
+        {
+          "file": "crates/pm-ui/src/diff_view.rs",
+          "start_line": 698,
+          "end_line": 970,
+          "rev": "working"
+        }
+      ],
+      "comments": [
+        {
+          "id": 1,
+          "author": "reaganiwadha",
+          "created": 1756900200,
+          "body": "Blocked on a real text-input widget — the current one is a stopgap.",
+          "anchor": null
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "title": "pm.json5 loses hand-written comments on save",
+      "body": "Accepted trade-off for v1 (serde round-trip). Revisit with a\ncomment-preserving JSON5 writer if it becomes annoying.",
+      "status": "wontfix",
+      "priority": "low",
+      "labels": [],
+      "assignee": null,
+      "created": 1756900300,
+      "updated": 1756900300,
+      "anchors": [],
+      "comments": []
+    },
+    {
+      "id": 4,
+      "title": "Ticket priority markers",
+      "body": "",
+      "status": "open",
+      "priority": "normal",
+      "labels": [],
+      "assignee": null,
+      "created": 1788448518,
+      "updated": 1788448537,
+      "anchors": [],
+      "comments": [
+        {
+          "id": 1,
+          "author": "reaganiwadha",
+          "created": 1788448537,
+          "body": "This needs to be more detailed, and we need a sorting system or categorization system in tickets",
+          "anchor": null
+        }
+      ]
+    },
+    {
+      "id": 5,
+      "title": "MCP for PM",
+      "body": "Description pending",
+      "status": "open",
+      "priority": "normal",
+      "labels": [],
+      "assignee": null,
+      "created": 1788448748,
+      "updated": 1788448748,
+      "anchors": [],
+      "comments": []
+    },
+    {
+      "id": 6,
+      "title": "Cursor focus fix",
+      "body": "Description pending",
+      "status": "open",
+      "priority": "normal",
+      "labels": [],
+      "assignee": null,
+      "created": 1788448762,
+      "updated": 1788448762,
+      "anchors": [],
+      "comments": []
+    },
+    {
+      "id": 7,
+      "title": "The textbox when making a ticket doesn't feel nice",
+      "body": "Also I can't ctrl+a copy paste or what",
+      "status": "open",
+      "priority": "normal",
+      "labels": [],
+      "assignee": null,
+      "created": 1788448806,
+      "updated": 1788448806,
+      "anchors": [],
+      "comments": []
+    },
+    {
+      "id": 8,
+      "title": "Rich ticket formatting using Markdown",
+      "body": "",
+      "status": "open",
+      "priority": "normal",
+      "labels": [],
+      "assignee": null,
+      "created": 1788448814,
+      "updated": 1788448814,
+      "anchors": [],
+      "comments": []
+    },
+    {
+      "id": 9,
+      "title": "Markdown viewer engine",
+      "body": "",
+      "status": "open",
+      "priority": "normal",
+      "labels": [],
+      "assignee": null,
+      "created": 1788448819,
+      "updated": 1788448819,
+      "anchors": [],
+      "comments": []
+    },
+    {
+      "id": 10,
+      "title": "Summary mode needs to look like diffity",
+      "body": "",
+      "status": "open",
+      "priority": "normal",
+      "labels": [],
+      "assignee": null,
+      "created": 1788448829,
+      "updated": 1788448829,
+      "anchors": [],
+      "comments": []
+    }
+  ]
+}

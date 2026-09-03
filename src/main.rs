@@ -20,7 +20,7 @@ use gpui::{
 use gpui_platform::application;
 use image::RgbaImage;
 use pm_core::Repo;
-use pm_ui::{OpenFolder, Pm, Quit};
+use pm_ui::{OpenFolder, Pm, Quit, ViewFiles, ViewSummary, ViewTickets};
 
 /// Loaded once at startup so every window (including ones opened via
 /// File → Open Folder) gets the same taskbar icon.
@@ -46,6 +46,9 @@ fn main() {
             KeyBinding::new("ctrl-o", OpenFolder, None),
             KeyBinding::new("ctrl-r", pm_ui::Refresh, None),
             KeyBinding::new("ctrl-q", Quit, None),
+            KeyBinding::new("ctrl-1", ViewSummary, None),
+            KeyBinding::new("ctrl-2", ViewFiles, None),
+            KeyBinding::new("ctrl-3", ViewTickets, None),
         ]);
         cx.on_action(|_: &Quit, cx| cx.quit());
         cx.on_action(|_: &OpenFolder, cx| {

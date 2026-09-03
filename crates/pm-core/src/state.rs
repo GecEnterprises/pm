@@ -9,6 +9,7 @@ use crate::content::{FileKind, ImageKind};
 use crate::diff::{side_by_side, DiffRow};
 use crate::git::{self, CommitInfo, DiffTarget, FileChange, Repo, TreeEntry};
 use crate::highlight::{Highlighter, Line};
+use crate::pm::{self, PmData};
 use crate::text::{BufferPos, DiffCursor, DiffText};
 
 /// Hard cap on the number of diff rows laid out.
@@ -95,6 +96,13 @@ pub struct AppState {
     pub target: DiffTarget,
     /// Recent commits, newest first — the Commit History pane.
     pub commits: Vec<CommitInfo>,
+    /// The in-repo ticket store (`.pm/pm.json5`).
+    pub pm: PmData,
+    /// Last `pm.json5` load/save error, surfaced in the Tickets pane.
+    pub pm_error: Option<String>,
+    /// Exact bytes we last wrote to `pm.json5`, so the filesystem watch event
+    /// our own save triggers doesn't cause a redundant reload.
+    last_saved_pm: String,
 }
 
 impl AppState {
@@ -106,6 +114,10 @@ impl AppState {
         let tree = repo.walk_tree();
         let branch = repo.branch();
         let commits = repo.log(git::LOG_LIMIT);
+        let (pm, pm_error) = match pm::load(repo.root()) {
+            Ok(d) => (d, None),
+            Err(e) => (PmData::default(), Some(e.to_string())),
+        };
         let mut s = Self {
             repo,
             hl: Highlighter::new(),
@@ -127,6 +139,9 @@ impl AppState {
             tree_selected: None,
             caret: None,
             content: Content::Text,
+            pm,
+            pm_error,
+            last_saved_pm: String::new(),
         };
         s.rebuild_visible();
         // Open the first changed file, or — with no git — the first file in the
@@ -147,6 +162,57 @@ impl AppState {
     /// Whether the open folder is inside a git repository.
     pub fn is_git(&self) -> bool {
         self.repo.is_git()
+    }
+
+    /// Absolute path of the ticket store.
+    pub fn pm_path(&self) -> PathBuf {
+        self.repo.root().join(".pm").join("pm.json5")
+    }
+
+    /// Re-read `pm.json5` from disk. No-op when the file matches what we last
+    /// wrote (our own save round-trips through the watcher).
+    pub fn reload_pm(&mut self) {
+        if let Ok(cur) = std::fs::read_to_string(self.pm_path()) {
+            if cur == self.last_saved_pm {
+                return;
+            }
+        }
+        match pm::load(self.repo.root()) {
+            Ok(d) => {
+                self.pm = d;
+                self.pm_error = None;
+            }
+            Err(e) => self.pm_error = Some(e.to_string()),
+        }
+    }
+
+    fn save_pm(&mut self) {
+        match self.pm.save(self.repo.root()) {
+            Ok(()) => {
+                self.last_saved_pm = self.pm.to_pretty();
+                self.pm_error = None;
+            }
+            Err(e) => self.pm_error = Some(e.to_string()),
+        }
+    }
+
+    fn comment_author(&self) -> String {
+        self.repo.user_name().unwrap_or_else(|| "you".to_string())
+    }
+
+    /// Create a ticket and persist. Returns its new id.
+    pub fn create_ticket(&mut self, title: impl Into<String>, body: impl Into<String>) -> u64 {
+        let id = self.pm.create_ticket(title, body, pm::now_unix());
+        self.save_pm();
+        id
+    }
+
+    /// Add a comment to a ticket and persist.
+    pub fn add_comment(&mut self, ticket_id: u64, body: impl Into<String>) {
+        let author = self.comment_author();
+        if self.pm.add_comment(ticket_id, author, body, pm::now_unix()) {
+            self.save_pm();
+        }
     }
 
         pub fn open_path(&mut self, rel: PathBuf) {
@@ -227,6 +293,7 @@ impl AppState {
 
     /// Re-derive git state; reopen the current file or clear if it's gone.
     pub fn refresh(&mut self) {
+        self.reload_pm();
         self.commits = self.repo.log(git::LOG_LIMIT);
         // A pinned commit may have been rewritten/dropped — fall back to the
         // working tree if it's no longer in the log.
@@ -283,6 +350,10 @@ impl AppState {
     /// (open file or `.git` touched), if any. No-op while a commit is pinned —
     /// working-tree edits don't affect a historical diff.
     pub fn apply_fs_change(&mut self, changed: &[PathBuf]) -> Option<PathBuf> {
+        let pm_path = self.pm_path();
+        if changed.contains(&pm_path) {
+            self.reload_pm();
+        }
         if self.target != DiffTarget::WorkingTree {
             return None;
         }

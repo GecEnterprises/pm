@@ -25,6 +25,12 @@ actions!(
         ToggleHistory,
         /// Show or hide the Explorer panel.
         ToggleExplorer,
+        /// Switch to the Summary view.
+        ViewSummary,
+        /// Switch to the File-to-File view.
+        ViewFiles,
+        /// Switch to the Tickets view.
+        ViewTickets,
         /// Copy the diff selection.
         Copy,
         /// Select the whole open side of the diff.
@@ -47,6 +53,10 @@ pub fn app_menus() -> Vec<Menu> {
             MenuItem::action("Select All", SelectAll),
         ]),
         Menu::new("View").items([
+            MenuItem::action("Summary", ViewSummary),
+            MenuItem::action("File-to-File", ViewFiles),
+            MenuItem::action("Tickets", ViewTickets),
+            MenuItem::separator(),
             MenuItem::action("Changes Panel", ToggleChanges),
             MenuItem::action("Commit History", ToggleHistory),
             MenuItem::action("Explorer Panel", ToggleExplorer),
@@ -109,6 +119,10 @@ pub fn menu_groups(pm: &Pm) -> Vec<Group> {
         Group {
             name: "View",
             entries: vec![
+                checkable("Summary", ViewSummary, pm.view == crate::app::View::Summary),
+                checkable("File-to-File", ViewFiles, pm.view == crate::app::View::Files),
+                checkable("Tickets", ViewTickets, pm.view == crate::app::View::Tickets),
+                Entry::Separator,
                 checkable("Changes Panel", ToggleChanges, !pm.changes_collapsed),
                 checkable("Commit History", ToggleHistory, !pm.history_collapsed),
                 checkable("Explorer Panel", ToggleExplorer, !pm.explorer_collapsed),

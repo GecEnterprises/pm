@@ -54,7 +54,7 @@ pub struct HistoryPrepaint {
 }
 
 /// Compact "time since" label, e.g. `3d`, `2w`, `5mo`.
-fn rel_time(secs: i64) -> String {
+pub(crate) fn rel_time(secs: i64) -> String {
     let now = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map(|d| d.as_secs() as i64)

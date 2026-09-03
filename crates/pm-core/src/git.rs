@@ -349,6 +349,17 @@ impl Repo {
         normalize_eol(&String::from_utf8_lossy(&self.new_bytes(target, rel)))
     }
 
+    /// `user.name` from the effective git config, for comment authorship.
+    pub fn user_name(&self) -> Option<String> {
+        self.inner
+            .as_ref()?
+            .config()
+            .ok()?
+            .get_string("user.name")
+            .ok()
+            .filter(|s| !s.is_empty())
+    }
+
     /// Short name of the checked-out branch (`"HEAD"` when detached), or `None`
     /// if HEAD can't be resolved (e.g. an unborn branch in a fresh repo).
     pub fn branch(&self) -> Option<String> {

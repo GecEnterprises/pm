@@ -6,7 +6,7 @@ use gpui::{
     WindowControlArea,
 };
 
-use crate::app::Pm;
+use crate::app::{Pm, View};
 use crate::menu::{self, Entry};
 use crate::theme::*;
 
@@ -71,8 +71,54 @@ impl Pm {
                     .child(SharedString::from(title)),
             )
             .child(self.menu_strip(cx))
+            .child(self.view_switcher(cx))
             .child(div().flex_1())
             .child(self.window_controls(window, cx))
+    }
+
+    /// The `Summary | File-to-File | Tickets` segmented switcher, sitting just
+    /// right of the menu strip. Placed left rather than dead-centre so it doesn't
+    /// fight the absolutely-centred window title.
+    fn view_switcher(&self, cx: &mut Context<Self>) -> impl IntoElement {
+        let segs = [
+            ("Summary", View::Summary),
+            ("File-to-File", View::Files),
+            ("Tickets", View::Tickets),
+        ];
+        let mut strip = div()
+            .id("view-switcher")
+            .flex()
+            .flex_row()
+            .items_center()
+            .mx_2()
+            .rounded_md()
+            .border_1()
+            .border_color(rgb(BORDER))
+            .overflow_hidden()
+            .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation());
+
+        for (label, view) in segs {
+            let active = self.view == view;
+            strip = strip.child(
+                div()
+                    .id(label)
+                    .px_2()
+                    .py(px(2.0))
+                    .cursor_pointer()
+                    .text_color(rgb(if active { TEXT } else { DIM }))
+                    .when(active, |s| s.bg(rgb(SELECT)))
+                    .when(!active, |s| s.hover(|s| s.bg(rgb(BORDER))))
+                    .child(SharedString::from(label))
+                    .on_mouse_down(
+                        MouseButton::Left,
+                        cx.listener(move |pm, _, _, cx| {
+                            pm.set_view(view, cx);
+                            cx.stop_propagation();
+                        }),
+                    ),
+            );
+        }
+        strip
     }
 
     fn menu_strip(&self, cx: &mut Context<Self>) -> impl IntoElement {

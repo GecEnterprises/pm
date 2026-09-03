@@ -20,8 +20,12 @@ use crate::diff_view::{diff_view, ShapeCache};
 use crate::history_view::history_view;
 use crate::image_view::ImageView;
 use crate::list_view::list_view;
-use crate::menu::{About, Copy, Refresh, SelectAll, ToggleChanges, ToggleExplorer, ToggleHistory};
+use crate::menu::{
+    About, Copy, Refresh, SelectAll, ToggleChanges, ToggleExplorer, ToggleHistory, ViewFiles,
+    ViewSummary, ViewTickets,
+};
 use crate::scroll::{ScrollDrag, ScrollState};
+use crate::text_input::TextInput;
 use crate::theme::*;
 use crate::tree_view::tree_view;
 
@@ -50,6 +54,20 @@ impl Render for DragPreview {
     fn render(&mut self, _window: &mut Window, _cx: &mut Context<Self>) -> impl IntoElement {
         Empty
     }
+}
+
+/// The top-level pane, chosen by the title-bar switcher.
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub enum View {
+    Summary,
+    Files,
+    Tickets,
+}
+
+/// An in-progress authoring action in the Tickets pane.
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub enum Compose {
+    NewTicket,
 }
 
 #[derive(Clone, Copy)]
@@ -127,6 +145,17 @@ pub struct Pm {
     pub image_drag: Option<(f32, f32)>,
     /// Bounds of the image diff pane, sampled each frame (for pan clamping).
     pub image_pane: Bounds<gpui::Pixels>,
+
+    /// Which top-level pane is showing (title-bar switcher).
+    pub view: View,
+    /// Selected ticket id in the Tickets pane.
+    pub selected_ticket: Option<u64>,
+    /// Active authoring action in the Tickets pane, if any.
+    pub composing: Option<Compose>,
+    pub new_ticket_title: TextInput,
+    pub new_ticket_body: TextInput,
+    pub comment_box: TextInput,
+    pub ticket_hover: Option<usize>,
 }
 
 impl Pm {
@@ -170,6 +199,13 @@ impl Pm {
             image_view: ImageView::default(),
             image_drag: None,
             image_pane: Bounds::default(),
+            view: View::Files,
+            selected_ticket: None,
+            composing: None,
+            new_ticket_title: TextInput::single(cx),
+            new_ticket_body: TextInput::multi(cx),
+            comment_box: TextInput::multi(cx),
+            ticket_hover: None,
         }
     }
 
@@ -201,6 +237,13 @@ impl Pm {
         self.autoscroll = None;
         self.image_view = ImageView::default();
         self.image_drag = None;
+    }
+
+    pub fn set_view(&mut self, view: View, cx: &mut Context<Self>) {
+        if self.view != view {
+            self.view = view;
+            cx.notify();
+        }
     }
 
     pub fn refresh(&mut self) {
@@ -513,55 +556,11 @@ impl Render for Pm {
             self.title = title;
         }
 
-        let entity = cx.entity();
-
-        // Sidebar + diff, side by side. The `root_bounds` canvas lives here (not
-        // on the window root) so the resize-handle math and `clamp_layout` see
-        // the area between the title and status bars.
-        let body = div()
-            .id("pm-body")
-            .relative()
-            .flex()
-            .flex_row()
-            .flex_1()
-            .min_h_0()
-            .child(
-                canvas(
-                    {
-                        let entity = entity.clone();
-                        move |b, _w, cx| {
-                            entity.update(cx, |pm, _| {
-                                pm.root_bounds = b;
-                                pm.clamp_layout(b);
-                            })
-                        }
-                    },
-                    |_, _, _, _| {},
-                )
-                .absolute()
-                .size_full(),
-            )
-            .on_drag_move(cx.listener(
-                |pm, ev: &DragMoveEvent<ResizeHandle>, _window, cx| {
-                    let root = pm.root_bounds;
-                    let x = f32::from(ev.event.position.x) - f32::from(root.left());
-                    let y = f32::from(ev.event.position.y) - f32::from(root.top());
-                    match ev.drag(cx) {
-                        ResizeHandle::Sidebar => pm.sidebar_w = x,
-                        ResizeHandle::SectionSplit => pm.changes_h = y - SECTION_HEADER_H,
-                        ResizeHandle::DiffSplit => {
-                            let pane_w = f32::from(root.size.width) - pm.sidebar_w;
-                            if pane_w > 1.0 {
-                                pm.diff_split = ((x - pm.sidebar_w) / pane_w).clamp(0.05, 0.95);
-                            }
-                        }
-                    }
-                    pm.clamp_layout(root);
-                    cx.notify();
-                },
-            ))
-            .child(self.left_column(cx))
-            .child(self.diff_pane(cx));
+        let body = match self.view {
+            View::Files => self.files_body(cx).into_any_element(),
+            View::Summary => self.summary_body().into_any_element(),
+            View::Tickets => self.tickets_body(window, cx).into_any_element(),
+        };
 
         let root = div()
             .id("pm-root")
@@ -595,6 +594,9 @@ impl Render for Pm {
             }))
             .on_action(cx.listener(|pm, _: &Copy, _, cx| pm.copy_selection(cx)))
             .on_action(cx.listener(|pm, _: &SelectAll, _, cx| pm.select_all(cx)))
+            .on_action(cx.listener(|pm, _: &ViewSummary, _, cx| pm.set_view(View::Summary, cx)))
+            .on_action(cx.listener(|pm, _: &ViewFiles, _, cx| pm.set_view(View::Files, cx)))
+            .on_action(cx.listener(|pm, _: &ViewTickets, _, cx| pm.set_view(View::Tickets, cx)))
             .on_key_down(cx.listener(|pm, e: &KeyDownEvent, _, cx| {
                 if pm.open_menu.is_some() && e.keystroke.key == "escape" {
                     pm.open_menu = None;
@@ -792,6 +794,77 @@ impl Pm {
                 })
                 .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation()),
         ))
+    }
+
+    /// The File-to-File view: sidebar + diff. The `root_bounds` canvas lives here
+    /// (not on the window root) so the resize-handle math and `clamp_layout` see
+    /// the area between the title and status bars. Only mounted for `View::Files`.
+    fn files_body(&self, cx: &mut Context<Self>) -> impl IntoElement {
+        let entity = cx.entity();
+        div()
+            .id("pm-body")
+            .relative()
+            .flex()
+            .flex_row()
+            .flex_1()
+            .min_h_0()
+            .child(
+                canvas(
+                    {
+                        let entity = entity.clone();
+                        move |b, _w, cx| {
+                            entity.update(cx, |pm, _| {
+                                pm.root_bounds = b;
+                                pm.clamp_layout(b);
+                            })
+                        }
+                    },
+                    |_, _, _, _| {},
+                )
+                .absolute()
+                .size_full(),
+            )
+            .on_drag_move(cx.listener(
+                |pm, ev: &DragMoveEvent<ResizeHandle>, _window, cx| {
+                    let root = pm.root_bounds;
+                    let x = f32::from(ev.event.position.x) - f32::from(root.left());
+                    let y = f32::from(ev.event.position.y) - f32::from(root.top());
+                    match ev.drag(cx) {
+                        ResizeHandle::Sidebar => pm.sidebar_w = x,
+                        ResizeHandle::SectionSplit => pm.changes_h = y - SECTION_HEADER_H,
+                        ResizeHandle::DiffSplit => {
+                            let pane_w = f32::from(root.size.width) - pm.sidebar_w;
+                            if pane_w > 1.0 {
+                                pm.diff_split = ((x - pm.sidebar_w) / pane_w).clamp(0.05, 0.95);
+                            }
+                        }
+                    }
+                    pm.clamp_layout(root);
+                    cx.notify();
+                },
+            ))
+            .child(self.left_column(cx))
+            .child(self.diff_pane(cx))
+    }
+
+    /// The Summary view — a placeholder until summary diffing lands.
+    fn summary_body(&self) -> impl IntoElement {
+        div()
+            .flex_1()
+            .min_h_0()
+            .flex()
+            .flex_col()
+            .items_center()
+            .justify_center()
+            .gap_1()
+            .bg(rgb(BG))
+            .text_color(rgb(DIM))
+            .child(SharedString::from("Summary"))
+            .child(
+                div()
+                    .text_size(px(11.0))
+                    .child(SharedString::from("a whole-diff overview is coming soon")),
+            )
     }
 
     fn diff_pane(&self, cx: &mut Context<Self>) -> impl IntoElement {
