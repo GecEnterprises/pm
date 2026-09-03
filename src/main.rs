@@ -8,6 +8,8 @@
 // console so `eprintln!` / panics are visible during development.
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+mod fonts;
+
 use std::path::PathBuf;
 
 use gpui::{prelude::*, px, size, App, Bounds, WindowBounds, WindowOptions};
@@ -31,17 +33,12 @@ fn main() {
     };
     eprintln!("pm: opened {}", repo.root().display());
 
-    let root = repo.root().display().to_string();
-    let title = format!(
-        "{} - pm v{}",
-        root.trim_end_matches(['/', '\\']),
-        env!("CARGO_PKG_VERSION")
-    );
     let icon = image::load_from_memory(include_bytes!("../assets/icon.png"))
         .ok()
         .map(|img| std::sync::Arc::new(img.into_rgba8()));
 
     application().run(move |cx: &mut App| {
+        fonts::load(cx);
         let bounds = Bounds::centered(None, size(px(1100.), px(720.)), cx);
         cx.open_window(
             WindowOptions {
@@ -49,8 +46,7 @@ fn main() {
                 icon: icon.clone(),
                 ..Default::default()
             },
-            |window, cx| {
-                window.set_window_title(&title);
+            |_window, cx| {
                 cx.new(|cx| {
                     let mut pm = Pm::new(repo, cx);
                     pm.start_watch(cx);

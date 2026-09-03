@@ -14,7 +14,7 @@ use crate::icons;
 use crate::scroll::{Axis, BarInfo, ScrollDrag};
 use crate::app::Pm;
 use crate::theme::{
-    BAR, BORDER, CHANGED, DIM, ICON_SIZE, PANEL, SELECT, TEXT, TREE_INDENT, TREE_ROW_H,
+    BAR, BORDER, CHANGED, DIM, ICON_SIZE, PANEL, SELECT, TEXT, TREE_INDENT, TREE_ROW_H, UI_FONT,
 };
 
 pub struct TreeView {
@@ -95,7 +95,7 @@ impl Element for TreeView {
         let w = f32::from(bounds.size.width).max(0.0);
         let h = f32::from(bounds.size.height).max(0.0);
 
-        let name_font = font("Segoe UI");
+        let name_font = font(UI_FONT);
         let font_size = px(13.0);
 
         let (first, off_y, count, hover, rows) = self.pm.update(cx, |pm, _cx| {

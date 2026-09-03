@@ -91,7 +91,10 @@ pub struct Pm {
     pub autoscroll: Option<(f32, f32)>,
     pub mouse_pos: (f32, f32),
     /// Diff viewport height in px, captured each prepaint (page-scroll + follow).
-    pub diff_viewport_h: f32,}
+    pub diff_viewport_h: f32,
+    /// Last window title we pushed, to avoid redundant `set_window_title` calls.
+    title: String,
+}
 
 impl Pm {
     pub fn new(repo: Repo, cx: &mut Context<Self>) -> Self {
@@ -121,6 +124,24 @@ impl Pm {
             autoscroll: None,
             mouse_pos: (0.0, 0.0),
             diff_viewport_h: 0.0,
+            title: String::new(),
+        }
+    }
+
+    /// VS Code-style window title: `file — repo — pm`, dropping the file segment
+    /// when nothing is open.
+    fn window_title(&self) -> String {
+        let app = "pm";
+        let repo = self
+            .state
+            .repo
+            .root()
+            .file_name()
+            .map(|n| n.to_string_lossy().into_owned())
+            .unwrap_or_else(|| "pm".to_string());
+        match self.state.open.as_ref().and_then(|p| p.file_name()) {
+            Some(file) => format!("{} \u{2014} {repo} \u{2014} {app}", file.to_string_lossy()),
+            None => format!("{repo} \u{2014} {app}"),
         }
     }
 
@@ -390,7 +411,13 @@ impl Pm {
 }
 
 impl Render for Pm {
-    fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let title = self.window_title();
+        if title != self.title {
+            window.set_window_title(&title);
+            self.title = title;
+        }
+
         let entity = cx.entity();
         div()
             .id("pm-root")
@@ -399,7 +426,7 @@ impl Render for Pm {
             .size_full()
             .bg(rgb(BG))
             .text_color(rgb(TEXT))
-            .font_family("Segoe UI")
+            .font_family(UI_FONT)
             .text_size(px(13.))
             .child(
                 canvas(

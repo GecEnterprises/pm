@@ -12,7 +12,7 @@ use gpui::{
 use crate::icons;
 use crate::scroll::{Axis, BarInfo, ScrollDrag};
 use crate::app::Pm;
-use crate::theme::{BAR, BORDER, DIM, ICON_SIZE, LIST_ROW_H, PANEL, SELECT, TEXT};
+use crate::theme::{BAR, BORDER, DIM, ICON_SIZE, LIST_ROW_H, PANEL, SELECT, TEXT, UI_FONT};
 
 const ADD_FG: u32 = 0x81b88b;
 const DEL_FG: u32 = 0xc74e39;
@@ -94,7 +94,7 @@ impl Element for ListView {
         let w = f32::from(bounds.size.width).max(0.0);
         let h = f32::from(bounds.size.height).max(0.0);
 
-        let name_font = font("Segoe UI");
+        let name_font = font(UI_FONT);
         let name_size = px(13.0);
         let small = px(11.0);
 

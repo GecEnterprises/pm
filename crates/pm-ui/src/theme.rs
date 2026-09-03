@@ -31,9 +31,12 @@ pub const GUTTER_PAD: f32 = 8.0;
 pub const TEXT_PAD_L: f32 = 8.0;
 /// Centre divider width, in px.
 pub const DIVIDER_W: f32 = 1.0;
-/// Monospace font for diff text.
-pub const BODY_FONT: &str = "Consolas";
+/// Monospace font for diff text. Vendored — see `assets/fonts` and
+/// `pm::fonts::load`.
+pub const BODY_FONT: &str = "JetBrains Mono";
 pub const BODY_FONT_SIZE: f32 = 12.5;
+/// Proportional font for UI chrome (sidebar, headers). Also vendored.
+pub const UI_FONT: &str = "Roboto";
 /// Hard cap on the number of diff rows laid out.
 
 pub const SIDEBAR_MIN: f32 = 180.0;
