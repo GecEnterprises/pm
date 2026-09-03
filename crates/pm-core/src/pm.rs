@@ -195,37 +195,51 @@ impl Default for PmData {
     }
 }
 
+/// Why a load didn't produce data. `Io` is almost always transient on Windows
+/// (the watcher fired mid-write, or an antivirus scan briefly locked the file)
+/// and callers should keep their last-good data and try again; `Parse` means the
+/// file on disk is genuinely broken and the user needs to see it.
+#[derive(Debug)]
+pub enum LoadError {
+    Io(String),
+    Parse(String),
+}
+
+impl std::fmt::Display for LoadError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            LoadError::Io(s) | LoadError::Parse(s) => f.write_str(s),
+        }
+    }
+}
+
 /// Read `<root>/.pm/pm.json5`. A missing file is not an error — it yields the
-/// default (empty) store.
-///
-/// Reads are retried briefly: the filesystem watcher can fire mid-write (an
-/// editor, or another pm process, replacing the file), and we'd rather wait a
-/// few ms than surface a transient "reading …" / parse error. A file that is
-/// still unreadable or malformed after the retries *is* returned as an error so
-/// the UI can show it.
-pub fn load(root: &Path) -> Result<PmData> {
+/// default (empty) store. The read is retried briefly past a mid-write; bytes
+/// are decoded lossily so one stray non-UTF-8 byte doesn't hide every ticket.
+pub fn load(root: &Path) -> std::result::Result<PmData, LoadError> {
     let path = root.join(".pm").join(FILE);
-    let mut err: Option<anyhow::Error> = None;
+    let mut err = LoadError::Io(format!("reading {}", path.display()));
     for attempt in 0..5 {
         if attempt > 0 {
             std::thread::sleep(std::time::Duration::from_millis(12));
         }
-        match std::fs::read_to_string(&path) {
-            Ok(text) => {
-                match json5::from_str::<PmData>(&text)
-                    .with_context(|| format!("parsing {}", path.display()))
-                {
+        match std::fs::read(&path) {
+            Ok(bytes) => {
+                let text = String::from_utf8_lossy(&bytes);
+                match json5::from_str::<PmData>(&text) {
                     Ok(d) => return Ok(d),
-                    Err(e) => err = Some(e),
+                    // Broken content the user needs to see — but it can also be
+                    // a torn read from a non-atomic external writer, so retry.
+                    Err(e) => err = LoadError::Parse(format!("parsing {}: {e}", path.display())),
                 }
             }
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(PmData::default()),
-            Err(e) => {
-                err = Some(anyhow::Error::new(e).context(format!("reading {}", path.display())))
-            }
+            // PermissionDenied on Windows is a sharing violation (someone else
+            // has the file open) — transient. Everything else here too.
+            Err(e) => err = LoadError::Io(format!("reading {}: {e}", path.display())),
         }
     }
-    Err(err.expect("loop ran at least once"))
+    Err(err)
 }
 
 impl PmData {
@@ -392,11 +406,11 @@ mod tests {
     }
 
     #[test]
-    fn malformed_is_error() {
+    fn malformed_is_parse_error() {
         let d = tmp();
         std::fs::create_dir_all(d.join(".pm")).unwrap();
         std::fs::write(d.join(".pm").join(FILE), "{ not valid").unwrap();
-        assert!(load(&d).is_err());
+        assert!(matches!(load(&d), Err(LoadError::Parse(_))));
         let _ = std::fs::remove_dir_all(&d);
     }
 }

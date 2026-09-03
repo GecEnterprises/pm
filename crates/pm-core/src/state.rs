@@ -3,7 +3,7 @@
 
 use std::collections::HashSet;
 use std::ffi::OsStr;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use crate::content::{FileKind, ImageKind};
 use crate::diff::{side_by_side, DiffRow};
@@ -11,6 +11,14 @@ use crate::git::{self, CommitInfo, DiffTarget, FileChange, Repo, TreeEntry};
 use crate::highlight::{Highlighter, Line};
 use crate::pm::{self, PmData};
 use crate::text::{BufferPos, DiffCursor, DiffText};
+
+/// Whether `p` ends with `.pm/pm.json5` (the ticket store), regardless of how
+/// the watcher spelled the rest of the path.
+fn ends_with_pm_store(p: &Path) -> bool {
+    let mut it = p.components().rev();
+    it.next().map(|c| c.as_os_str()) == Some(OsStr::new("pm.json5"))
+        && it.next().map(|c| c.as_os_str()) == Some(OsStr::new(".pm"))
+}
 
 /// Hard cap on the number of diff rows laid out.
 pub const MAX_ROWS: usize = 200_000;
@@ -113,7 +121,13 @@ impl AppState {
         let commits = repo.log(git::LOG_LIMIT);
         let (pm, pm_error) = match pm::load(repo.root()) {
             Ok(d) => (d, None),
-            Err(e) => (PmData::default(), Some(e.to_string())),
+            Err(pm::LoadError::Parse(s)) => (PmData::default(), Some(s)),
+            // A read failure at startup is almost always transient; start empty
+            // and let the first watcher tick pick the file up.
+            Err(pm::LoadError::Io(s)) => {
+                eprintln!("pm: {s}");
+                (PmData::default(), None)
+            }
         };
         let mut s = Self {
             repo,
@@ -165,17 +179,17 @@ impl AppState {
         self.repo.root().join(".pm").join("pm.json5")
     }
 
-    /// Re-read `pm.json5` from disk. `load` retries past a mid-write, and our own
-    /// atomic saves round-trip to identical data, so a reload triggered by our
-    /// own write just re-assigns the same `PmData`.
+    /// Re-read `pm.json5` from disk. A read hiccup (watcher fired mid-write, an
+    /// antivirus scan holding the file) keeps the last-good data with no error —
+    /// the next watcher tick picks it up. Only a genuine parse failure surfaces.
     pub fn reload_pm(&mut self) {
         match pm::load(self.repo.root()) {
             Ok(d) => {
                 self.pm = d;
                 self.pm_error = None;
             }
-            // Keep the last good data on a failed reload; only surface it.
-            Err(e) => self.pm_error = Some(e.to_string()),
+            Err(pm::LoadError::Parse(s)) => self.pm_error = Some(s),
+            Err(pm::LoadError::Io(_)) => {}
         }
     }
 
@@ -340,8 +354,9 @@ impl AppState {
     /// (open file or `.git` touched), if any. No-op while a commit is pinned —
     /// working-tree edits don't affect a historical diff.
     pub fn apply_fs_change(&mut self, changed: &[PathBuf]) -> Option<PathBuf> {
-        let pm_path = self.pm_path();
-        if changed.contains(&pm_path) {
+        // Match by trailing components, not exact PathBuf — the watcher's paths
+        // and `pm_path()` can differ by prefix / separators on Windows.
+        if changed.iter().any(|p| ends_with_pm_store(p)) {
             self.reload_pm();
         }
         if self.target != DiffTarget::WorkingTree {
