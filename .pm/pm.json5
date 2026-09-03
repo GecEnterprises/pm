@@ -4,7 +4,7 @@
     "name": "pm",
     "key": "PM"
   },
-  "next_id": 30,
+  "next_id": 34,
   "tickets": [
     {
       "id": 5,
@@ -137,6 +137,13 @@
           "author": "reaganiwadha",
           "created": 1788460000,
           "body": "Rebuilt text_input the gpui/Zed way (crates/gpui/examples/input.rs): TextInput is now its own entity with a custom Element that shapes each line once via shape_line and paints it as a single ShapedLine — no more glyph jumping. Text arrives through the OS IME pipeline (window.handle_input + EntityInputHandler), so dead keys/compose/AltGr work. Mouse: click places the caret, drag selects, shift-click extends. Editing is actions bound under a 'TextInput' key context in main.rs (Ctrl+A/C/X/V, Ctrl+arrows, Ctrl+Backspace, Home/End, shift-motions, Up/Down); Enter submits single-line, inserts newline in multiline. Single-line fields scroll horizontally to keep the caret visible. Not done: soft-wrap, undo/redo. Needs a run to verify (blocked by a running pm.exe here).",
+          "anchor": null
+        },
+        {
+          "id": 5,
+          "author": "reaganiwadha",
+          "created": 1788461000,
+          "body": "Fixed the startup crash from c4: clicking an empty field put the caret past the end of the zero-length string (index_for_mouse was reading offsets out of the shaped placeholder text). Empty-field click now returns offset 0, and every IME edit range is clamped into content + snapped to a char boundary. Verified: full link + launch smoke test pass. Please restart pm and hammer the New Ticket / comment boxes — click mid-word, drag-select, Ctrl+A/C/V, paste multi-line — then close this if it feels right.",
           "anchor": null
         }
       ]
@@ -479,6 +486,82 @@
       "assignee": null,
       "created": 1788474195,
       "updated": 1788474195,
+      "anchors": [],
+      "comments": []
+    },
+    {
+      "id": 30,
+      "title": "A global watchjump mode, toggled in the footer bar, where it would immediately jump to a file where it just changed, useful for working with code editor",
+      "body": "",
+      "status": "open",
+      "priority": "normal",
+      "labels": [],
+      "assignee": null,
+      "created": 1788474238,
+      "updated": 1788474238,
+      "anchors": [],
+      "comments": []
+    },
+    {
+      "id": 31,
+      "title": "TextInput in ticket doesn't expand to newline and doesn't wrap, it just goes",
+      "body": "",
+      "status": "in_progress",
+      "priority": "normal",
+      "labels": [
+        "tickets"
+      ],
+      "assignee": null,
+      "created": 1788474256,
+      "updated": 1788461000,
+      "anchors": [
+        {
+          "file": "crates/pm-ui/src/text_input.rs",
+          "start_line": 1,
+          "end_line": 1,
+          "rev": "working"
+        }
+      ],
+      "comments": [
+        {
+          "id": 1,
+          "author": "reaganiwadha",
+          "created": 1788474419,
+          "body": "Follow soft-wrapping in how zed does it",
+          "anchor": null
+        },
+        {
+          "id": 2,
+          "author": "reaganiwadha",
+          "created": 1788461000,
+          "body": "Done the Zed way: TextElement shapes with window.text_system().shape_text(text, size, runs, wrap_width, None), which returns one WrappedLine per '\\n' line, each soft-wrapped to the field width. The element measures the wrapped height and feeds it back through measured_height, so a multiline field grows with its text and the detail pane scrolls. Caret/selection/mouse all go through WrappedLine::position_for_index and closest_index_for_position so they follow wrap rows. Single-line fields pass wrap_width=None and keep horizontal scroll. Shipped with PM-7's crash fix in the same commit — needs a run to confirm it feels right.",
+          "anchor": null
+        }
+      ]
+    },
+    {
+      "id": 32,
+      "title": "Window title not updating on what ticket is being selected or is it new ticket",
+      "body": "",
+      "status": "open",
+      "priority": "normal",
+      "labels": [],
+      "assignee": null,
+      "created": 1788474656,
+      "updated": 1788474656,
+      "anchors": [],
+      "comments": []
+    },
+    {
+      "id": 33,
+      "title": "Image attachments in tickets. pasting a path to image in description should kinda like automatically do an [Image Attachment] like in Claude Code",
+      "body": "",
+      "status": "open",
+      "priority": "normal",
+      "labels": [],
+      "assignee": null,
+      "created": 1788475086,
+      "updated": 1788475086,
       "anchors": [],
       "comments": []
     }
