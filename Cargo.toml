@@ -3,6 +3,8 @@ name = "pm"
 version = "0.0.1"
 edition = "2021"
 description = "Plus Minus - a diff-oriented code editor"
+license = "BSD-3-Clause"
+repository = "https://github.com/GecEnterprises/pm"
 
 [dependencies]
 gpui = { git = "https://github.com/zed-industries/zed", branch = "main" }
