@@ -4,7 +4,7 @@
     "name": "pm",
     "key": "PM"
   },
-  "next_id": 21,
+  "next_id": 23,
   "tickets": [
     {
       "id": 5,
@@ -101,7 +101,7 @@
       ],
       "assignee": null,
       "created": 1788448806,
-      "updated": 1788450076,
+      "updated": 1788450439,
       "anchors": [
         {
           "file": "crates/pm-ui/src/text_input.rs",
@@ -123,6 +123,13 @@
           "author": "reaganiwadha",
           "created": 1788450076,
           "body": "Still feels awkward. Especially when selecting/highlighting a character from a word you can see each letters jumping. Perhaps we need to see a solution from how zed implements textboxes.",
+          "anchor": null
+        },
+        {
+          "id": 3,
+          "author": "reaganiwadha",
+          "created": 1788450439,
+          "body": "Can't even jump the caret to other section freely with mouse cursor click",
           "anchor": null
         }
       ]
@@ -348,6 +355,32 @@
       "assignee": null,
       "created": 1788449664,
       "updated": 1788449664,
+      "anchors": [],
+      "comments": []
+    },
+    {
+      "id": 21,
+      "title": "In Linux Wayland, dragging the cursor across a code would stop and doesn't drag all the way down. In Windows it's fine",
+      "body": "",
+      "status": "open",
+      "priority": "normal",
+      "labels": [],
+      "assignee": null,
+      "created": 1788450367,
+      "updated": 1788450367,
+      "anchors": [],
+      "comments": []
+    },
+    {
+      "id": 22,
+      "title": "Need some overhang when reaching the bottom of file so we can see the rest of the content a bit more.",
+      "body": "",
+      "status": "open",
+      "priority": "normal",
+      "labels": [],
+      "assignee": null,
+      "created": 1788450414,
+      "updated": 1788450414,
       "anchors": [],
       "comments": []
     }
