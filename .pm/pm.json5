@@ -101,7 +101,7 @@
       ],
       "assignee": null,
       "created": 1788448806,
-      "updated": 1788449600,
+      "updated": 1788450076,
       "anchors": [
         {
           "file": "crates/pm-ui/src/text_input.rs",
@@ -116,6 +116,13 @@
           "author": "reaganiwadha",
           "created": 1788449600,
           "body": "Rewrote text_input: selection model + shift-motions, Ctrl+A, cut/copy/paste, Ctrl+Backspace word delete, Up/Down in multiline, and a 1px caret quad that no longer shifts the text. Click focuses the field. Still missing: click-to-place-caret mid-text (needs glyph geometry) — tracked as follow-up.",
+          "anchor": null
+        },
+        {
+          "id": 2,
+          "author": "reaganiwadha",
+          "created": 1788450076,
+          "body": "Still feels awkward. Especially when selecting/highlighting a character from a word you can see each letters jumping. Perhaps we need to see a solution from how zed implements textboxes.",
           "anchor": null
         }
       ]
