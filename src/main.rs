@@ -21,10 +21,12 @@ mod icons;
 mod list_view;
 mod scroll;
 mod tree_view;
+mod watch;
 
 use std::collections::HashSet;
 use std::ffi::OsStr;
 use std::path::PathBuf;
+use std::time::Duration;
 
 use diff::{side_by_side, DiffRow};
 use diff_view::{diff_view, ShapeCache};
@@ -38,6 +40,7 @@ use highlight::{Highlighter, Line};
 use list_view::list_view;
 use scroll::{ScrollDrag, ScrollState};
 use tree_view::tree_view;
+use watch::Sentinel;
 
 pub(crate) const BG: u32 = 0x1e1e1e;
 pub(crate) const PANEL: u32 = 0x252526;
@@ -195,6 +198,9 @@ pub(crate) struct Pm {
     tree_drag: Option<ScrollDrag>,
     tree_hover: Option<usize>,
     tree_selected: Option<PathBuf>,
+
+    /// Filesystem watcher; polled by a foreground task (see `start_watch`).
+    sentinel: Option<Sentinel>,
 }
 
 impl Pm {
@@ -203,6 +209,9 @@ impl Pm {
         let change_names = compute_change_names(&changes);
         let changed = repo.changed_set();
         let tree = repo.walk_tree();
+        let sentinel = Sentinel::start(repo.root().to_path_buf())
+            .map_err(|e| eprintln!("pm: filesystem watch unavailable ({e})"))
+            .ok();
         let mut pm = Self {
             repo,
             hl: Highlighter::new(),
@@ -232,6 +241,7 @@ impl Pm {
             tree_drag: None,
             tree_hover: None,
             tree_selected: None,
+            sentinel,
         };
         pm.rebuild_visible();
         if let Some(first) = pm.changes.first().map(|c| c.rel.clone()) {
@@ -308,6 +318,69 @@ impl Pm {
                 self.diff = DiffScroll::default();
             }
         }
+    }
+
+    /// Spawn the foreground loop that drains the Sentinel and applies changes.
+    fn start_watch(&mut self, cx: &mut Context<Self>) {
+        if self.sentinel.is_none() {
+            return;
+        }
+        cx.spawn(async move |this, cx| loop {
+            cx.background_executor()
+                .timer(Duration::from_millis(120))
+                .await;
+            let batch = this.update(cx, |pm, _| {
+                pm.sentinel
+                    .as_ref()
+                    .and_then(|s| s.poll(Duration::from_millis(250)))
+            });
+            match batch {
+                Ok(Some(paths)) => {
+                    let _ = this.update(cx, |pm, cx| pm.on_fs_change(&paths, cx));
+                }
+                Ok(None) => {}
+                Err(_) => break, // entity gone — window closed
+            }
+        })
+        .detach();
+    }
+
+    /// Re-derive git state and, if the open file (or `.git`) changed, reload the
+    /// diff while keeping the scroll position.
+    fn on_fs_change(&mut self, changed: &[PathBuf], cx: &mut Context<Self>) {
+        let root = self.repo.root().to_path_buf();
+        self.changes = self.repo.changes();
+        self.change_names = compute_change_names(&self.changes);
+        self.changed = self.repo.changed_set();
+        self.tree = self.repo.walk_tree();
+        self.rebuild_visible();
+        self.hover_file = None;
+        self.tree_hover = None;
+
+        if let Some(rel) = self.open.clone() {
+            let abs = root.join(&rel);
+            let git_touched = changed.iter().any(|p| {
+                p.strip_prefix(&root)
+                    .map(|r| r.starts_with(".git"))
+                    .unwrap_or(false)
+            });
+            if git_touched || changed.iter().any(|p| *p == abs) {
+                self.reload_open_keep_scroll(rel);
+            }
+        }
+        cx.notify();
+    }
+
+    fn reload_open_keep_scroll(&mut self, rel: PathBuf) {
+        let (y, x0, x1) = (
+            self.diff.y.offset,
+            self.diff.x[0].offset,
+            self.diff.x[1].offset,
+        );
+        self.open_path(rel);
+        self.diff.y.offset = y;
+        self.diff.x[0].offset = x0;
+        self.diff.x[1].offset = x1;
     }
 }
 
@@ -570,7 +643,11 @@ fn main() {
             },
             |window, cx| {
                 window.set_window_title(&title);
-                cx.new(|_| Pm::new(repo))
+                cx.new(|cx| {
+                    let mut pm = Pm::new(repo);
+                    pm.start_watch(cx);
+                    pm
+                })
             },
         )
         .unwrap();

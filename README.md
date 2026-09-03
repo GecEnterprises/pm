@@ -20,7 +20,8 @@ cargo run -- path/to/repo
 - drag the sidebar edge, the changes/explorer split, or the diff's centre
   divider to resize
 - mouse wheel scrolls; shift+wheel scrolls a diff column sideways
-- `⟳` rescans
+- the working tree is watched — edits, stages, commits and checkouts update
+  the changes list, tree and open diff live; `⟳` forces a rescan
 
 ## layout
 
@@ -34,14 +35,15 @@ cargo run -- path/to/repo
 | `src/list_view.rs` | the "changes" list element |
 | `src/tree_view.rs` | the "explorer" file-tree element |
 | `src/icons.rs`     | file-type icons (zed's `file_icons` set + the ported mapping tables) |
+| `src/watch.rs`     | the sentinel — a `notify` filesystem watcher over the working tree |
 | `src/main.rs`      | window, panel layout, resize handles |
 
 ## status
 
 early. working: repo discovery, changes list with status + ±loc badges, file
 tree with icons, side-by-side syntax-highlighted diff, custom scrollbars,
-resizable panels. not yet: editing, staging / unstaging hunks, word-level
-intra-line diff, keyboard navigation.
+resizable panels, live filesystem watching. not yet: editing, staging /
+unstaging hunks, word-level intra-line diff, keyboard navigation.
 
 ## license
 
