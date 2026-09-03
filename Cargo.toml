@@ -18,7 +18,9 @@ repository = "https://github.com/GecEnterprises/pm"
 pm-core = { path = "crates/pm-core" }
 pm-ui = { path = "crates/pm-ui" }
 gpui = { workspace = true }
-gpui_platform = { workspace = true }
+# gpui_platform ships no backend by default; pick both Linux backends (the
+# features gate `gpui_linux`, which isn't built on Windows/macOS anyway).
+gpui_platform = { workspace = true, features = ["wayland", "x11"] }
 # window icon (x11 runtime path); must match gpui's image version so the
 # RgbaImage types unify
 image = { version = "0.25", default-features = false, features = ["png"] }
