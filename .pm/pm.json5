@@ -4,7 +4,7 @@
     "name": "pm",
     "key": "PM"
   },
-  "next_id": 38,
+  "next_id": 39,
   "tickets": [
     {
       "id": 5,
@@ -56,14 +56,14 @@
       "id": 11,
       "title": "A button to close tickets, a viewing mode to see closed tickets",
       "body": "",
-      "status": "in_progress",
+      "status": "done",
       "priority": "high",
       "labels": [
         "tickets"
       ],
       "assignee": null,
       "created": 1788448971,
-      "updated": 1788465000,
+      "updated": 1788466000,
       "anchors": [
         {
           "file": "crates/pm-ui/src/tickets_view.rs",
@@ -78,6 +78,13 @@
           "author": "reaganiwadha",
           "created": 1788465000,
           "body": "Implemented per the agreed design. Status: the meta-row chip in the detail pane is now a button; click it for a dropdown of the 5 statuses (check on current), which persists + bumps updated. Closed view: a 'Filter (n/5)' dropdown in the list header is a multi-check of the 5 statuses; unchecked ones are hidden. Default hides Done/Won't Fix. Closed rows that are shown render dim + struck through; header count shows 'N of M' when filtered. Scope kept to PM-11 - no sort (PM-29), no priority editing (PM-4). Needs a run to confirm the popovers behave.",
+          "anchor": null
+        },
+        {
+          "id": 2,
+          "author": "reaganiwadha",
+          "created": 1788466000,
+          "body": "Closing. Status is set from the detail-pane chip dropdown (persists + bumps updated); the list header 'Filter (n/5)' dropdown is a multi-check of the 5 statuses, closed hidden by default, shown-closed rows dim + struck through. Dropdown re-click now closes. Reopen if anything's off.",
           "anchor": null
         }
       ]
@@ -109,14 +116,14 @@
       "id": 7,
       "title": "The textbox when making a ticket doesn't feel nice",
       "body": "Also I can't ctrl+a copy paste or what",
-      "status": "in_progress",
+      "status": "done",
       "priority": "high",
       "labels": [
         "tickets"
       ],
       "assignee": null,
       "created": 1788448806,
-      "updated": 1788450439,
+      "updated": 1788466000,
       "anchors": [
         {
           "file": "crates/pm-ui/src/text_input.rs",
@@ -159,6 +166,13 @@
           "author": "reaganiwadha",
           "created": 1788461000,
           "body": "Fixed the startup crash from c4: clicking an empty field put the caret past the end of the zero-length string (index_for_mouse was reading offsets out of the shaped placeholder text). Empty-field click now returns offset 0, and every IME edit range is clamped into content + snapped to a char boundary. Verified: full link + launch smoke test pass. Please restart pm and hammer the New Ticket / comment boxes — click mid-word, drag-select, Ctrl+A/C/V, paste multi-line — then close this if it feels right.",
+          "anchor": null
+        },
+        {
+          "id": 6,
+          "author": "reaganiwadha",
+          "created": 1788466000,
+          "body": "Closing. text_input is now a shaped-line editor entity (gpui/Zed pattern): shape_text per line, IME pipeline, click-to-place-caret + drag-select + shift-click, full Ctrl+A/C/X/V and word/line motions, and the empty-field crash is fixed. Reopen if the feel is still off.",
           "anchor": null
         }
       ]
@@ -473,14 +487,14 @@
       "id": 26,
       "title": "Summary/File-to-File/Tickets needs to have icons on it",
       "body": "",
-      "status": "in_progress",
+      "status": "done",
       "priority": "normal",
       "labels": [
         "ui"
       ],
       "assignee": null,
       "created": 1788473965,
-      "updated": 1788462000,
+      "updated": 1788466000,
       "anchors": [],
       "comments": [
         {
@@ -488,6 +502,13 @@
           "author": "reaganiwadha",
           "created": 1788462000,
           "body": "Each segment now shows an icon (project/diff/hash svg) via gpui::svg().data() + new icons::svg_bytes(). Restart to see it.",
+          "anchor": null
+        },
+        {
+          "id": 2,
+          "author": "reaganiwadha",
+          "created": 1788466000,
+          "body": "Closing. Each switcher segment shows an icon (project / diff / hash svg).",
           "anchor": null
         }
       ]
@@ -548,14 +569,14 @@
       "id": 31,
       "title": "TextInput in ticket doesn't expand to newline and doesn't wrap, it just goes",
       "body": "",
-      "status": "in_progress",
+      "status": "done",
       "priority": "normal",
       "labels": [
         "tickets"
       ],
       "assignee": null,
       "created": 1788474256,
-      "updated": 1788461000,
+      "updated": 1788466000,
       "anchors": [
         {
           "file": "crates/pm-ui/src/text_input.rs",
@@ -578,6 +599,13 @@
           "created": 1788461000,
           "body": "Done the Zed way: TextElement shapes with window.text_system().shape_text(text, size, runs, wrap_width, None), which returns one WrappedLine per '\\n' line, each soft-wrapped to the field width. The element measures the wrapped height and feeds it back through measured_height, so a multiline field grows with its text and the detail pane scrolls. Caret/selection/mouse all go through WrappedLine::position_for_index and closest_index_for_position so they follow wrap rows. Single-line fields pass wrap_width=None and keep horizontal scroll. Shipped with PM-7's crash fix in the same commit — needs a run to confirm it feels right.",
           "anchor": null
+        },
+        {
+          "id": 3,
+          "author": "reaganiwadha",
+          "created": 1788466000,
+          "body": "Closing. Multiline fields soft-wrap to width and grow with content (shape_text + measured height), caret/selection/mouse are wrap-row aware; single-line fields keep horizontal scroll.",
+          "anchor": null
         }
       ]
     },
@@ -585,14 +613,14 @@
       "id": 32,
       "title": "Window title not updating on what ticket is being selected or is it new ticket",
       "body": "",
-      "status": "in_progress",
+      "status": "done",
       "priority": "normal",
       "labels": [
         "ui"
       ],
       "assignee": null,
       "created": 1788474656,
-      "updated": 1788462000,
+      "updated": 1788466000,
       "anchors": [],
       "comments": [
         {
@@ -600,6 +628,13 @@
           "author": "reaganiwadha",
           "created": 1788462000,
           "body": "window_title() (crates/pm-ui/src/app.rs) now tracks the active view: open file in File-to-File; \"New ticket\" / \"PM-N <title>\" / \"Tickets\" in Tickets; \"Summary\" in Summary.",
+          "anchor": null
+        },
+        {
+          "id": 2,
+          "author": "reaganiwadha",
+          "created": 1788466000,
+          "body": "Closing. window_title() tracks the active view: open file in File-to-File, 'New ticket' / 'PM-N <title>' / 'Tickets' in Tickets, 'Summary' in Summary.",
           "anchor": null
         }
       ]
@@ -613,7 +648,7 @@
       "labels": [],
       "assignee": null,
       "created": 1788475086,
-      "updated": 1788475086,
+      "updated": 1788477733,
       "anchors": [],
       "comments": []
     },
@@ -676,6 +711,19 @@
           "anchor": null
         }
       ]
+    },
+    {
+      "id": 38,
+      "title": "Ticket tagging",
+      "body": "Each ticket should be able to be tagged with a certain tag so we can organize a view of tickets with a ui tag or ux tag or mcp tag. each ticket can have multiple tags",
+      "status": "open",
+      "priority": "normal",
+      "labels": [],
+      "assignee": null,
+      "created": 1788477949,
+      "updated": 1788477949,
+      "anchors": [],
+      "comments": []
     }
   ]
 }
