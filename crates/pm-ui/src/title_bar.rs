@@ -2,11 +2,12 @@
 //! and drag-to-move — modelled on Zed's `platform_title_bar` / `title_bar`.
 
 use gpui::{
-    deferred, div, prelude::*, px, rgb, ClickEvent, Context, Decorations, MouseButton, SharedString,
-    WindowControlArea,
+    deferred, div, prelude::*, px, rgb, svg, ClickEvent, Context, Decorations, MouseButton,
+    SharedString, WindowControlArea,
 };
 
 use crate::app::{Pm, View};
+use crate::icons;
 use crate::menu::{self, Entry};
 use crate::theme::*;
 
@@ -71,19 +72,18 @@ impl Pm {
                     .child(SharedString::from(title)),
             )
             .child(self.menu_strip(cx))
-            .child(self.view_switcher(cx))
             .child(div().flex_1())
+            .child(self.view_switcher(cx))
             .child(self.window_controls(window, cx))
     }
 
-    /// The `Summary | File-to-File | Tickets` segmented switcher, sitting just
-    /// right of the menu strip. Placed left rather than dead-centre so it doesn't
-    /// fight the absolutely-centred window title.
+    /// The `Summary | File-to-File | Tickets` segmented switcher. Sits on the
+    /// right, tucked against the window controls (PM-25).
     fn view_switcher(&self, cx: &mut Context<Self>) -> impl IntoElement {
         let segs = [
-            ("Summary", View::Summary),
-            ("File-to-File", View::Files),
-            ("Tickets", View::Tickets),
+            ("Summary", "project.svg", View::Summary),
+            ("File-to-File", "diff.svg", View::Files),
+            ("Tickets", "hash.svg", View::Tickets),
         ];
         let mut strip = div()
             .id("view-switcher")
@@ -94,20 +94,33 @@ impl Pm {
             .rounded_md()
             .border_1()
             .border_color(rgb(BORDER))
+            .bg(rgb(PANEL))
             .overflow_hidden()
             .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation());
 
-        for (label, view) in segs {
+        for (label, icon, view) in segs {
             let active = self.view == view;
+            let fg = rgb(if active { TEXT } else { DIM });
             strip = strip.child(
                 div()
                     .id(label)
+                    .flex()
+                    .flex_row()
+                    .items_center()
+                    .gap_1()
                     .px_2()
                     .py(px(2.0))
                     .cursor_pointer()
-                    .text_color(rgb(if active { TEXT } else { DIM }))
+                    .text_color(fg)
                     .when(active, |s| s.bg(rgb(SELECT)))
                     .when(!active, |s| s.hover(|s| s.bg(rgb(BORDER))))
+                    .child(
+                        svg()
+                            .size(px(13.0))
+                            .flex_none()
+                            .text_color(fg)
+                            .data(icons::svg_bytes(icon)),
+                    )
                     .child(SharedString::from(label))
                     .on_mouse_down(
                         MouseButton::Left,

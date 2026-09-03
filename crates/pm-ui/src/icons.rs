@@ -17,6 +17,12 @@ fn bytes(name: &str) -> &'static [u8] {
         .contents()
 }
 
+/// Raw bytes of a bundled SVG by file name (falls back to `file.svg`), for
+/// `gpui::svg().data(..)` in ordinary element trees.
+pub fn svg_bytes(name: &str) -> &'static [u8] {
+    bytes(name)
+}
+
 /// Full filenames / stems that map directly to an icon key.
 const FILE_STEMS_BY_ICON_KEY: &[(&str, &[&str])] = &[
     ("docker", &["Containerfile", "Dockerfile", ".dockerignore"]),

@@ -219,8 +219,10 @@ impl Pm {
         }
     }
 
-    /// VS Code-style window title: `file — repo — pm`, dropping the file segment
-    /// when nothing is open.
+    /// VS Code-style window title: `<context> — <repo> — pm`. The leading
+    /// segment tracks the active view — the open file (File-to-File), or the
+    /// ticket being viewed / created (Tickets) — and is dropped when there's
+    /// nothing to name.
     pub(crate) fn window_title(&self) -> String {
         let app = "pm";
         let repo = self
@@ -230,9 +232,35 @@ impl Pm {
             .file_name()
             .map(|n| n.to_string_lossy().into_owned())
             .unwrap_or_else(|| "pm".to_string());
-        match self.state.open.as_ref().and_then(|p| p.file_name()) {
-            Some(file) => format!("{} \u{2014} {repo} \u{2014} {app}", file.to_string_lossy()),
+
+        let lead: Option<String> = match self.view {
+            View::Summary => Some("Summary".to_string()),
+            View::Files => self
+                .state
+                .open
+                .as_ref()
+                .and_then(|p| p.file_name())
+                .map(|f| f.to_string_lossy().into_owned()),
+            View::Tickets => Some(self.ticket_title_segment()),
+        };
+
+        match lead {
+            Some(lead) => format!("{lead} \u{2014} {repo} \u{2014} {app}"),
             None => format!("{repo} \u{2014} {app}"),
+        }
+    }
+
+    /// The title-bar segment for the Tickets view.
+    fn ticket_title_segment(&self) -> String {
+        if self.composing == Some(Compose::NewTicket) {
+            return "New ticket".to_string();
+        }
+        match self.selected_ticket.and_then(|id| self.state.pm.ticket(id)) {
+            Some(t) => {
+                let title: String = t.title.chars().take(50).collect();
+                format!("{} {title}", self.state.pm.display_id(t)).trim().to_string()
+            }
+            None => "Tickets".to_string(),
         }
     }
 
