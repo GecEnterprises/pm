@@ -196,35 +196,65 @@ impl Default for PmData {
 }
 
 /// Read `<root>/.pm/pm.json5`. A missing file is not an error — it yields the
-/// default (empty) store. A malformed file *is* an error, so the UI can surface
-/// it instead of silently starting blank.
+/// default (empty) store.
+///
+/// Reads are retried briefly: the filesystem watcher can fire mid-write (an
+/// editor, or another pm process, replacing the file), and we'd rather wait a
+/// few ms than surface a transient "reading …" / parse error. A file that is
+/// still unreadable or malformed after the retries *is* returned as an error so
+/// the UI can show it.
 pub fn load(root: &Path) -> Result<PmData> {
     let path = root.join(".pm").join(FILE);
-    let text = match std::fs::read_to_string(&path) {
-        Ok(t) => t,
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(PmData::default()),
-        Err(e) => return Err(e).with_context(|| format!("reading {}", path.display())),
-    };
-    json5::from_str(&text).with_context(|| format!("parsing {}", path.display()))
+    let mut err: Option<anyhow::Error> = None;
+    for attempt in 0..5 {
+        if attempt > 0 {
+            std::thread::sleep(std::time::Duration::from_millis(12));
+        }
+        match std::fs::read_to_string(&path) {
+            Ok(text) => {
+                match json5::from_str::<PmData>(&text)
+                    .with_context(|| format!("parsing {}", path.display()))
+                {
+                    Ok(d) => return Ok(d),
+                    Err(e) => err = Some(e),
+                }
+            }
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(PmData::default()),
+            Err(e) => {
+                err = Some(anyhow::Error::new(e).context(format!("reading {}", path.display())))
+            }
+        }
+    }
+    Err(err.expect("loop ran at least once"))
 }
 
 impl PmData {
-    /// Pretty-printed JSON text (what `save` writes; also used to dedupe the
-    /// watcher event our own write triggers).
+    /// Pretty-printed JSON text (a valid JSON5 subset).
     pub fn to_pretty(&self) -> String {
         let mut s = serde_json::to_string_pretty(self).unwrap_or_default();
         s.push('\n');
         s
     }
 
-    /// Write `<root>/.pm/pm.json5`, creating `.pm/` if needed.
+    /// Write `<root>/.pm/pm.json5`, creating `.pm/` if needed. Writes a sibling
+    /// temp file and renames it into place so a concurrent reader never sees a
+    /// half-written file.
     pub fn save(&self, root: &Path) -> Result<()> {
         let dir = root.join(".pm");
         std::fs::create_dir_all(&dir)
             .with_context(|| format!("creating {}", dir.display()))?;
         let path = dir.join(FILE);
-        std::fs::write(&path, self.to_pretty())
-            .with_context(|| format!("writing {}", path.display()))
+        let tmp = dir.join(format!(".{FILE}.{}.tmp", std::process::id()));
+        std::fs::write(&tmp, self.to_pretty())
+            .with_context(|| format!("writing {}", tmp.display()))?;
+        std::fs::rename(&tmp, &path).or_else(|_| {
+            // Rare on Windows if a reader holds the target; fall back to a
+            // direct write and drop the temp.
+            let r = std::fs::write(&path, self.to_pretty());
+            let _ = std::fs::remove_file(&tmp);
+            r
+        })
+        .with_context(|| format!("replacing {}", path.display()))
     }
 
     pub fn ticket(&self, id: u64) -> Option<&Ticket> {

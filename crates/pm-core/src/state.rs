@@ -100,9 +100,6 @@ pub struct AppState {
     pub pm: PmData,
     /// Last `pm.json5` load/save error, surfaced in the Tickets pane.
     pub pm_error: Option<String>,
-    /// Exact bytes we last wrote to `pm.json5`, so the filesystem watch event
-    /// our own save triggers doesn't cause a redundant reload.
-    last_saved_pm: String,
 }
 
 impl AppState {
@@ -141,7 +138,6 @@ impl AppState {
             content: Content::Text,
             pm,
             pm_error,
-            last_saved_pm: String::new(),
         };
         s.rebuild_visible();
         // Open the first changed file, or — with no git — the first file in the
@@ -169,29 +165,23 @@ impl AppState {
         self.repo.root().join(".pm").join("pm.json5")
     }
 
-    /// Re-read `pm.json5` from disk. No-op when the file matches what we last
-    /// wrote (our own save round-trips through the watcher).
+    /// Re-read `pm.json5` from disk. `load` retries past a mid-write, and our own
+    /// atomic saves round-trip to identical data, so a reload triggered by our
+    /// own write just re-assigns the same `PmData`.
     pub fn reload_pm(&mut self) {
-        if let Ok(cur) = std::fs::read_to_string(self.pm_path()) {
-            if cur == self.last_saved_pm {
-                return;
-            }
-        }
         match pm::load(self.repo.root()) {
             Ok(d) => {
                 self.pm = d;
                 self.pm_error = None;
             }
+            // Keep the last good data on a failed reload; only surface it.
             Err(e) => self.pm_error = Some(e.to_string()),
         }
     }
 
     fn save_pm(&mut self) {
         match self.pm.save(self.repo.root()) {
-            Ok(()) => {
-                self.last_saved_pm = self.pm.to_pretty();
-                self.pm_error = None;
-            }
+            Ok(()) => self.pm_error = None,
             Err(e) => self.pm_error = Some(e.to_string()),
         }
     }
