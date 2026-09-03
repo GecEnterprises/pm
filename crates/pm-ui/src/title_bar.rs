@@ -72,13 +72,13 @@ impl Pm {
                     .child(SharedString::from(title)),
             )
             .child(self.menu_strip(cx))
-            .child(div().flex_1())
             .child(self.view_switcher(cx))
+            .child(div().flex_1())
             .child(self.window_controls(window, cx))
     }
 
-    /// The `Summary | File-to-File | Tickets` segmented switcher. Sits on the
-    /// right, tucked against the window controls (PM-25).
+    /// The `Summary | File-to-File | Tickets` segmented switcher, next to the
+    /// menu strip.
     fn view_switcher(&self, cx: &mut Context<Self>) -> impl IntoElement {
         let segs = [
             ("Summary", "project.svg", View::Summary),

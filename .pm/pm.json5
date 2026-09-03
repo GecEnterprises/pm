@@ -428,14 +428,14 @@
       "id": 25,
       "title": "Summary/File-to-File/Tickets needs to be closer to window control than menu bar, on the right side",
       "body": "",
-      "status": "in_progress",
+      "status": "wontfix",
       "priority": "normal",
       "labels": [
         "ui"
       ],
       "assignee": null,
       "created": 1788473945,
-      "updated": 1788462000,
+      "updated": 1788462600,
       "anchors": [],
       "comments": [
         {
@@ -443,6 +443,13 @@
           "author": "reaganiwadha",
           "created": 1788462000,
           "body": "Moved the switcher to the right edge of the title bar, against the window controls (crates/pm-ui/src/title_bar.rs).",
+          "anchor": null
+        },
+        {
+          "id": 2,
+          "author": "reaganiwadha",
+          "created": 1788462600,
+          "body": "Reverted — the switcher looks better on the left, next to the menu strip. Keeping it there. (PM-26 icons and PM-32 live title stay.)",
           "anchor": null
         }
       ]
