@@ -65,6 +65,17 @@ pub struct TreeEntry {
     pub depth: usize,
 }
 
+/// Collapse CRLF to LF so the diff compares content, not line endings. HEAD blobs
+/// come out of git with LF; the working copy is whatever is on disk (CRLF under
+/// `core.autocrlf` on Windows) — without this, every line reads as modified.
+fn normalize_eol(s: &str) -> String {
+    if s.contains('\r') {
+        s.replace("\r\n", "\n")
+    } else {
+        s.to_owned()
+    }
+}
+
 /// Pre-order DFS comparison: compare path components in lockstep; a prefix path
 /// sorts before its descendants.
 fn dfs_cmp(a: &Path, b: &Path) -> Ordering {
@@ -184,12 +195,14 @@ impl Repo {
         let tree = self.inner.head()?.peel_to_tree()?;
         let entry = tree.get_path(rel)?;
         let blob = self.inner.find_blob(entry.id())?;
-        Ok(String::from_utf8_lossy(blob.content()).into_owned())
+        Ok(normalize_eol(&String::from_utf8_lossy(blob.content())))
     }
 
     /// Current on-disk contents, or empty string if the file was deleted.
     pub fn working_content(&self, rel: &Path) -> String {
-        std::fs::read_to_string(self.root.join(rel)).unwrap_or_default()
+        std::fs::read_to_string(self.root.join(rel))
+            .map(|s| normalize_eol(&s))
+            .unwrap_or_default()
     }
 
     /// gitignore-aware DFS pre-order walk of the working tree. Siblings sorted
