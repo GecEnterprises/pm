@@ -17,9 +17,10 @@ use pm_core::state::Content;
 
 use crate::decorations::client_side_decorations;
 use crate::diff_view::{diff_view, ShapeCache};
+use crate::history_view::history_view;
 use crate::image_view::ImageView;
 use crate::list_view::list_view;
-use crate::menu::{About, Copy, Refresh, SelectAll, ToggleChanges, ToggleExplorer};
+use crate::menu::{About, Copy, Refresh, SelectAll, ToggleChanges, ToggleExplorer, ToggleHistory};
 use crate::scroll::{ScrollDrag, ScrollState};
 use crate::theme::*;
 use crate::tree_view::tree_view;
@@ -54,12 +55,14 @@ impl Render for DragPreview {
 #[derive(Clone, Copy)]
 enum Section {
     Changes,
+    History,
     Explorer,
 }
 impl Section {
     fn toggle(self, pm: &mut Pm) {
         match self {
             Section::Changes => pm.changes_collapsed = !pm.changes_collapsed,
+            Section::History => pm.history_collapsed = !pm.history_collapsed,
             Section::Explorer => pm.explorer_collapsed = !pm.explorer_collapsed,
         }
     }
@@ -75,11 +78,17 @@ pub struct Pm {
     pub list_drag: Option<ScrollDrag>,
     pub hover_file: Option<usize>,
 
+    pub history_scroll: ScrollState,
+    pub history_drag: Option<ScrollDrag>,
+    pub history_hover: Option<usize>,
+
     // layout prefs — persist across file switches, re-clamped on window resize
     pub sidebar_w: f32,
     pub changes_h: f32,
+    pub history_h: f32,
     pub diff_split: f32,
     pub changes_collapsed: bool,
+    pub history_collapsed: bool,
     pub explorer_collapsed: bool,
 
     pub root_bounds: Bounds<gpui::Pixels>,
@@ -132,10 +141,15 @@ impl Pm {
             list_scroll: ScrollState::default(),
             list_drag: None,
             hover_file: None,
+            history_scroll: ScrollState::default(),
+            history_drag: None,
+            history_hover: None,
             sidebar_w: 280.0,
             changes_h: 220.0,
+            history_h: 200.0,
             diff_split: 0.5,
             changes_collapsed: false,
+            history_collapsed: true,
             explorer_collapsed: false,
             root_bounds: Bounds::default(),
             diff_split_drag: None,
@@ -195,6 +209,28 @@ impl Pm {
         self.diff = DiffScroll::default();
         self.hover_file = None;
         self.tree_hover = None;
+        self.history_hover = None;
+    }
+
+    /// Point the diff at a history row: row 0 is the working tree, rows 1.. are
+    /// `state.commits[row - 1]` (compared against their first parent).
+    pub fn select_commit(&mut self, row: usize) {
+        let target = match row.checked_sub(1) {
+            None => pm_core::DiffTarget::WorkingTree,
+            Some(i) => match self.state.commits.get(i) {
+                Some(c) => pm_core::DiffTarget::Commit(c.id),
+                None => return,
+            },
+        };
+        if target == self.state.target {
+            return;
+        }
+        self.state.set_target(target);
+        self.shaped.clear();
+        self.diff = DiffScroll::default();
+        self.hover_file = None;
+        self.image_view = ImageView::default();
+        self.image_drag = None;
     }
 
     fn reload_open_keep_scroll(&mut self, rel: PathBuf) {
@@ -251,8 +287,11 @@ impl Pm {
         let rh = f32::from(root.size.height);
         let max_sb = (rw - SIDEBAR_MAX_MARGIN).max(SIDEBAR_MIN);
         self.sidebar_w = self.sidebar_w.clamp(SIDEBAR_MIN, max_sb);
-        let avail = (rh - 2.0 * SECTION_HEADER_H - SECTION_SPLIT_H).max(0.0);
-        self.changes_h = self.changes_h.clamp(0.0, avail);
+        // Room the three section headers + the one split handle always take.
+        let avail = (rh - 3.0 * SECTION_HEADER_H - SECTION_SPLIT_H).max(0.0);
+        self.history_h = self.history_h.clamp(0.0, avail);
+        let history_used = if self.history_collapsed { 0.0 } else { self.history_h };
+        self.changes_h = self.changes_h.clamp(0.0, (avail - history_used).max(0.0));
         self.diff_split = self.diff_split.clamp(DIFF_SPLIT_MIN, DIFF_SPLIT_MAX);
     }
 
@@ -550,6 +589,10 @@ impl Render for Pm {
                 pm.explorer_collapsed = !pm.explorer_collapsed;
                 cx.notify();
             }))
+            .on_action(cx.listener(|pm, _: &ToggleHistory, _, cx| {
+                pm.history_collapsed = !pm.history_collapsed;
+                cx.notify();
+            }))
             .on_action(cx.listener(|pm, _: &Copy, _, cx| pm.copy_selection(cx)))
             .on_action(cx.listener(|pm, _: &SelectAll, _, cx| pm.select_all(cx)))
             .on_key_down(cx.listener(|pm, e: &KeyDownEvent, _, cx| {
@@ -636,7 +679,17 @@ impl Pm {
     fn left_column(&self, cx: &mut Context<Self>) -> impl IntoElement {
         let e = cx.entity();
         let changes_open = !self.changes_collapsed;
+        let history_open = !self.history_collapsed;
         let explorer_open = !self.explorer_collapsed;
+
+        // The last open section fills the remaining space; earlier ones are fixed.
+        let last = if explorer_open {
+            2
+        } else if history_open {
+            1
+        } else {
+            0
+        };
 
         let mut col = div()
             .relative()
@@ -661,14 +714,15 @@ impl Pm {
                 .relative()
                 .overflow_hidden()
                 .child(list_view(e.clone()));
-            col = col.child(if explorer_open {
-                body.h(px(self.changes_h)).flex_none()
-            } else {
+            col = col.child(if last == 0 {
                 body.flex_1()
+            } else {
+                body.h(px(self.changes_h)).flex_none()
             });
         }
 
-        if changes_open && explorer_open {
+        // One resize handle, under Changes, whenever a section follows it.
+        if changes_open && (history_open || explorer_open) {
             col = col.child(
                 div()
                     .id("section-split")
@@ -682,6 +736,26 @@ impl Pm {
                     })
                     .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation()),
             );
+        }
+
+        col = col.child(self.section_header(
+            cx,
+            "Commit History",
+            Some(self.state.commits.len()),
+            self.history_collapsed,
+            Section::History,
+        ));
+
+        if history_open {
+            let body = div()
+                .relative()
+                .overflow_hidden()
+                .child(history_view(e.clone()));
+            col = col.child(if last == 1 {
+                body.flex_1()
+            } else {
+                body.h(px(self.history_h)).flex_none()
+            });
         }
 
         col = col.child(self.section_header(

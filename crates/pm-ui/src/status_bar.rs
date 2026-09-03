@@ -2,13 +2,17 @@
 //! Modelled on Zed's `workspace::status_bar` (a plain `h_flex`, no fixed height
 //! token, muted text).
 
-use gpui::{div, prelude::*, px, rgb, Context, Decorations, SharedString, Styled, Window};
+use gpui::{
+    div, prelude::*, px, rgb, Context, Decorations, MouseButton, SharedString, Styled, Window,
+};
+
+use pm_core::DiffTarget;
 
 use crate::app::Pm;
 use crate::theme::*;
 
 impl Pm {
-    pub(crate) fn status_bar(&self, window: &mut Window, _cx: &mut Context<Self>) -> impl IntoElement {
+    pub(crate) fn status_bar(&self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let decorations = window.window_decorations();
         let bar = div()
             .id("status-bar")
@@ -26,13 +30,43 @@ impl Pm {
             .border_color(rgb(BORDER))
             .text_color(rgb(DIM))
             .text_size(px(11.0))
-            .child(self.status_left())
+            .child(self.status_left(cx))
             .child(self.status_right());
         round_bottom(bar, decorations)
     }
 
-    fn status_left(&self) -> impl IntoElement {
+    fn status_left(&self, cx: &mut Context<Self>) -> impl IntoElement {
         let mut row = div().flex().flex_row().items_center().gap_3().min_w_0();
+
+        if let DiffTarget::Commit(oid) = self.state.target {
+            let summary = self
+                .state
+                .commits
+                .iter()
+                .find(|c| c.id == oid)
+                .map(|c| {
+                    let s: String = c.summary.chars().take(44).collect();
+                    format!("{}  {s}", c.short_id)
+                })
+                .unwrap_or_else(|| oid.to_string().chars().take(7).collect());
+            row = row.child(
+                div()
+                    .id("diffing")
+                    .px_1()
+                    .rounded_sm()
+                    .bg(rgb(SELECT))
+                    .text_color(rgb(TEXT))
+                    .cursor_pointer()
+                    .on_mouse_down(
+                        MouseButton::Left,
+                        cx.listener(|pm, _, _, cx| {
+                            pm.select_commit(0);
+                            cx.notify();
+                        }),
+                    )
+                    .child(SharedString::from(format!("Diffing {summary}"))),
+            );
+        }
 
         if let Some(branch) = &self.state.branch {
             row = row.child(SharedString::from(format!("\u{2387} {branch}")));

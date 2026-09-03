@@ -21,6 +21,8 @@ actions!(
         About,
         /// Show or hide the Changes panel.
         ToggleChanges,
+        /// Show or hide the Commit History panel.
+        ToggleHistory,
         /// Show or hide the Explorer panel.
         ToggleExplorer,
         /// Copy the diff selection.
@@ -46,6 +48,7 @@ pub fn app_menus() -> Vec<Menu> {
         ]),
         Menu::new("View").items([
             MenuItem::action("Changes Panel", ToggleChanges),
+            MenuItem::action("Commit History", ToggleHistory),
             MenuItem::action("Explorer Panel", ToggleExplorer),
         ]),
         Menu::new("Help").items([MenuItem::action("About pm", About)]),
@@ -107,6 +110,7 @@ pub fn menu_groups(pm: &Pm) -> Vec<Group> {
             name: "View",
             entries: vec![
                 checkable("Changes Panel", ToggleChanges, !pm.changes_collapsed),
+                checkable("Commit History", ToggleHistory, !pm.history_collapsed),
                 checkable("Explorer Panel", ToggleExplorer, !pm.explorer_collapsed),
             ],
         },

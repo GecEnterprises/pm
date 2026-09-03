@@ -7,7 +7,7 @@ use std::path::PathBuf;
 
 use crate::content::{FileKind, ImageKind};
 use crate::diff::{side_by_side, DiffRow};
-use crate::git::{FileChange, Repo, TreeEntry};
+use crate::git::{self, CommitInfo, DiffTarget, FileChange, Repo, TreeEntry};
 use crate::highlight::{Highlighter, Line};
 use crate::text::{BufferPos, DiffCursor, DiffText};
 
@@ -91,15 +91,21 @@ pub struct AppState {
     pub branch: Option<String>,
     /// Which viewer the open file needs (text / image / unviewable).
     pub content: Content,
+    /// What the diff currently compares (working tree, or a commit vs its parent).
+    pub target: DiffTarget,
+    /// Recent commits, newest first — the Commit History pane.
+    pub commits: Vec<CommitInfo>,
 }
 
 impl AppState {
     pub fn new(repo: Repo) -> Self {
-        let changes = repo.changes();
+        let target = DiffTarget::WorkingTree;
+        let changes = repo.changes(target);
         let change_names = compute_change_names(&changes);
-        let changed = repo.changed_set();
+        let changed = repo.changed_set(target);
         let tree = repo.walk_tree();
         let branch = repo.branch();
+        let commits = repo.log(git::LOG_LIMIT);
         let mut s = Self {
             repo,
             hl: Highlighter::new(),
@@ -107,6 +113,8 @@ impl AppState {
             change_names,
             changed,
             branch,
+            target,
+            commits,
             open: None,
             rows: Vec::new(),
             old_lines: Vec::new(),
@@ -132,13 +140,13 @@ impl AppState {
         self.open = Some(rel.clone());
         self.caret = None;
 
-        let old_bytes = self.repo.head_bytes(&rel);
-        let new_bytes = self.repo.working_bytes(&rel);
+        let old_bytes = self.repo.old_bytes(self.target, &rel);
+        let new_bytes = self.repo.new_bytes(self.target, &rel);
 
         match FileKind::detect(&rel, &old_bytes, &new_bytes) {
             FileKind::Text => {
-                let old = self.repo.head_content(&rel);
-                let new = self.repo.working_content(&rel);
+                let old = self.repo.old_content(self.target, &rel);
+                let new = self.repo.new_content(self.target, &rel);
                 self.old_lines = self.hl.highlight(&rel, &old);
                 self.new_lines = self.hl.highlight(&rel, &new);
                 self.rows = side_by_side(&old, &new);
@@ -206,34 +214,68 @@ impl AppState {
 
     /// Re-derive git state; reopen the current file or clear if it's gone.
     pub fn refresh(&mut self) {
-        self.changes = self.repo.changes();
+        self.commits = self.repo.log(git::LOG_LIMIT);
+        // A pinned commit may have been rewritten/dropped — fall back to the
+        // working tree if it's no longer in the log.
+        if let DiffTarget::Commit(oid) = self.target {
+            if !self.commits.iter().any(|c| c.id == oid) {
+                self.target = DiffTarget::WorkingTree;
+            }
+        }
+        self.changes = self.repo.changes(self.target);
         self.change_names = compute_change_names(&self.changes);
-        self.changed = self.repo.changed_set();
+        self.changed = self.repo.changed_set(self.target);
         self.tree = self.repo.walk_tree();
         self.branch = self.repo.branch();
         self.rebuild_visible();
         match self.open.clone() {
+            Some(rel) if self.changes.iter().any(|c| c.rel == rel) => self.open_path(rel),
             Some(rel)
-                if self.repo.root().join(&rel).exists()
-                    || self.changes.iter().any(|c| c.rel == rel) =>
+                if self.target == DiffTarget::WorkingTree
+                    && self.repo.root().join(&rel).exists() =>
             {
                 self.open_path(rel)
             }
-            _ => {
-                self.open = None;
-                self.clear_text_content();
-                self.caret = None;
-                self.content = Content::Text;
-            }
+            _ => self.close_open(),
+        }
+    }
+
+    fn close_open(&mut self) {
+        self.open = None;
+        self.clear_text_content();
+        self.caret = None;
+        self.content = Content::Text;
+    }
+
+    /// Switch what the diff compares, recompute the change list, and reopen.
+    pub fn set_target(&mut self, target: DiffTarget) {
+        self.target = target;
+        self.changes = self.repo.changes(target);
+        self.change_names = compute_change_names(&self.changes);
+        self.changed = self.repo.changed_set(target);
+        self.rebuild_visible();
+        match self.open.clone() {
+            Some(rel) if self.changes.iter().any(|c| c.rel == rel) => self.open_path(rel),
+            _ => match self.changes.first().map(|c| c.rel.clone()) {
+                Some(rel) => {
+                    self.tree_selected = Some(rel.clone());
+                    self.open_path(rel);
+                }
+                None => self.close_open(),
+            },
         }
     }
 
     /// Re-derive git state after a filesystem change. Returns the path to reload
-    /// (open file or `.git` touched), if any.
+    /// (open file or `.git` touched), if any. No-op while a commit is pinned —
+    /// working-tree edits don't affect a historical diff.
     pub fn apply_fs_change(&mut self, changed: &[PathBuf]) -> Option<PathBuf> {
-        self.changes = self.repo.changes();
+        if self.target != DiffTarget::WorkingTree {
+            return None;
+        }
+        self.changes = self.repo.changes(self.target);
         self.change_names = compute_change_names(&self.changes);
-        self.changed = self.repo.changed_set();
+        self.changed = self.repo.changed_set(self.target);
         self.tree = self.repo.walk_tree();
         self.branch = self.repo.branch();
         self.rebuild_visible();

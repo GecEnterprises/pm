@@ -1,17 +1,40 @@
-//! Thin wrapper over `git2` for the bits pm needs: which files changed, and the
-//! "before" (HEAD) and "after" (working tree) contents of a given file.
+//! Thin wrapper over `git2` for the bits pm needs: which files changed between a
+//! [`DiffTarget`]'s two sides, and the "before"/"after" bytes of a given file.
 
 use std::cmp::Ordering;
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 
 use anyhow::Result;
-use git2::{Delta, DiffOptions, Patch, Repository, Status, StatusOptions};
+use git2::{Delta, Diff, DiffOptions, Oid, Patch, Repository, Sort, Status, StatusOptions, Tree};
 use ignore::WalkBuilder;
+
+/// How many commits `log()` returns.
+pub const LOG_LIMIT: usize = 500;
 
 pub struct Repo {
     inner: Repository,
     root: PathBuf,
+}
+
+/// What the diff compares. `WorkingTree` (the default) is HEAD vs the working
+/// copy; `Commit` is a commit vs its first parent, like `git show`.
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]
+pub enum DiffTarget {
+    #[default]
+    WorkingTree,
+    Commit(Oid),
+}
+
+/// One entry in the commit-history list.
+pub struct CommitInfo {
+    pub id: Oid,
+    /// First 7 hex chars of the id.
+    pub short_id: String,
+    pub summary: String,
+    pub author: String,
+    /// Author time, unix seconds.
+    pub time: i64,
 }
 
 /// VS Code-style working-tree status for a changed file.
@@ -74,6 +97,39 @@ fn normalize_eol(s: &str) -> String {
     } else {
         s.to_owned()
     }
+}
+
+/// Turn a `git2::Diff`'s deltas into our `FileChange` list (status + ±LoC),
+/// sorted by path.
+fn deltas_to_changes(diff: &Diff<'_>) -> Vec<FileChange> {
+    let mut out = Vec::new();
+    for (i, delta) in diff.deltas().enumerate() {
+        let Some(path) = delta.new_file().path().or_else(|| delta.old_file().path()) else {
+            continue;
+        };
+        let status = match delta.status() {
+            Delta::Added => ChangeStatus::Added,
+            Delta::Deleted => ChangeStatus::Deleted,
+            Delta::Modified | Delta::Typechange => ChangeStatus::Modified,
+            Delta::Renamed | Delta::Copied => ChangeStatus::Renamed,
+            Delta::Untracked => ChangeStatus::Untracked,
+            _ => ChangeStatus::Other,
+        };
+        let (added, removed) = Patch::from_diff(diff, i)
+            .ok()
+            .flatten()
+            .and_then(|p| p.line_stats().ok())
+            .map(|(_, a, d)| (a, d))
+            .unwrap_or((0, 0));
+        out.push(FileChange {
+            rel: path.to_path_buf(),
+            status,
+            added,
+            removed,
+        });
+    }
+    out.sort_by(|a, b| a.rel.cmp(&b.rel));
+    out
 }
 
 /// Pre-order DFS comparison: compare path components in lockstep; a prefix path
@@ -139,78 +195,116 @@ impl Repo {
         Ok(out)
     }
 
-    /// Every changed file (staged, unstaged, or untracked) with its status and
-    /// added/removed line counts.
-    pub fn changes(&self) -> Vec<FileChange> {
-        let head_tree = self.inner.head().ok().and_then(|h| h.peel_to_tree().ok());
+    /// Recent commits reachable from HEAD, newest first (up to `limit`).
+    pub fn log(&self, limit: usize) -> Vec<CommitInfo> {
+        let Ok(mut walk) = self.inner.revwalk() else {
+            return Vec::new();
+        };
+        let _ = walk.set_sorting(Sort::TIME | Sort::TOPOLOGICAL);
+        if walk.push_head().is_err() {
+            return Vec::new();
+        }
+        walk.filter_map(Result::ok)
+            .take(limit)
+            .filter_map(|oid| {
+                let c = self.inner.find_commit(oid).ok()?;
+                let hex = oid.to_string();
+                let summary = c.summary().unwrap_or("").to_string();
+                let author = c.author().name().unwrap_or("").to_string();
+                let time = c.time().seconds();
+                Some(CommitInfo {
+                    id: oid,
+                    short_id: hex.get(..7).unwrap_or(&hex).to_string(),
+                    summary,
+                    author,
+                    time,
+                })
+            })
+            .collect()
+    }
+
+    /// Every changed file for `target`, with its status and ±line counts.
+    pub fn changes(&self, target: DiffTarget) -> Vec<FileChange> {
         let mut opts = DiffOptions::new();
         opts.include_untracked(true)
             .recurse_untracked_dirs(true)
             .show_untracked_content(true)
             .include_typechange(true);
 
-        let Ok(diff) = self
-            .inner
-            .diff_tree_to_workdir_with_index(head_tree.as_ref(), Some(&mut opts))
-        else {
+        let diff = match target {
+            DiffTarget::WorkingTree => {
+                let head_tree = self.inner.head().ok().and_then(|h| h.peel_to_tree().ok());
+                self.inner
+                    .diff_tree_to_workdir_with_index(head_tree.as_ref(), Some(&mut opts))
+            }
+            DiffTarget::Commit(oid) => {
+                let Ok(commit) = self.inner.find_commit(oid) else {
+                    return Vec::new();
+                };
+                let new_tree = commit.tree().ok();
+                let old_tree = commit.parent(0).ok().and_then(|p| p.tree().ok());
+                self.inner
+                    .diff_tree_to_tree(old_tree.as_ref(), new_tree.as_ref(), Some(&mut opts))
+            }
+        };
+        let Ok(diff) = diff else {
             return Vec::new();
         };
+        deltas_to_changes(&diff)
+    }
 
-        let mut out = Vec::new();
-        for (i, delta) in diff.deltas().enumerate() {
-            let Some(path) = delta.new_file().path().or_else(|| delta.old_file().path()) else {
-                continue;
-            };
-            let status = match delta.status() {
-                Delta::Added => ChangeStatus::Added,
-                Delta::Deleted => ChangeStatus::Deleted,
-                Delta::Modified | Delta::Typechange => ChangeStatus::Modified,
-                Delta::Renamed | Delta::Copied => ChangeStatus::Renamed,
-                Delta::Untracked => ChangeStatus::Untracked,
-                _ => ChangeStatus::Other,
-            };
-            let (added, removed) = Patch::from_diff(&diff, i)
-                .ok()
-                .flatten()
-                .and_then(|p| p.line_stats().ok())
-                .map(|(_, a, d)| (a, d))
-                .unwrap_or((0, 0));
-            out.push(FileChange {
-                rel: path.to_path_buf(),
-                status,
-                added,
-                removed,
-            });
+    /// The pair of trees `target` compares. `None` = an empty tree (root commit /
+    /// unborn HEAD); the working-tree side is `None` here — callers read it off disk.
+    fn target_trees(&self, target: DiffTarget) -> (Option<Tree<'_>>, Option<Tree<'_>>) {
+        match target {
+            DiffTarget::WorkingTree => (
+                self.inner.head().ok().and_then(|h| h.peel_to_tree().ok()),
+                None,
+            ),
+            DiffTarget::Commit(oid) => {
+                let commit = self.inner.find_commit(oid).ok();
+                let new = commit.as_ref().and_then(|c| c.tree().ok());
+                let old = commit
+                    .as_ref()
+                    .and_then(|c| c.parent(0).ok())
+                    .and_then(|p| p.tree().ok());
+                (old, new)
+            }
         }
-        out.sort_by(|a, b| a.rel.cmp(&b.rel));
-        out
     }
 
-    /// Raw file bytes at HEAD, or empty if the file is new / unreadable.
-    pub fn head_bytes(&self, rel: &Path) -> Vec<u8> {
-        self.try_head_bytes(rel).unwrap_or_default()
+    fn blob_in_tree(&self, tree: Option<&Tree<'_>>, rel: &Path) -> Vec<u8> {
+        tree.and_then(|t| t.get_path(rel).ok())
+            .and_then(|e| self.inner.find_blob(e.id()).ok())
+            .map(|b| b.content().to_vec())
+            .unwrap_or_default()
     }
 
-    fn try_head_bytes(&self, rel: &Path) -> Result<Vec<u8>> {
-        let tree = self.inner.head()?.peel_to_tree()?;
-        let entry = tree.get_path(rel)?;
-        let blob = self.inner.find_blob(entry.id())?;
-        Ok(blob.content().to_vec())
+    /// "Before" bytes for `target` (HEAD blob / parent-commit blob).
+    pub fn old_bytes(&self, target: DiffTarget, rel: &Path) -> Vec<u8> {
+        let (old, _) = self.target_trees(target);
+        self.blob_in_tree(old.as_ref(), rel)
     }
 
-    /// Raw on-disk file bytes, or empty if the file was deleted.
-    pub fn working_bytes(&self, rel: &Path) -> Vec<u8> {
-        std::fs::read(self.root.join(rel)).unwrap_or_default()
+    /// "After" bytes for `target` (the working copy on disk / the commit's blob).
+    pub fn new_bytes(&self, target: DiffTarget, rel: &Path) -> Vec<u8> {
+        match target {
+            DiffTarget::WorkingTree => std::fs::read(self.root.join(rel)).unwrap_or_default(),
+            DiffTarget::Commit(_) => {
+                let (_, new) = self.target_trees(target);
+                self.blob_in_tree(new.as_ref(), rel)
+            }
+        }
     }
 
-    /// File text at HEAD (lossy UTF-8, CRLF normalised), empty if new / unreadable.
-    pub fn head_content(&self, rel: &Path) -> String {
-        normalize_eol(&String::from_utf8_lossy(&self.head_bytes(rel)))
+    /// "Before" text (lossy UTF-8, CRLF normalised).
+    pub fn old_content(&self, target: DiffTarget, rel: &Path) -> String {
+        normalize_eol(&String::from_utf8_lossy(&self.old_bytes(target, rel)))
     }
 
-    /// Current on-disk text (lossy UTF-8, CRLF normalised), empty if deleted.
-    pub fn working_content(&self, rel: &Path) -> String {
-        normalize_eol(&String::from_utf8_lossy(&self.working_bytes(rel)))
+    /// "After" text (lossy UTF-8, CRLF normalised).
+    pub fn new_content(&self, target: DiffTarget, rel: &Path) -> String {
+        normalize_eol(&String::from_utf8_lossy(&self.new_bytes(target, rel)))
     }
 
     /// Short name of the checked-out branch (`"HEAD"` when detached), or `None`
@@ -255,9 +349,13 @@ impl Repo {
 
     /// Every changed file plus all of its ancestor directories, for O(1) tree
     /// tint tests.
-    pub fn changed_set(&self) -> HashSet<PathBuf> {
+    pub fn changed_set(&self, target: DiffTarget) -> HashSet<PathBuf> {
+        let paths: Vec<PathBuf> = match target {
+            DiffTarget::WorkingTree => self.changed_files().unwrap_or_default(),
+            DiffTarget::Commit(_) => self.changes(target).into_iter().map(|c| c.rel).collect(),
+        };
         let mut set = HashSet::new();
-        for path in self.changed_files().unwrap_or_default() {
+        for path in paths {
             for ancestor in path.ancestors() {
                 if ancestor.as_os_str().is_empty() {
                     break;
@@ -289,5 +387,26 @@ mod tests {
     fn branch_of_own_repo() {
         let repo = Repo::discover(Path::new(".")).unwrap();
         assert!(repo.branch().is_some());
+    }
+
+    #[test]
+    fn log_of_own_repo() {
+        let repo = Repo::discover(Path::new(".")).unwrap();
+        let log = repo.log(20);
+        assert!(!log.is_empty());
+        assert_eq!(log[0].short_id.len(), 7);
+        assert!(!log[0].summary.is_empty());
+    }
+
+    #[test]
+    fn commit_diff_nonempty() {
+        let repo = Repo::discover(Path::new(".")).unwrap();
+        let head = repo.log(1).into_iter().next().unwrap();
+        // The tip commit changed at least one file vs its parent.
+        assert!(!repo.changes(DiffTarget::Commit(head.id)).is_empty());
+        assert!(repo
+            .old_bytes(DiffTarget::WorkingTree, Path::new("Cargo.toml"))
+            .len()
+            > 0);
     }
 }
