@@ -4,7 +4,7 @@
     "name": "pm",
     "key": "PM"
   },
-  "next_id": 34,
+  "next_id": 36,
   "tickets": [
     {
       "id": 5,
@@ -428,27 +428,47 @@
       "id": 25,
       "title": "Summary/File-to-File/Tickets needs to be closer to window control than menu bar, on the right side",
       "body": "",
-      "status": "open",
+      "status": "in_progress",
       "priority": "normal",
-      "labels": [],
+      "labels": [
+        "ui"
+      ],
       "assignee": null,
       "created": 1788473945,
-      "updated": 1788473945,
+      "updated": 1788462000,
       "anchors": [],
-      "comments": []
+      "comments": [
+        {
+          "id": 1,
+          "author": "reaganiwadha",
+          "created": 1788462000,
+          "body": "Moved the switcher to the right edge of the title bar, against the window controls (crates/pm-ui/src/title_bar.rs).",
+          "anchor": null
+        }
+      ]
     },
     {
       "id": 26,
       "title": "Summary/File-to-File/Tickets needs to have icons on it",
       "body": "",
-      "status": "open",
+      "status": "in_progress",
       "priority": "normal",
-      "labels": [],
+      "labels": [
+        "ui"
+      ],
       "assignee": null,
       "created": 1788473965,
-      "updated": 1788473965,
+      "updated": 1788462000,
       "anchors": [],
-      "comments": []
+      "comments": [
+        {
+          "id": 1,
+          "author": "reaganiwadha",
+          "created": 1788462000,
+          "body": "Each segment now shows an icon (project/diff/hash svg) via gpui::svg().data() + new icons::svg_bytes(). Restart to see it.",
+          "anchor": null
+        }
+      ]
     },
     {
       "id": 27,
@@ -543,14 +563,24 @@
       "id": 32,
       "title": "Window title not updating on what ticket is being selected or is it new ticket",
       "body": "",
-      "status": "open",
+      "status": "in_progress",
       "priority": "normal",
-      "labels": [],
+      "labels": [
+        "ui"
+      ],
       "assignee": null,
       "created": 1788474656,
-      "updated": 1788474656,
+      "updated": 1788462000,
       "anchors": [],
-      "comments": []
+      "comments": [
+        {
+          "id": 1,
+          "author": "reaganiwadha",
+          "created": 1788462000,
+          "body": "window_title() (crates/pm-ui/src/app.rs) now tracks the active view: open file in File-to-File; \"New ticket\" / \"PM-N <title>\" / \"Tickets\" in Tickets; \"Summary\" in Summary.",
+          "anchor": null
+        }
+      ]
     },
     {
       "id": 33,
@@ -562,6 +592,32 @@
       "assignee": null,
       "created": 1788475086,
       "updated": 1788475086,
+      "anchors": [],
+      "comments": []
+    },
+    {
+      "id": 34,
+      "title": "pm.json5 alternative storage engine/option.",
+      "body": "Users can choose whether to store database of pm work in .pm in the repository, or store it locally in ~/.pm/path-to-project-in-strips/. For this to work, we need a layer of persistance working. Keyval db works no need sqlite i think.",
+      "status": "open",
+      "priority": "normal",
+      "labels": [],
+      "assignee": null,
+      "created": 1788475247,
+      "updated": 1788475247,
+      "anchors": [],
+      "comments": []
+    },
+    {
+      "id": 35,
+      "title": "pm cloud - this is a very farfetched feature and needs more elaboration",
+      "body": "",
+      "status": "open",
+      "priority": "normal",
+      "labels": [],
+      "assignee": null,
+      "created": 1788475270,
+      "updated": 1788475270,
       "anchors": [],
       "comments": []
     }
