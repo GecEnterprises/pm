@@ -40,6 +40,7 @@ fn main() {
     application().run(move |cx: &mut App| {
         let _ = ICON.set(icon.clone());
         fonts::load(cx);
+        pm_ui::ConfigStore::init(cx);
 
         cx.set_menus(pm_ui::app_menus());
         cx.bind_keys([
