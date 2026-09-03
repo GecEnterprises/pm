@@ -6,7 +6,7 @@ use std::time::Duration;
 
 use gpui::{
     canvas, deferred, div, prelude::*, px, rgb, rgba, Bounds, ClipboardItem, Context, DragMoveEvent,
-    Empty, FocusHandle, KeyDownEvent, MouseButton, SharedString, Window,
+    Empty, Entity, FocusHandle, KeyDownEvent, MouseButton, SharedString, Window,
 };
 
 use pm_core::text::{BufferPos, DiffCursor};
@@ -25,7 +25,7 @@ use crate::menu::{
     ViewSummary, ViewTickets,
 };
 use crate::scroll::{ScrollDrag, ScrollState};
-use crate::text_input::TextInput;
+use crate::text_input::{TextInput, TextInputEvent};
 use crate::theme::*;
 use crate::tree_view::tree_view;
 
@@ -152,9 +152,9 @@ pub struct Pm {
     pub selected_ticket: Option<u64>,
     /// Active authoring action in the Tickets pane, if any.
     pub composing: Option<Compose>,
-    pub new_ticket_title: TextInput,
-    pub new_ticket_body: TextInput,
-    pub comment_box: TextInput,
+    pub new_ticket_title: Entity<TextInput>,
+    pub new_ticket_body: Entity<TextInput>,
+    pub comment_box: Entity<TextInput>,
     pub ticket_hover: Option<usize>,
 }
 
@@ -163,6 +163,16 @@ impl Pm {
         let sentinel = Sentinel::start(repo.root().to_path_buf())
             .map_err(|e| eprintln!("pm: filesystem watch unavailable ({e})"))
             .ok();
+
+        let new_ticket_title = cx.new(|cx| TextInput::single(cx).placeholder("Title"));
+        cx.subscribe(&new_ticket_title, |pm, _, ev, cx| match ev {
+            TextInputEvent::Submit => pm.submit_new_ticket(cx),
+        })
+        .detach();
+        let new_ticket_body =
+            cx.new(|cx| TextInput::multi(cx).placeholder("Description (optional)"));
+        let comment_box = cx.new(|cx| TextInput::multi(cx).placeholder("Add a comment\u{2026}"));
+
         Self {
             state: AppState::new(repo),
             shaped: ShapeCache::default(),
@@ -202,9 +212,9 @@ impl Pm {
             view: View::Files,
             selected_ticket: None,
             composing: None,
-            new_ticket_title: TextInput::single(cx),
-            new_ticket_body: TextInput::multi(cx),
-            comment_box: TextInput::multi(cx),
+            new_ticket_title,
+            new_ticket_body,
+            comment_box,
             ticket_hover: None,
         }
     }
@@ -559,7 +569,7 @@ impl Render for Pm {
         let body = match self.view {
             View::Files => self.files_body(cx).into_any_element(),
             View::Summary => self.summary_body().into_any_element(),
-            View::Tickets => self.tickets_body(window, cx).into_any_element(),
+            View::Tickets => self.tickets_body(cx).into_any_element(),
         };
 
         let root = div()

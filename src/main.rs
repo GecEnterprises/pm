@@ -50,6 +50,7 @@ fn main() {
             KeyBinding::new("ctrl-2", ViewFiles, None),
             KeyBinding::new("ctrl-3", ViewTickets, None),
         ]);
+        bind_text_input_keys(cx);
         cx.on_action(|_: &Quit, cx| cx.quit());
         cx.on_action(|_: &OpenFolder, cx| {
             let paths = cx.prompt_for_paths(PathPromptOptions {
@@ -71,6 +72,40 @@ fn main() {
         open_pm_window(cx, &path);
         cx.activate(true);
     });
+}
+
+/// Keybindings for the editable text fields (Tickets pane). Scoped to the
+/// `TextInput` key contexts so they never reach the diff view or menus.
+fn bind_text_input_keys(cx: &mut gpui::App) {
+    use pm_ui::text_input::*;
+    let ti = Some("TextInput");
+    cx.bind_keys([
+        KeyBinding::new("backspace", Backspace, ti),
+        KeyBinding::new("delete", Delete, ti),
+        KeyBinding::new("ctrl-backspace", DeleteWordLeft, ti),
+        KeyBinding::new("left", Left, ti),
+        KeyBinding::new("right", Right, ti),
+        KeyBinding::new("up", Up, ti),
+        KeyBinding::new("down", Down, ti),
+        KeyBinding::new("ctrl-left", WordLeft, ti),
+        KeyBinding::new("ctrl-right", WordRight, ti),
+        KeyBinding::new("home", Home, ti),
+        KeyBinding::new("end", End, ti),
+        KeyBinding::new("shift-left", SelectLeft, ti),
+        KeyBinding::new("shift-right", SelectRight, ti),
+        KeyBinding::new("shift-up", SelectUp, ti),
+        KeyBinding::new("shift-down", SelectDown, ti),
+        KeyBinding::new("ctrl-shift-left", SelectWordLeft, ti),
+        KeyBinding::new("ctrl-shift-right", SelectWordRight, ti),
+        KeyBinding::new("shift-home", SelectHome, ti),
+        KeyBinding::new("shift-end", SelectEnd, ti),
+        KeyBinding::new("ctrl-a", SelectAll, ti),
+        KeyBinding::new("ctrl-c", Copy, ti),
+        KeyBinding::new("ctrl-x", Cut, ti),
+        KeyBinding::new("ctrl-v", Paste, ti),
+        KeyBinding::new("enter", Confirm, Some("TextInputSingleLine")),
+        KeyBinding::new("enter", Newline, Some("TextInputMultiLine")),
+    ]);
 }
 
 /// Open a pm window for `path` — as a git repo if it's inside one, otherwise as

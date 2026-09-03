@@ -5,15 +5,12 @@
 
 use std::path::PathBuf;
 
-use gpui::{
-    div, prelude::*, px, rgb, Context, KeyDownEvent, MouseButton, SharedString, Window,
-};
+use gpui::{div, prelude::*, px, rgb, Context, MouseButton, SharedString};
 
 use pm_core::Ticket;
 
 use crate::app::{Compose, Pm, View};
 use crate::history_view::rel_time;
-use crate::text_input::text_input;
 use crate::theme::*;
 
 fn chip(text: impl Into<SharedString>, color: u32) -> impl IntoElement {
@@ -39,11 +36,7 @@ fn text_block(s: &str) -> impl IntoElement {
 }
 
 impl Pm {
-    pub(crate) fn tickets_body(
-        &self,
-        window: &mut Window,
-        cx: &mut Context<Self>,
-    ) -> impl IntoElement {
+    pub(crate) fn tickets_body(&self, cx: &mut Context<Self>) -> impl IntoElement {
         div()
             .flex_1()
             .min_h_0()
@@ -51,7 +44,7 @@ impl Pm {
             .flex_row()
             .bg(rgb(BG))
             .child(self.ticket_list(cx))
-            .child(self.ticket_detail(window, cx))
+            .child(self.ticket_detail(cx))
     }
 
     fn ticket_list(&self, cx: &mut Context<Self>) -> impl IntoElement {
@@ -82,9 +75,11 @@ impl Pm {
                         cx.listener(|pm, _, window, cx| {
                             pm.composing = Some(Compose::NewTicket);
                             pm.selected_ticket = None;
-                            pm.new_ticket_title.clear();
-                            pm.new_ticket_body.clear();
-                            window.focus(&pm.new_ticket_title.focus, cx);
+                            pm.new_ticket_body.update(cx, |ti, cx| ti.reset(cx));
+                            pm.new_ticket_title.update(cx, |ti, cx| {
+                                ti.reset(cx);
+                                ti.focus(window, cx);
+                            });
                             cx.notify();
                         }),
                     ),
@@ -133,7 +128,7 @@ impl Pm {
                         cx.listener(move |pm, _, _, cx| {
                             pm.selected_ticket = Some(id);
                             pm.composing = None;
-                            pm.comment_box.clear();
+                            pm.comment_box.update(cx, |ti, cx| ti.reset(cx));
                             cx.notify();
                         }),
                     ),
@@ -153,7 +148,7 @@ impl Pm {
             .child(list)
     }
 
-    fn ticket_detail(&self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    fn ticket_detail(&self, cx: &mut Context<Self>) -> impl IntoElement {
         let mut col = div()
             .id("ticket-detail")
             .flex_1()
@@ -177,11 +172,11 @@ impl Pm {
         }
 
         if self.composing == Some(Compose::NewTicket) {
-            return col.child(self.new_ticket_form(window, cx)).into_any_element();
+            return col.child(self.new_ticket_form(cx)).into_any_element();
         }
 
         match self.selected_ticket.and_then(|id| self.state.pm.ticket(id)) {
-            Some(t) => col.child(self.ticket_card(t, window, cx)).into_any_element(),
+            Some(t) => col.child(self.ticket_card(t, cx)).into_any_element(),
             None => col
                 .child(
                     div()
@@ -192,10 +187,7 @@ impl Pm {
         }
     }
 
-    fn new_ticket_form(&self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let title_focused = self.new_ticket_title.focus.is_focused(window);
-        let body_focused = self.new_ticket_body.focus.is_focused(window);
-
+    fn new_ticket_form(&self, cx: &mut Context<Self>) -> impl IntoElement {
         div()
             .flex()
             .flex_col()
@@ -206,36 +198,8 @@ impl Pm {
                     .text_color(rgb(TEXT))
                     .child(SharedString::from("New ticket")),
             )
-            .child(
-                text_input("nt-title", &self.new_ticket_title, "Title", title_focused)
-                    .on_mouse_down(
-                        MouseButton::Left,
-                        cx.listener(|pm, _, w, cx| {
-                            w.focus(&pm.new_ticket_title.focus, cx);
-                            cx.notify();
-                        }),
-                    )
-                    .on_key_down(cx.listener(|pm, e: &KeyDownEvent, w, cx| {
-                        if pm.new_ticket_title.key(e, w, cx) {
-                            pm.submit_new_ticket(cx);
-                        }
-                        cx.notify();
-                    })),
-            )
-            .child(
-                text_input("nt-body", &self.new_ticket_body, "Description (optional)", body_focused)
-                    .on_mouse_down(
-                        MouseButton::Left,
-                        cx.listener(|pm, _, w, cx| {
-                            w.focus(&pm.new_ticket_body.focus, cx);
-                            cx.notify();
-                        }),
-                    )
-                    .on_key_down(cx.listener(|pm, e: &KeyDownEvent, w, cx| {
-                        pm.new_ticket_body.key(e, w, cx);
-                        cx.notify();
-                    })),
-            )
+            .child(self.new_ticket_title.clone())
+            .child(self.new_ticket_body.clone())
             .child(
                 div()
                     .flex()
@@ -278,15 +242,9 @@ impl Pm {
             )
     }
 
-    fn ticket_card(
-        &self,
-        t: &Ticket,
-        window: &mut Window,
-        cx: &mut Context<Self>,
-    ) -> impl IntoElement {
+    fn ticket_card(&self, t: &Ticket, cx: &mut Context<Self>) -> impl IntoElement {
         let pm = &self.state.pm;
         let tid = t.id;
-        let comment_focused = self.comment_box.focus.is_focused(window);
 
         let mut meta = div()
             .flex()
@@ -395,20 +353,7 @@ impl Pm {
                 .flex_col()
                 .gap_2()
                 .mt_2()
-                .child(
-                    text_input("comment-box", &self.comment_box, "Add a comment\u{2026}", comment_focused)
-                        .on_mouse_down(
-                            MouseButton::Left,
-                            cx.listener(|pm, _, w, cx| {
-                                w.focus(&pm.comment_box.focus, cx);
-                                cx.notify();
-                            }),
-                        )
-                        .on_key_down(cx.listener(|pm, e: &KeyDownEvent, w, cx| {
-                            pm.comment_box.key(e, w, cx);
-                            cx.notify();
-                        })),
-                )
+                .child(self.comment_box.clone())
                 .child(
                     div()
                         .id("comment-submit")
@@ -423,7 +368,7 @@ impl Pm {
                         .on_mouse_down(
                             MouseButton::Left,
                             cx.listener(move |pm, _, _, cx| {
-                                let body = pm.comment_box.take();
+                                let body = pm.comment_box.update(cx, |ti, cx| ti.take(cx));
                                 if !body.is_empty() {
                                     pm.state.add_comment(tid, body);
                                     cx.notify();
@@ -434,12 +379,12 @@ impl Pm {
         )
     }
 
-    fn submit_new_ticket(&mut self, cx: &mut Context<Self>) {
-        let title = self.new_ticket_title.take();
+    pub(crate) fn submit_new_ticket(&mut self, cx: &mut Context<Self>) {
+        let title = self.new_ticket_title.update(cx, |ti, cx| ti.take(cx));
         if title.is_empty() {
             return;
         }
-        let body = self.new_ticket_body.take();
+        let body = self.new_ticket_body.update(cx, |ti, cx| ti.take(cx));
         let id = self.state.create_ticket(title, body);
         self.selected_ticket = Some(id);
         self.composing = None;

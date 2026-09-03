@@ -15,6 +15,7 @@ pub mod title_bar;
 pub mod tree_view;
 
 pub use app::Pm;
+pub use text_input::{TextInput, TextInputEvent};
 pub use menu::{
     app_menus, About, Copy, OpenFolder, Quit, Refresh, SelectAll, ToggleChanges, ToggleExplorer,
     ToggleHistory, ViewFiles, ViewSummary, ViewTickets,

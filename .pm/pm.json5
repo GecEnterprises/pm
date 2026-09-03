@@ -4,7 +4,7 @@
     "name": "pm",
     "key": "PM"
   },
-  "next_id": 23,
+  "next_id": 30,
   "tickets": [
     {
       "id": 5,
@@ -130,6 +130,13 @@
           "author": "reaganiwadha",
           "created": 1788450439,
           "body": "Can't even jump the caret to other section freely with mouse cursor click",
+          "anchor": null
+        },
+        {
+          "id": 4,
+          "author": "reaganiwadha",
+          "created": 1788460000,
+          "body": "Rebuilt text_input the gpui/Zed way (crates/gpui/examples/input.rs): TextInput is now its own entity with a custom Element that shapes each line once via shape_line and paints it as a single ShapedLine — no more glyph jumping. Text arrives through the OS IME pipeline (window.handle_input + EntityInputHandler), so dead keys/compose/AltGr work. Mouse: click places the caret, drag selects, shift-click extends. Editing is actions bound under a 'TextInput' key context in main.rs (Ctrl+A/C/X/V, Ctrl+arrows, Ctrl+Backspace, Home/End, shift-motions, Up/Down); Enter submits single-line, inserts newline in multiline. Single-line fields scroll horizontally to keep the caret visible. Not done: soft-wrap, undo/redo. Needs a run to verify (blocked by a running pm.exe here).",
           "anchor": null
         }
       ]
@@ -381,6 +388,97 @@
       "assignee": null,
       "created": 1788450414,
       "updated": 1788450414,
+      "anchors": [],
+      "comments": []
+    },
+    {
+      "id": 23,
+      "title": "Lineage graphic in the commit history",
+      "body": "",
+      "status": "open",
+      "priority": "normal",
+      "labels": [],
+      "assignee": null,
+      "created": 1788473410,
+      "updated": 1788473410,
+      "anchors": [],
+      "comments": []
+    },
+    {
+      "id": 24,
+      "title": "User/commit graphic in the commit history",
+      "body": "",
+      "status": "open",
+      "priority": "normal",
+      "labels": [],
+      "assignee": null,
+      "created": 1788473421,
+      "updated": 1788473421,
+      "anchors": [],
+      "comments": []
+    },
+    {
+      "id": 25,
+      "title": "Summary/File-to-File/Tickets needs to be closer to window control than menu bar, on the right side",
+      "body": "",
+      "status": "open",
+      "priority": "normal",
+      "labels": [],
+      "assignee": null,
+      "created": 1788473945,
+      "updated": 1788473945,
+      "anchors": [],
+      "comments": []
+    },
+    {
+      "id": 26,
+      "title": "Summary/File-to-File/Tickets needs to have icons on it",
+      "body": "",
+      "status": "open",
+      "priority": "normal",
+      "labels": [],
+      "assignee": null,
+      "created": 1788473965,
+      "updated": 1788473965,
+      "anchors": [],
+      "comments": []
+    },
+    {
+      "id": 27,
+      "title": "Related to PM-14, add a github actions for building in the release branch",
+      "body": "Add a way to carry release notes and changes in a release and make sure it's embedded in the binary so we can see it in about",
+      "status": "open",
+      "priority": "normal",
+      "labels": [],
+      "assignee": null,
+      "created": 1788474144,
+      "updated": 1788474144,
+      "anchors": [],
+      "comments": []
+    },
+    {
+      "id": 28,
+      "title": "Can't tab between inputs like Title to Description",
+      "body": "",
+      "status": "open",
+      "priority": "normal",
+      "labels": [],
+      "assignee": null,
+      "created": 1788474164,
+      "updated": 1788474164,
+      "anchors": [],
+      "comments": []
+    },
+    {
+      "id": 29,
+      "title": "Sort tickets by Priority, Latest Change, etc",
+      "body": "",
+      "status": "open",
+      "priority": "normal",
+      "labels": [],
+      "assignee": null,
+      "created": 1788474195,
+      "updated": 1788474195,
       "anchors": [],
       "comments": []
     }
