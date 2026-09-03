@@ -50,23 +50,35 @@ impl Config {
         s
     }
 
-    /// Load from `path`. Missing → default; unreadable / malformed → default
-    /// (logged). Bytes are decoded lossily so one stray byte can't wipe the
-    /// file (same lesson as `pm.json5`).
-    pub fn load_from(path: &Path) -> Self {
+    /// Load from `path`. Missing file → `Ok(default)`. Unreadable or malformed →
+    /// `Err(reason)` (the caller still gets to fall back to defaults, but can
+    /// tell the user). Bytes are decoded lossily so one stray byte can't wipe
+    /// the file (same lesson as `pm.json5`).
+    pub fn try_load_from(path: &Path) -> std::result::Result<Config, String> {
         match std::fs::read(path) {
             Ok(bytes) => {
                 let text = String::from_utf8_lossy(&bytes);
-                serde_json::from_str(&text).unwrap_or_else(|e| {
-                    eprintln!("pm: {} is malformed ({e}); using default config", path.display());
-                    Config::default()
-                })
+                serde_json::from_str(&text)
+                    .map_err(|e| format!("{} is not valid JSON: {e}", path.display()))
             }
-            Err(e) if e.kind() == std::io::ErrorKind::NotFound => Config::default(),
-            Err(e) => {
-                eprintln!("pm: reading {} failed ({e}); using default config", path.display());
-                Config::default()
-            }
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(Config::default()),
+            Err(e) => Err(format!("could not read {}: {e}", path.display())),
+        }
+    }
+
+    /// Infallible load from `path` — errors become logged defaults.
+    pub fn load_from(path: &Path) -> Self {
+        Self::try_load_from(path).unwrap_or_else(|why| {
+            eprintln!("pm: {why}; using default config");
+            Config::default()
+        })
+    }
+
+    /// Load from the default location, reporting *why* on failure.
+    pub fn try_load() -> std::result::Result<Config, String> {
+        match config_path() {
+            Some(p) => Self::try_load_from(&p),
+            None => Err("no home directory".to_string()),
         }
     }
 

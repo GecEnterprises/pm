@@ -4,7 +4,7 @@
     "name": "pm",
     "key": "PM"
   },
-  "next_id": 39,
+  "next_id": 42,
   "tickets": [
     {
       "id": 5,
@@ -737,6 +737,45 @@
       "assignee": null,
       "created": 1788477949,
       "updated": 1788477949,
+      "anchors": [],
+      "comments": []
+    },
+    {
+      "id": 39,
+      "title": "Whether a dialog pane is hidden or shown is config store",
+      "body": "",
+      "status": "open",
+      "priority": "normal",
+      "labels": [],
+      "assignee": null,
+      "created": 1788479108,
+      "updated": 1788479108,
+      "anchors": [],
+      "comments": []
+    },
+    {
+      "id": 40,
+      "title": "Commit history should be opened by default",
+      "body": "",
+      "status": "open",
+      "priority": "normal",
+      "labels": [],
+      "assignee": null,
+      "created": 1788479117,
+      "updated": 1788479117,
+      "anchors": [],
+      "comments": []
+    },
+    {
+      "id": 41,
+      "title": "File-to-File explorer should have an options dialog dropdown and have a toggle to \"Always select opened file\"",
+      "body": "",
+      "status": "open",
+      "priority": "normal",
+      "labels": [],
+      "assignee": null,
+      "created": 1788479155,
+      "updated": 1788479155,
       "anchors": [],
       "comments": []
     }

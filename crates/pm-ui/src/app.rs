@@ -600,6 +600,10 @@ impl Pm {
 
 impl Render for Pm {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        // One-shot: surfaces a native dialog if the config store started
+        // read-only or failed to load. `take_alert` self-clears.
+        crate::config::present_config_alert(window, cx);
+
         let title = self.window_title();
         if title != self.title {
             window.set_window_title(&title);
