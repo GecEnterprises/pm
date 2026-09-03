@@ -7,7 +7,7 @@ use std::path::Path;
 
 use include_dir::{include_dir, Dir};
 
-static ICONS: Dir<'static> = include_dir!("$CARGO_MANIFEST_DIR/assets/file_icons");
+static ICONS: Dir<'static> = include_dir!("$CARGO_MANIFEST_DIR/assets");
 
 fn bytes(name: &str) -> &'static [u8] {
     ICONS

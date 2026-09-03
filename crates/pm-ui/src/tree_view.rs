@@ -1,6 +1,7 @@
-//! The "Changes" list: a custom [`Element`] showing each changed file as
-//! `[status] [icon] name … [+adds -dels]`, with the same scroll model as
-//! [`crate::tree_view`].
+//! The Explorer file tree: a custom [`Element`] built on the same scroll model as
+//! [`crate::list_view`], with indent + chevron + file-type icon per row.
+
+use std::path::PathBuf;
 
 use gpui::{
     fill, font, point, px, rgb, rgba, size, App, Bounds, ContentMask, DispatchPhase, Element,
@@ -11,35 +12,36 @@ use gpui::{
 
 use crate::icons;
 use crate::scroll::{Axis, BarInfo, ScrollDrag};
-use crate::{Pm, BAR, BORDER, DIM, ICON_SIZE, LIST_ROW_H, PANEL, SELECT, TEXT};
+use crate::app::Pm;
+use crate::theme::{
+    BAR, BORDER, CHANGED, DIM, ICON_SIZE, PANEL, SELECT, TEXT, TREE_INDENT, TREE_ROW_H,
+};
 
-const ADD_FG: u32 = 0x81b88b;
-const DEL_FG: u32 = 0xc74e39;
-
-pub struct ListView {
+pub struct TreeView {
     pm: Entity<Pm>,
 }
 
-pub fn list_view(pm: Entity<Pm>) -> ListView {
-    ListView { pm }
+pub fn tree_view(pm: Entity<Pm>) -> TreeView {
+    TreeView { pm }
 }
 
-impl IntoElement for ListView {
+impl IntoElement for TreeView {
     type Element = Self;
     fn into_element(self) -> Self {
         self
     }
 }
 
-struct ChangeRow {
+struct TreeRow {
+    depth: usize,
+    changed: bool,
     selected: bool,
-    status: ShapedLine,
-    icon: (&'static str, &'static [u8]),
     name: ShapedLine,
-    badge: Option<ShapedLine>,
+    chevron: Option<(&'static str, &'static [u8])>,
+    icon: (&'static str, &'static [u8]),
 }
 
-pub struct ListPrepaint {
+pub struct TreePrepaint {
     left: f32,
     top: f32,
     width: f32,
@@ -48,15 +50,15 @@ pub struct ListPrepaint {
     off_y: f32,
     count: usize,
     hover: Option<usize>,
-    rows: Vec<ChangeRow>,
+    rows: Vec<TreeRow>,
     bar: Option<BarInfo>,
     body_id: HitboxId,
     bar_id: Option<HitboxId>,
 }
 
-impl Element for ListView {
+impl Element for TreeView {
     type RequestLayoutState = ();
-    type PrepaintState = ListPrepaint;
+    type PrepaintState = TreePrepaint;
 
     fn id(&self) -> Option<ElementId> {
         None
@@ -87,96 +89,63 @@ impl Element for ListView {
         _request_layout: &mut (),
         window: &mut Window,
         cx: &mut App,
-    ) -> ListPrepaint {
+    ) -> TreePrepaint {
         let left = f32::from(bounds.left());
         let top = f32::from(bounds.top());
         let w = f32::from(bounds.size.width).max(0.0);
         let h = f32::from(bounds.size.height).max(0.0);
 
         let name_font = font("Segoe UI");
-        let name_size = px(13.0);
-        let small = px(11.0);
-
-        let run = |text: &SharedString, color: u32, font_ref: &gpui::Font| TextRun {
-            len: text.len(),
-            font: font_ref.clone(),
-            color: rgb(color).into(),
-            background_color: None,
-            underline: None,
-            strikethrough: None,
-        };
+        let font_size = px(13.0);
 
         let (first, off_y, count, hover, rows) = self.pm.update(cx, |pm, _cx| {
             let ts = window.text_system();
-            let count = pm.changes.len();
+            let count = pm.state.visible.len();
 
-            pm.list_scroll.content = size(px(0.0), px(count as f32 * LIST_ROW_H));
-            pm.list_scroll.viewport = bounds.size;
-            pm.list_scroll.clamp();
-            let off_y = f32::from(pm.list_scroll.offset.y);
+            pm.tree_scroll.content = size(px(0.0), px(count as f32 * TREE_ROW_H));
+            pm.tree_scroll.viewport = bounds.size;
+            pm.tree_scroll.clamp();
+            let off_y = f32::from(pm.tree_scroll.offset.y);
 
-            let first = (off_y / LIST_ROW_H).floor().max(0.0) as usize;
-            let last = (((off_y + h) / LIST_ROW_H).ceil() as usize).min(count);
+            let first = (off_y / TREE_ROW_H).floor().max(0.0) as usize;
+            let last = (((off_y + h) / TREE_ROW_H).ceil() as usize).min(count);
 
             let mut rows = Vec::with_capacity(last - first);
-            for i in first..last {
-                let ch = &pm.changes[i];
-                let selected = pm.open.as_deref() == Some(ch.rel.as_path());
+            for vi in first..last {
+                let e = &pm.state.tree[pm.state.visible[vi]];
+                let changed = pm.state.changed.contains(&e.rel);
+                let selected = pm.state.tree_selected.as_deref() == Some(e.rel.as_path());
+                let expanded = e.is_dir && pm.state.expanded.contains(&e.rel);
 
-                let s: SharedString = ch.status.badge().into();
-                let status = ts.shape_line(s.clone(), small, &[run(&s, ch.status.color(), &name_font)], None);
-
-                let nm: SharedString = pm.change_names[i].clone().into();
-                let name = ts.shape_line(nm.clone(), name_size, &[run(&nm, TEXT, &name_font)], None);
-
-                let badge = if ch.added > 0 || ch.removed > 0 {
-                    let mut text = String::new();
-                    let mut runs = Vec::new();
-                    if ch.added > 0 {
-                        let part = format!("+{}", ch.added);
-                        runs.push(TextRun {
-                            len: part.len(),
-                            font: name_font.clone(),
-                            color: rgb(ADD_FG).into(),
-                            background_color: None,
-                            underline: None,
-                            strikethrough: None,
-                        });
-                        text.push_str(&part);
-                    }
-                    if ch.removed > 0 {
-                        let part = if text.is_empty() {
-                            format!("-{}", ch.removed)
-                        } else {
-                            format!(" -{}", ch.removed)
-                        };
-                        runs.push(TextRun {
-                            len: part.len(),
-                            font: name_font.clone(),
-                            color: rgb(DEL_FG).into(),
-                            background_color: None,
-                            underline: None,
-                            strikethrough: None,
-                        });
-                        text.push_str(&part);
-                    }
-                    Some(ts.shape_line(text.into(), small, &runs, None))
-                } else {
-                    None
+                let leaf = e
+                    .rel
+                    .file_name()
+                    .map(|s| s.to_string_lossy().into_owned())
+                    .unwrap_or_default();
+                let s: SharedString = leaf.into();
+                let run = TextRun {
+                    len: s.len(),
+                    font: name_font.clone(),
+                    color: if changed { rgb(CHANGED) } else { rgb(TEXT) }.into(),
+                    background_color: None,
+                    underline: None,
+                    strikethrough: None,
                 };
+                let name = ts.shape_line(s, font_size, &[run], None);
 
-                rows.push(ChangeRow {
+                rows.push(TreeRow {
+                    depth: e.depth,
+                    changed,
                     selected,
-                    status,
-                    icon: icons::icon_bytes_for(&ch.rel, false, false),
                     name,
-                    badge,
+                    chevron: e.is_dir.then(|| icons::chevron_bytes(expanded)),
+                    icon: icons::icon_bytes_for(&e.rel, e.is_dir, expanded),
                 });
             }
-            (first, off_y, count, pm.hover_file, rows)
+            (first, off_y, count, pm.tree_hover, rows)
         });
 
-        let content_h = count as f32 * LIST_ROW_H;
+        let content_h = count as f32 * TREE_ROW_H;
         let bar = if content_h > h + 0.5 {
             BarInfo::new(top, h, content_h, h, off_y)
         } else {
@@ -193,7 +162,7 @@ impl Element for ListView {
                 .id
         });
 
-        ListPrepaint {
+        TreePrepaint {
             left,
             top,
             width: w,
@@ -215,7 +184,7 @@ impl Element for ListView {
         _inspector_id: Option<&InspectorElementId>,
         bounds: Bounds<Pixels>,
         _request_layout: &mut (),
-        p: &mut ListPrepaint,
+        p: &mut TreePrepaint,
         window: &mut Window,
         cx: &mut App,
     ) {
@@ -223,7 +192,7 @@ impl Element for ListView {
 
         let sq = |x: f32, y: f32, s: f32| {
             Bounds::new(
-                point(px(x), px(y + (LIST_ROW_H - s) / 2.0)),
+                point(px(x), px(y + (TREE_ROW_H - s) / 2.0)),
                 size(px(s), px(s)),
             )
         };
@@ -232,48 +201,51 @@ impl Element for ListView {
             window.paint_quad(fill(bounds, rgb(PANEL)));
 
             for (k, row) in p.rows.iter().enumerate() {
-                let i = p.first + k;
-                let y = top + i as f32 * LIST_ROW_H - p.off_y;
-                let rb = Bounds::new(point(px(left), px(y)), size(px(w), px(LIST_ROW_H)));
+                let vi = p.first + k;
+                let y = top + vi as f32 * TREE_ROW_H - p.off_y;
+                let row_bounds =
+                    Bounds::new(point(px(left), px(y)), size(px(w), px(TREE_ROW_H)));
                 if row.selected {
-                    window.paint_quad(fill(rb, rgb(SELECT)));
-                } else if p.hover == Some(i) {
-                    window.paint_quad(fill(rb, rgb(BORDER)));
+                    window.paint_quad(fill(row_bounds, rgb(SELECT)));
+                } else if p.hover == Some(vi) {
+                    window.paint_quad(fill(row_bounds, rgb(BORDER)));
                 }
 
-                row.status
-                    .paint(point(px(left + 10.0), px(y)), px(LIST_ROW_H), TextAlign::Left, None, window, cx)
-                    .ok();
-
+                let x0 = left + 8.0 + row.depth as f32 * TREE_INDENT;
+                if let Some((key, data)) = row.chevron {
+                    window
+                        .paint_svg(
+                            sq(x0, y, 12.0),
+                            key.into(),
+                            Some(data),
+                            TransformationMatrix::unit(),
+                            rgb(DIM).into(),
+                            cx,
+                        )
+                        .ok();
+                }
                 let (ikey, idata) = row.icon;
                 window
                     .paint_svg(
-                        sq(left + 24.0, y, ICON_SIZE),
+                        sq(x0 + 16.0, y, ICON_SIZE),
                         ikey.into(),
                         Some(idata),
                         TransformationMatrix::unit(),
-                        rgb(DIM).into(),
+                        if row.changed { rgb(CHANGED) } else { rgb(DIM) }.into(),
                         cx,
                     )
                     .ok();
 
                 row.name
                     .paint(
-                        point(px(left + 24.0 + ICON_SIZE + 8.0), px(y)),
-                        px(LIST_ROW_H),
+                        point(px(x0 + 16.0 + ICON_SIZE + 6.0), px(y)),
+                        px(TREE_ROW_H),
                         TextAlign::Left,
                         None,
                         window,
                         cx,
                     )
                     .ok();
-
-                if let Some(badge) = &row.badge {
-                    let bx = left + w - 10.0 - f32::from(badge.width());
-                    badge
-                        .paint(point(px(bx), px(y)), px(LIST_ROW_H), TextAlign::Left, None, window, cx)
-                        .ok();
-                }
             }
 
             if let Some(bar) = p.bar {
@@ -300,8 +272,8 @@ impl Element for ListView {
     }
 }
 
-impl ListView {
-    fn register_mouse(&self, window: &mut Window, p: &ListPrepaint) {
+impl TreeView {
+    fn register_mouse(&self, window: &mut Window, p: &TreePrepaint) {
         let pm = self.pm.clone();
         let body_id = p.body_id;
         let bar = p.bar;
@@ -314,7 +286,7 @@ impl ListView {
             if !body_id.is_hovered(window) {
                 return None;
             }
-            let row = ((py - top + off_y) / LIST_ROW_H).floor();
+            let row = ((py - top + off_y) / TREE_ROW_H).floor();
             if row < 0.0 {
                 return None;
             }
@@ -328,13 +300,13 @@ impl ListView {
                 if phase != DispatchPhase::Bubble || !body_id.should_handle_scroll(window) {
                     return;
                 }
-                let dy = f32::from(e.delta.pixel_delta(px(LIST_ROW_H)).y);
+                let dy = f32::from(e.delta.pixel_delta(px(TREE_ROW_H)).y);
                 let mut moved = false;
                 pm.update(cx, |pm, cx| {
-                    let y0 = pm.list_scroll.offset.y;
-                    pm.list_scroll.offset.y = y0 - px(dy);
-                    pm.list_scroll.clamp();
-                    moved = pm.list_scroll.offset.y != y0;
+                    let y0 = pm.tree_scroll.offset.y;
+                    pm.tree_scroll.offset.y = y0 - px(dy);
+                    pm.tree_scroll.clamp();
+                    moved = pm.tree_scroll.offset.y != y0;
                     if moved {
                         cx.notify();
                     }
@@ -356,16 +328,16 @@ impl ListView {
                     if id.is_hovered(window) {
                         pm.update(cx, |pm, cx| {
                             if bar.thumb_hit(pos) {
-                                pm.list_drag = Some(ScrollDrag {
+                                pm.tree_drag = Some(ScrollDrag {
                                     axis: Axis::Y,
                                     col: 0,
                                     last: pos,
                                 });
                             } else {
                                 let dir = if pos < bar.thumb_lo { -1.0 } else { 1.0 };
-                                pm.list_scroll.offset.y =
-                                    pm.list_scroll.offset.y + px(dir * page_y);
-                                pm.list_scroll.clamp();
+                                pm.tree_scroll.offset.y =
+                                    pm.tree_scroll.offset.y + px(dir * page_y);
+                                pm.tree_scroll.clamp();
                             }
                             cx.notify();
                         });
@@ -373,12 +345,21 @@ impl ListView {
                         return;
                     }
                 }
-                let off_y = f32::from(pm.read(cx).list_scroll.offset.y);
-                if let Some(row) = row_at(window, pos, off_y) {
+                let off_y = f32::from(pm.read(cx).tree_scroll.offset.y);
+                if let Some(vi) = row_at(window, pos, off_y) {
                     pm.update(cx, |pm, cx| {
-                        let rel = pm.changes[row].rel.clone();
-                        pm.tree_selected = Some(rel.clone());
-                        pm.open_path(rel);
+                        let idx = pm.state.visible[vi];
+                        let rel: PathBuf = pm.state.tree[idx].rel.clone();
+                        if pm.state.tree[idx].is_dir {
+                            if !pm.state.expanded.remove(&rel) {
+                                pm.state.expanded.insert(rel.clone());
+                            }
+                            pm.state.tree_selected = Some(rel);
+                            pm.state.rebuild_visible();
+                        } else {
+                            pm.state.tree_selected = Some(rel.clone());
+                            pm.open_path(rel);
+                        }
                         cx.notify();
                     });
                     cx.stop_propagation();
@@ -393,21 +374,21 @@ impl ListView {
                     return;
                 }
                 let pos = f32::from(e.position.y);
-                let dragging = pm.read(cx).list_drag.is_some();
+                let dragging = pm.read(cx).tree_drag.is_some();
                 if dragging {
                     let mut consumed = false;
                     pm.update(cx, |pm, cx| {
-                        let Some(drag) = pm.list_drag else { return };
+                        let Some(drag) = pm.tree_drag else { return };
                         if e.pressed_button != Some(MouseButton::Left) {
-                            pm.list_drag = None;
+                            pm.tree_drag = None;
                             cx.notify();
                             return;
                         }
                         let Some(bar) = bar else { return };
-                        let cur = f32::from(pm.list_scroll.offset.y);
-                        pm.list_scroll.offset.y = px(bar.drag(cur, pos - drag.last));
-                        pm.list_scroll.clamp();
-                        pm.list_drag = Some(ScrollDrag { last: pos, ..drag });
+                        let cur = f32::from(pm.tree_scroll.offset.y);
+                        pm.tree_scroll.offset.y = px(bar.drag(cur, pos - drag.last));
+                        pm.tree_scroll.clamp();
+                        pm.tree_drag = Some(ScrollDrag { last: pos, ..drag });
                         cx.notify();
                         consumed = true;
                     });
@@ -416,11 +397,11 @@ impl ListView {
                     }
                     return;
                 }
-                let off_y = f32::from(pm.read(cx).list_scroll.offset.y);
+                let off_y = f32::from(pm.read(cx).tree_scroll.offset.y);
                 let hover = row_at(window, pos, off_y);
                 pm.update(cx, |pm, cx| {
-                    if pm.hover_file != hover {
-                        pm.hover_file = hover;
+                    if pm.tree_hover != hover {
+                        pm.tree_hover = hover;
                         cx.notify();
                     }
                 });
@@ -434,7 +415,7 @@ impl ListView {
                     return;
                 }
                 pm.update(cx, |pm, cx| {
-                    if pm.list_drag.take().is_some() {
+                    if pm.tree_drag.take().is_some() {
                         cx.notify();
                     }
                 });

@@ -1,0 +1,10 @@
+[package]
+name = "pm-ui"
+version = "0.0.1"
+edition = "2021"
+license = "BSD-3-Clause"
+
+[dependencies]
+pm-core = { path = "../pm-core" }
+gpui = { workspace = true }
+include_dir = "0.7"

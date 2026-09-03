@@ -3,11 +3,20 @@
 
 use std::path::Path;
 
-use gpui::Rgba;
 use syntect::easy::HighlightLines;
 use syntect::highlighting::{Color, Theme, ThemeSet};
 use syntect::parsing::SyntaxSet;
 use syntect::util::LinesWithEndings;
+
+/// An RGBA colour, components in `0.0..=1.0`. Mirrors `gpui::Rgba`'s layout;
+/// `pm-ui` converts at the paint boundary.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Rgba {
+    pub r: f32,
+    pub g: f32,
+    pub b: f32,
+    pub a: f32,
+}
 
 /// A single coloured run within a line.
 pub struct Span {

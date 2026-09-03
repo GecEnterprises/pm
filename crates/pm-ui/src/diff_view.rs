@@ -13,12 +13,17 @@ use gpui::{
     TextRun, Window, WindowTextSystem,
 };
 
-use crate::diff::RowKind;
-use crate::highlight::Line;
+use pm_core::diff::RowKind;
+use pm_core::highlight::{Line, Rgba as CoreRgba};
+
+fn to_hsla(c: CoreRgba) -> gpui::Hsla {
+    gpui::Rgba { r: c.r, g: c.g, b: c.b, a: c.a }.into()
+}
 use crate::scroll::{Axis, BarInfo, ScrollDrag};
-use crate::{
-    Pm, ADD_BG, BAR, BG, BODY_FONT, BODY_FONT_SIZE, BORDER, DEL_BG, DIFF_SPLIT_MAX, DIFF_SPLIT_MIN,
-    DIM, DIVIDER_W, GUTTER_PAD, GUTTER_W, MAX_ROWS, ROW_H, TEXT_PAD_L,
+use crate::app::Pm;
+use crate::theme::{
+    ADD_BG, BAR, BG, BODY_FONT, BODY_FONT_SIZE, BORDER, DEL_BG, DIFF_SPLIT_MAX, DIFF_SPLIT_MIN, DIM,
+    DIVIDER_W, GUTTER_PAD, GUTTER_W, ROW_H, TEXT_PAD_L,
 };
 
 /// Shaped lines for the current file, reused across frames until [`clear`](Self::clear).
@@ -118,7 +123,7 @@ fn runs_for_line(line: &Line, font: &Font) -> (SharedString, Vec<TextRun>) {
         runs.push(TextRun {
             len: clean.len(),
             font: font.clone(),
-            color: span.color.into(),
+            color: to_hsla(span.color),
             background_color: None,
             underline: None,
             strikethrough: None,
@@ -272,19 +277,23 @@ impl Element for DiffView {
         ) = self.pm.update(cx, |pm, _cx| {
                 let ts = window.text_system();
                 let Pm {
-                    rows,
-                    old_lines,
-                    new_lines,
+                    state,
                     shaped,
                     diff,
-                    caret,
                     diff_focus,
                     autoscroll,
                     mouse_pos,
                     diff_viewport_h,
                     ..
                 } = pm;
-                let row_count = rows.len().min(MAX_ROWS);
+                let pm_core::AppState {
+                    rows,
+                    old_lines,
+                    new_lines,
+                    caret,
+                    ..
+                } = state;
+                let row_count = rows.len().min(pm_core::MAX_ROWS);
                 *diff_viewport_h = h;
 
                 // One-time measurement pass so `max_w` (and the H-thumb size) is exact.
