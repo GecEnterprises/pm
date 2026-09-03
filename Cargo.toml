@@ -1,6 +1,6 @@
 [package]
 name = "pm"
-version = "0.1.0"
+version = "0.0.1"
 edition = "2021"
 description = "Plus Minus - a diff-oriented code editor"
 
@@ -12,6 +12,14 @@ similar = "2"
 anyhow = "1"
 # default-fancy = pure-Rust regex engine, no oniguruma C dependency
 syntect = { version = "5", default-features = false, features = ["default-fancy"] }
+ignore = "0.4"
+include_dir = "0.7"
+# window icon (x11 runtime path); must match gpui's image version so the
+# RgbaImage types unify
+image = { version = "0.25", default-features = false, features = ["png"] }
+
+[build-dependencies]
+winresource = "0.1"
 
 [profile.dev]
 # gpui does real per-frame layout/text work; unoptimized it feels laggy.

@@ -6,18 +6,19 @@
 use std::collections::HashMap;
 
 use gpui::{
-    fill, font, point, px, rgb, rgba, size, App, Bounds, ContentMask, DispatchPhase, Element,
-    ElementId, Entity, Font, GlobalElementId, HitboxBehavior, HitboxId, InspectorElementId,
-    IntoElement, LayoutId, MouseButton, MouseDownEvent, MouseMoveEvent, MouseUpEvent, Pixels, Rgba,
-    ScrollWheelEvent, SharedString, ShapedLine, Style, TextAlign, TextRun, Window, WindowTextSystem,
+    fill, font, point, px, rgb, rgba, size, App, Bounds, ContentMask, CursorStyle, DispatchPhase,
+    Element, ElementId, Entity, Font, GlobalElementId, Hitbox, HitboxBehavior, HitboxId,
+    InspectorElementId, IntoElement, LayoutId, MouseButton, MouseDownEvent, MouseMoveEvent,
+    MouseUpEvent, Pixels, Rgba, ScrollWheelEvent, SharedString, ShapedLine, Style, TextAlign,
+    TextRun, Window, WindowTextSystem,
 };
 
 use crate::diff::RowKind;
 use crate::highlight::Line;
 use crate::scroll::{Axis, BarInfo, ScrollDrag};
 use crate::{
-    Pm, ADD_BG, BAR, BG, BODY_FONT, BODY_FONT_SIZE, BORDER, DEL_BG, DIM, DIVIDER_W, GUTTER_PAD,
-    GUTTER_W, MAX_ROWS, ROW_H, TEXT_PAD_L,
+    Pm, ADD_BG, BAR, BG, BODY_FONT, BODY_FONT_SIZE, BORDER, DEL_BG, DIFF_SPLIT_MAX, DIFF_SPLIT_MIN,
+    DIM, DIVIDER_W, GUTTER_PAD, GUTTER_W, MAX_ROWS, ROW_H, TEXT_PAD_L,
 };
 
 /// Shaped lines for the current file, reused across frames until [`clear`](Self::clear).
@@ -140,6 +141,7 @@ pub struct DiffPrepaint {
     left_text: Bounds<Pixels>,
     right_text: Bounds<Pixels>,
     divider: Bounds<Pixels>,
+    divider_hitbox: Hitbox,
     /// `[X-left, X-right, Y]`.
     bars: [Option<BarInfo>; 3],
     body_id: HitboxId,
@@ -189,7 +191,12 @@ impl Element for DiffView {
         let top = f32::from(bounds.top());
         let w = f32::from(bounds.size.width).max(0.0);
         let h = f32::from(bounds.size.height).max(0.0);
-        let mid = left + (w / 2.0).floor();
+        let split = self
+            .pm
+            .read(cx)
+            .diff_split
+            .clamp(DIFF_SPLIT_MIN, DIFF_SPLIT_MAX);
+        let mid = left + (w * split).floor();
 
         let text_lo = [left + GUTTER_W, mid + GUTTER_W];
         let col_text_w = [
@@ -339,6 +346,10 @@ impl Element for DiffView {
         ];
 
         let body = window.insert_hitbox(bounds, HitboxBehavior::Normal);
+        let divider_hitbox = window.insert_hitbox(
+            Bounds::new(point(px(mid - 3.0), px(top)), size(px(6.0), px(h))),
+            HitboxBehavior::Normal,
+        );
         let bar_ids = [
             bars[0].map(|_| {
                 window
@@ -388,6 +399,7 @@ impl Element for DiffView {
             left_text,
             right_text,
             divider,
+            divider_hitbox,
             bars,
             body_id: body.id,
             bar_ids,
@@ -515,20 +527,29 @@ impl Element for DiffView {
             }
         });
 
-        self.register_mouse(window, p, bounds);
+        // A window-wide cursor keeps it stable while dragging (the pointer leaves
+        // the thin handle); otherwise only show it on hover. Both are paint-only.
+        if self.pm.read(cx).diff_split_drag.is_some() {
+            window.set_window_cursor_style(CursorStyle::ResizeColumn);
+        } else {
+            window.set_cursor_style(CursorStyle::ResizeColumn, &p.divider_hitbox);
+        }
+        self.register_mouse(window, p);
     }
 }
 
 impl DiffView {
-    fn register_mouse(&self, window: &mut Window, p: &DiffPrepaint, bounds: Bounds<Pixels>) {
+    fn register_mouse(&self, window: &mut Window, p: &DiffPrepaint) {
         let pm = self.pm.clone();
         let body_id = p.body_id;
+        let divider_id = p.divider_hitbox.id;
         let bars = p.bars;
         let bar_ids = p.bar_ids;
         let mid = p.mid;
+        let left = p.left;
+        let width = p.width;
         let page_y = p.height;
         let page_x = p.col_text_w;
-        let _ = bounds;
 
         {
             let pm = pm.clone();
@@ -564,6 +585,15 @@ impl DiffView {
             let pm = pm.clone();
             window.on_mouse_event(move |e: &MouseDownEvent, phase, window, cx| {
                 if phase != DispatchPhase::Bubble || e.button != MouseButton::Left {
+                    return;
+                }
+                if divider_id.is_hovered(window) {
+                    let x = f32::from(e.position.x);
+                    pm.update(cx, |pm, cx| {
+                        pm.diff_split_drag = Some(x);
+                        cx.notify();
+                    });
+                    cx.stop_propagation();
                     return;
                 }
                 for idx in 0..3 {
@@ -614,7 +644,32 @@ impl DiffView {
         {
             let pm = pm.clone();
             window.on_mouse_event(move |e: &MouseMoveEvent, phase, _window, cx| {
-                if phase != DispatchPhase::Bubble || pm.read(cx).diff.drag.is_none() {
+                if phase != DispatchPhase::Bubble {
+                    return;
+                }
+                if pm.read(cx).diff_split_drag.is_some() {
+                    let mut consumed = false;
+                    pm.update(cx, |pm, cx| {
+                        if e.pressed_button != Some(MouseButton::Left) {
+                            pm.diff_split_drag = None;
+                            cx.notify();
+                            return;
+                        }
+                        let frac = ((f32::from(e.position.x) - left) / width.max(1.0))
+                            .clamp(DIFF_SPLIT_MIN, DIFF_SPLIT_MAX);
+                        if pm.diff_split != frac {
+                            pm.diff_split = frac;
+                            cx.notify();
+                        }
+                        pm.diff_split_drag = Some(f32::from(e.position.x));
+                        consumed = true;
+                    });
+                    if consumed {
+                        cx.stop_propagation();
+                    }
+                    return;
+                }
+                if pm.read(cx).diff.drag.is_none() {
                     return;
                 }
                 let mut consumed = false;
@@ -662,7 +717,9 @@ impl DiffView {
                     return;
                 }
                 pm.update(cx, |pm, cx| {
-                    if pm.diff.drag.take().is_some() {
+                    let a = pm.diff.drag.take().is_some();
+                    let b = pm.diff_split_drag.take().is_some();
+                    if a || b {
                         cx.notify();
                     }
                 });
