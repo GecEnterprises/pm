@@ -1,5 +1,5 @@
 [workspace]
-members = ["crates/pm-core", "crates/pm-ui"]
+members = ["crates/pm-core", "crates/pm-ui", "crates/pm-mcp"]
 
 [workspace.dependencies]
 gpui = { git = "https://github.com/zed-industries/zed", branch = "main" }

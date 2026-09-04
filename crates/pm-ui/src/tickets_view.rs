@@ -9,6 +9,7 @@ use gpui::{deferred, div, prelude::*, px, rgb, Context, MouseButton, SharedStrin
 use pm_core::{Status, Ticket};
 
 use crate::app::{Compose, Pm, View};
+use crate::config::ConfigStore;
 use crate::history_view::rel_time;
 use crate::theme::*;
 
@@ -378,6 +379,7 @@ impl Pm {
             )
             .child(self.new_ticket_title.clone())
             .child(self.new_ticket_body.clone())
+            .child(self.author_field())
             .child(
                 div()
                     .flex()
@@ -418,6 +420,23 @@ impl Pm {
                             ),
                     ),
             )
+    }
+
+    /// The "as: [name]" identity field — poses the author of the next ticket or
+    /// comment (PM-15). Free-form and unverified by design.
+    fn author_field(&self) -> impl IntoElement {
+        div()
+            .flex()
+            .flex_row()
+            .items_center()
+            .gap_2()
+            .child(
+                div()
+                    .text_color(rgb(DIM))
+                    .text_size(px(11.0))
+                    .child(SharedString::from("as")),
+            )
+            .child(div().w(px(160.0)).child(self.author_box.clone()))
     }
 
     /// The clickable status chip + its status-picker popover.
@@ -499,6 +518,14 @@ impl Pm {
                 div()
                     .text_color(rgb(DIM))
                     .child(SharedString::from(format!("@{a}"))),
+            );
+        }
+        if !t.author.trim().is_empty() {
+            meta = meta.child(
+                div()
+                    .text_color(rgb(DIM))
+                    .text_size(px(11.0))
+                    .child(SharedString::from(format!("by {}", t.author))),
             );
         }
         meta = meta.child(
@@ -586,6 +613,7 @@ impl Pm {
                 .gap_2()
                 .mt_2()
                 .child(self.comment_box.clone())
+                .child(self.author_field())
                 .child(
                     div()
                         .id("comment-submit")
@@ -602,7 +630,8 @@ impl Pm {
                             cx.listener(move |pm, _, _, cx| {
                                 let body = pm.comment_box.update(cx, |ti, cx| ti.take(cx));
                                 if !body.is_empty() {
-                                    pm.state.add_comment(tid, body);
+                                    let author = pm.posed_author(cx);
+                                    pm.state.add_comment(tid, body, author);
                                     cx.notify();
                                 }
                             }),
@@ -611,13 +640,30 @@ impl Pm {
         )
     }
 
+    /// Read the posed author from the "as:" box and adopt it as this window's
+    /// default (persisted to `~/.pm/config.json`). Returns the override to pass
+    /// to the store, or `None` when the box is empty.
+    fn posed_author(&mut self, cx: &mut Context<Self>) -> Option<String> {
+        let name = self.author_box.read(cx).content().trim().to_string();
+        if name.is_empty() {
+            return None;
+        }
+        if name != self.state.author {
+            self.state.author = name.clone();
+            let persisted = name.clone();
+            ConfigStore::update(cx, move |c| c.author = persisted);
+        }
+        Some(name)
+    }
+
     pub(crate) fn submit_new_ticket(&mut self, cx: &mut Context<Self>) {
         let title = self.new_ticket_title.update(cx, |ti, cx| ti.take(cx));
         if title.is_empty() {
             return;
         }
         let body = self.new_ticket_body.update(cx, |ti, cx| ti.take(cx));
-        let id = self.state.create_ticket(title, body);
+        let author = self.posed_author(cx);
+        let id = self.state.create_ticket(title, body, author);
         self.selected_ticket = Some(id);
         self.composing = None;
         cx.notify();

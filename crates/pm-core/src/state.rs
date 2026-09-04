@@ -108,6 +108,10 @@ pub struct AppState {
     pub pm: PmData,
     /// Last `pm.json5` load/save error, surfaced in the Tickets pane.
     pub pm_error: Option<String>,
+    /// Default author for tickets / comments filed from this window (PM-15).
+    /// Seeded from config / git; the Tickets pane "as:" field can override it
+    /// per action.
+    pub author: String,
 }
 
 impl AppState {
@@ -119,6 +123,7 @@ impl AppState {
         let tree = repo.walk_tree();
         let branch = repo.branch();
         let commits = repo.log(git::LOG_LIMIT);
+        let author = crate::identity::resolve_author(None, &repo);
         let (pm, pm_error) = match pm::load(repo.root()) {
             Ok(d) => (d, None),
             Err(pm::LoadError::Parse(s)) => (PmData::default(), Some(s)),
@@ -152,6 +157,7 @@ impl AppState {
             content: Content::Text,
             pm,
             pm_error,
+            author,
         };
         s.rebuild_visible();
         // Open the first changed file, or — with no git — the first file in the
@@ -200,20 +206,33 @@ impl AppState {
         }
     }
 
-    fn comment_author(&self) -> String {
-        self.repo.user_name().unwrap_or_else(|| "you".to_string())
+    /// Resolve the author to record: an explicit non-empty name wins, else this
+    /// window's default (`self.author`).
+    fn author_or_default(&self, explicit: Option<String>) -> String {
+        explicit
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty())
+            .unwrap_or_else(|| self.author.clone())
     }
 
-    /// Create a ticket and persist. Returns its new id.
-    pub fn create_ticket(&mut self, title: impl Into<String>, body: impl Into<String>) -> u64 {
-        let id = self.pm.create_ticket(title, body, pm::now_unix());
+    /// Create a ticket and persist. Returns its new id. `author` overrides this
+    /// window's default when non-empty (PM-15).
+    pub fn create_ticket(
+        &mut self,
+        title: impl Into<String>,
+        body: impl Into<String>,
+        author: Option<String>,
+    ) -> u64 {
+        let author = self.author_or_default(author);
+        let id = self.pm.create_ticket(title, body, author, pm::now_unix());
         self.save_pm();
         id
     }
 
-    /// Add a comment to a ticket and persist.
-    pub fn add_comment(&mut self, ticket_id: u64, body: impl Into<String>) {
-        let author = self.comment_author();
+    /// Add a comment to a ticket and persist. `author` overrides this window's
+    /// default when non-empty (PM-15).
+    pub fn add_comment(&mut self, ticket_id: u64, body: impl Into<String>, author: Option<String>) {
+        let author = self.author_or_default(author);
         if self.pm.add_comment(ticket_id, author, body, pm::now_unix()) {
             self.save_pm();
         }

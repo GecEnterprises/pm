@@ -161,6 +161,9 @@ pub struct Pm {
     pub new_ticket_title: Entity<TextInput>,
     pub new_ticket_body: Entity<TextInput>,
     pub comment_box: Entity<TextInput>,
+    /// "as:" identity field in the Tickets pane — overrides `state.author` for
+    /// the next ticket / comment (PM-15).
+    pub author_box: Entity<TextInput>,
     pub ticket_hover: Option<usize>,
     /// Whole-window zoom, synced from the config each render (1.0 = 100%).
     pub scale: f32,
@@ -189,8 +192,12 @@ impl Pm {
 
         let scale = ConfigStore::get(cx).ui_scale();
 
+        let state = AppState::new(repo);
+        let author_box =
+            cx.new(|cx| TextInput::single(cx).placeholder("author").text(state.author.clone(), cx));
+
         Self {
-            state: AppState::new(repo),
+            state,
             shaped: ShapeCache::default(),
             diff: DiffScroll::default(),
             list_scroll: ScrollState::default(),
@@ -231,6 +238,7 @@ impl Pm {
             new_ticket_title,
             new_ticket_body,
             comment_box,
+            author_box,
             ticket_hover: None,
             scale,
             // Active work by default; closed tickets hidden until asked for.
@@ -310,7 +318,7 @@ impl Pm {
     /// Pull the zoom factor from the config, rescaling the layout state that's
     /// held in real pixels (`sidebar_w`, `changes_h`, `history_h`). Everything
     /// else scales through `window.set_rem_size`. Called each render.
-    fn sync_scale(&mut self, cx: &Context<Self>) {
+    fn sync_scale(&mut self, cx: &mut Context<Self>) {
         let scale = ConfigStore::get(cx).ui_scale();
         if (scale - self.scale).abs() > 0.001 {
             let f = scale / self.scale;
@@ -319,6 +327,12 @@ impl Pm {
             self.history_h *= f;
             self.scale = scale;
             self.shaped.clear(); // diff text re-shapes at the new font size
+        }
+        // Adopt an identity another window (or an external edit) saved (PM-15).
+        let cfg_author = ConfigStore::get(cx).author;
+        if !cfg_author.trim().is_empty() && cfg_author != self.state.author {
+            self.state.author = cfg_author.clone();
+            self.author_box.update(cx, |ti, cx| ti.set_text(cfg_author, cx));
         }
     }
 

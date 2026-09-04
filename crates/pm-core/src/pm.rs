@@ -148,6 +148,10 @@ pub struct Ticket {
     pub labels: Vec<String>,
     #[serde(default)]
     pub assignee: Option<String>,
+    /// Who filed the ticket. Free-form and unverified (PM-15) — the GUI and the
+    /// MCP server may both write any name here.
+    #[serde(default)]
+    pub author: String,
     /// Unix seconds.
     #[serde(default)]
     pub created: i64,
@@ -306,7 +310,13 @@ impl PmData {
     }
 
     /// Create a ticket, returning its new id. Bumps `next_id`.
-    pub fn create_ticket(&mut self, title: impl Into<String>, body: impl Into<String>, now: i64) -> u64 {
+    pub fn create_ticket(
+        &mut self,
+        title: impl Into<String>,
+        body: impl Into<String>,
+        author: impl Into<String>,
+        now: i64,
+    ) -> u64 {
         let id = self.next_id;
         self.next_id += 1;
         self.tickets.push(Ticket {
@@ -317,12 +327,75 @@ impl PmData {
             priority: Priority::default(),
             labels: Vec::new(),
             assignee: None,
+            author: author.into(),
             created: now,
             updated: now,
             anchors: Vec::new(),
             comments: Vec::new(),
         });
         id
+    }
+
+    /// Set a ticket's title, touching `updated`. Returns whether anything changed.
+    pub fn set_title(&mut self, ticket_id: u64, title: impl Into<String>, now: i64) -> bool {
+        let title = title.into();
+        match self.ticket_mut(ticket_id) {
+            Some(t) if t.title != title => {
+                t.title = title;
+                t.updated = now;
+                true
+            }
+            _ => false,
+        }
+    }
+
+    /// Set a ticket's body, touching `updated`. Returns whether anything changed.
+    pub fn set_body(&mut self, ticket_id: u64, body: impl Into<String>, now: i64) -> bool {
+        let body = body.into();
+        match self.ticket_mut(ticket_id) {
+            Some(t) if t.body != body => {
+                t.body = body;
+                t.updated = now;
+                true
+            }
+            _ => false,
+        }
+    }
+
+    /// Set a ticket's priority, touching `updated`. Returns whether anything changed.
+    pub fn set_priority(&mut self, ticket_id: u64, priority: Priority, now: i64) -> bool {
+        match self.ticket_mut(ticket_id) {
+            Some(t) if t.priority != priority => {
+                t.priority = priority;
+                t.updated = now;
+                true
+            }
+            _ => false,
+        }
+    }
+
+    /// Set a ticket's assignee, touching `updated`. Returns whether anything changed.
+    pub fn set_assignee(&mut self, ticket_id: u64, assignee: Option<String>, now: i64) -> bool {
+        match self.ticket_mut(ticket_id) {
+            Some(t) if t.assignee != assignee => {
+                t.assignee = assignee;
+                t.updated = now;
+                true
+            }
+            _ => false,
+        }
+    }
+
+    /// Replace a ticket's labels, touching `updated`. Returns whether anything changed.
+    pub fn set_labels(&mut self, ticket_id: u64, labels: Vec<String>, now: i64) -> bool {
+        match self.ticket_mut(ticket_id) {
+            Some(t) if t.labels != labels => {
+                t.labels = labels;
+                t.updated = now;
+                true
+            }
+            _ => false,
+        }
     }
 
     /// Append a comment to a ticket and touch its `updated`. Returns `false` if
@@ -380,7 +453,8 @@ mod tests {
         let d = tmp();
         let mut data = PmData::default();
         data.project.key = Some("PM".into());
-        let id = data.create_ticket("first", "body\nwith newline", 1000);
+        let id = data.create_ticket("first", "body\nwith newline", "alice", 1000);
+        assert_eq!(data.ticket(id).unwrap().author, "alice");
         assert!(data.add_comment(id, "me", "a comment", 1100));
         data.save(&d).unwrap();
 
@@ -417,8 +491,8 @@ mod tests {
     #[test]
     fn create_ticket_is_monotonic() {
         let mut data = PmData::default();
-        let a = data.create_ticket("a", "", 0);
-        let b = data.create_ticket("b", "", 0);
+        let a = data.create_ticket("a", "", "", 0);
+        let b = data.create_ticket("b", "", "", 0);
         assert_eq!((a, b), (1, 2));
         assert_eq!(data.next_id, 3);
     }

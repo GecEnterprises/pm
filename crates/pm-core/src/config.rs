@@ -29,11 +29,15 @@ pub struct Config {
     /// Whole-window zoom factor, `1.0` = 100% (applied by the view layer — PM-36).
     #[serde(default = "default_scale")]
     pub ui_scale: f32,
+    /// Display name written as the author of tickets and comments (PM-15).
+    /// Empty means "not set" — callers fall back to the git `user.name`.
+    #[serde(default)]
+    pub author: String,
 }
 
 impl Default for Config {
     fn default() -> Self {
-        Self { version: 1, ui_scale: 1.0 }
+        Self { version: 1, ui_scale: 1.0, author: String::new() }
     }
 }
 
@@ -150,7 +154,7 @@ mod tests {
     #[test]
     fn round_trips() {
         let p = tmp();
-        let c = Config { version: 1, ui_scale: 1.3 };
+        let c = Config { version: 1, ui_scale: 1.3, author: "alice".into() };
         c.save_to(&p).unwrap();
         assert_eq!(Config::load_from(&p), c);
         let _ = std::fs::remove_dir_all(p.parent().unwrap());
@@ -176,7 +180,7 @@ mod tests {
 
     #[test]
     fn ui_scale_is_clamped() {
-        assert_eq!(Config { version: 1, ui_scale: 99.0 }.ui_scale(), 3.0);
-        assert_eq!(Config { version: 1, ui_scale: 0.1 }.ui_scale(), 0.5);
+        assert_eq!(Config { version: 1, ui_scale: 99.0, author: String::new() }.ui_scale(), 3.0);
+        assert_eq!(Config { version: 1, ui_scale: 0.1, author: String::new() }.ui_scale(), 0.5);
     }
 }

@@ -1,0 +1,22 @@
+[package]
+name = "pm-mcp"
+version = "0.0.1"
+edition = "2021"
+description = "Model Context Protocol server for pm ticket stores"
+license = "BSD-3-Clause"
+repository = "https://github.com/GecEnterprises/pm"
+
+[[bin]]
+name = "pm-mcp"
+path = "src/main.rs"
+
+[dependencies]
+pm-core = { path = "../pm-core" }
+rmcp = { version = "3.2", features = ["server", "macros", "transport-io"] }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "io-std", "signal"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+schemars = "1"
+anyhow = { workspace = true }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }

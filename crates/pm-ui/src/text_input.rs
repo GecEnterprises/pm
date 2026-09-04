@@ -121,6 +121,17 @@ impl TextInput {
         self
     }
 
+    /// Builder: start the field with `s` as its content.
+    pub fn text(mut self, s: impl Into<String>, cx: &mut Context<Self>) -> Self {
+        self.set_content(s.into(), cx);
+        self
+    }
+
+    /// Replace the field's content (keeps it in sync with external state).
+    pub fn set_text(&mut self, s: impl Into<String>, cx: &mut Context<Self>) {
+        self.set_content(s.into(), cx);
+    }
+
     pub fn content(&self) -> &str {
         &self.content
     }

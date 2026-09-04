@@ -16,10 +16,26 @@
         "mcp"
       ],
       "assignee": null,
+      "author": "",
       "created": 1788448748,
-      "updated": 1788449287,
+      "updated": 1788483066,
       "anchors": [],
-      "comments": []
+      "comments": [
+        {
+          "id": 1,
+          "author": "reaganiwadha",
+          "created": 1788481882,
+          "body": "So MCP for PM is needed. The goal for PM is to be more of a diff based review annotate and ticketing way of vibecoding rather than just pure prompting so it's like,,, i hate the word,,, second brain. But the goal is for pm to have an mcp crate and have a stdio mcp that allows it to list projects, open up a project in the pm, list tickets, comment on tickets, read on tickets. Solving this base PM-5 needs to solve PM-15 first.",
+          "anchor": null
+        },
+        {
+          "id": 2,
+          "author": "claude",
+          "created": 1788483066,
+          "body": "MCP server shipped as crates/pm-mcp (rmcp 3.2, stdio). Works directly on .pm/pm.json5 via pm-core (no GUI needed); project chosen by --project / positional / cwd, with per-call project override that walks up to the nearest .pm/. Tools: list_tickets, get_ticket, add_comment, create_ticket, edit_ticket, open_project (spawns the pm GUI), list_projects (dir scan). .mcp.json at the repo root registers it with Claude Code. This comment was posted through pm-mcp itself. Depends on PM-15 (author), also in_progress.",
+          "anchor": null
+        }
+      ]
     },
     {
       "id": 2,
@@ -32,6 +48,7 @@
         "mcp"
       ],
       "assignee": null,
+      "author": "",
       "created": 1756900100,
       "updated": 1756900100,
       "anchors": [
@@ -62,6 +79,7 @@
         "tickets"
       ],
       "assignee": null,
+      "author": "",
       "created": 1788448971,
       "updated": 1788466000,
       "anchors": [
@@ -99,6 +117,7 @@
         "tickets"
       ],
       "assignee": null,
+      "author": "",
       "created": 1788448518,
       "updated": 1788449287,
       "anchors": [],
@@ -122,6 +141,7 @@
         "tickets"
       ],
       "assignee": null,
+      "author": "",
       "created": 1788448806,
       "updated": 1788466000,
       "anchors": [
@@ -187,6 +207,7 @@
         "bug"
       ],
       "assignee": null,
+      "author": "",
       "created": 1788448762,
       "updated": 1788449287,
       "anchors": [],
@@ -202,6 +223,7 @@
         "ui"
       ],
       "assignee": null,
+      "author": "",
       "created": 1756900000,
       "updated": 1756900000,
       "anchors": [
@@ -224,6 +246,7 @@
         "ui"
       ],
       "assignee": null,
+      "author": "",
       "created": 1788448829,
       "updated": 1788448829,
       "anchors": [],
@@ -239,6 +262,7 @@
         "tickets"
       ],
       "assignee": null,
+      "author": "",
       "created": 1788448814,
       "updated": 1788448814,
       "anchors": [],
@@ -252,6 +276,7 @@
       "priority": "normal",
       "labels": [],
       "assignee": null,
+      "author": "",
       "created": 1788448819,
       "updated": 1788448819,
       "anchors": [],
@@ -267,6 +292,7 @@
         "mcp"
       ],
       "assignee": null,
+      "author": "",
       "created": 1788449204,
       "updated": 1788449204,
       "anchors": [],
@@ -282,6 +308,7 @@
         "ui"
       ],
       "assignee": null,
+      "author": "",
       "created": 1788449064,
       "updated": 1788449287,
       "anchors": [],
@@ -297,6 +324,7 @@
         "ui"
       ],
       "assignee": null,
+      "author": "",
       "created": 1788449071,
       "updated": 1788449287,
       "anchors": [],
@@ -310,6 +338,7 @@
       "priority": "low",
       "labels": [],
       "assignee": null,
+      "author": "",
       "created": 1788449089,
       "updated": 1788449287,
       "anchors": [],
@@ -331,6 +360,7 @@
       "priority": "low",
       "labels": [],
       "assignee": null,
+      "author": "",
       "created": 1756900300,
       "updated": 1756900300,
       "anchors": [],
@@ -344,6 +374,7 @@
       "priority": "normal",
       "labels": [],
       "assignee": null,
+      "author": "",
       "created": 1788449479,
       "updated": 1788449479,
       "anchors": [],
@@ -357,6 +388,7 @@
       "priority": "normal",
       "labels": [],
       "assignee": null,
+      "author": "",
       "created": 1788449498,
       "updated": 1788449498,
       "anchors": [],
@@ -370,6 +402,7 @@
       "priority": "normal",
       "labels": [],
       "assignee": null,
+      "author": "",
       "created": 1788449551,
       "updated": 1788449551,
       "anchors": [],
@@ -383,6 +416,7 @@
       "priority": "normal",
       "labels": [],
       "assignee": null,
+      "author": "",
       "created": 1788449625,
       "updated": 1788449625,
       "anchors": [],
@@ -396,6 +430,7 @@
       "priority": "normal",
       "labels": [],
       "assignee": null,
+      "author": "",
       "created": 1788449664,
       "updated": 1788449664,
       "anchors": [],
@@ -409,6 +444,7 @@
       "priority": "normal",
       "labels": [],
       "assignee": null,
+      "author": "",
       "created": 1788450367,
       "updated": 1788450367,
       "anchors": [],
@@ -422,6 +458,7 @@
       "priority": "normal",
       "labels": [],
       "assignee": null,
+      "author": "",
       "created": 1788450414,
       "updated": 1788450414,
       "anchors": [],
@@ -435,6 +472,7 @@
       "priority": "normal",
       "labels": [],
       "assignee": null,
+      "author": "",
       "created": 1788473410,
       "updated": 1788473410,
       "anchors": [],
@@ -448,6 +486,7 @@
       "priority": "normal",
       "labels": [],
       "assignee": null,
+      "author": "",
       "created": 1788473421,
       "updated": 1788473421,
       "anchors": [],
@@ -463,6 +502,7 @@
         "ui"
       ],
       "assignee": null,
+      "author": "",
       "created": 1788473945,
       "updated": 1788462600,
       "anchors": [],
@@ -493,6 +533,7 @@
         "ui"
       ],
       "assignee": null,
+      "author": "",
       "created": 1788473965,
       "updated": 1788466000,
       "anchors": [],
@@ -521,6 +562,7 @@
       "priority": "normal",
       "labels": [],
       "assignee": null,
+      "author": "",
       "created": 1788474144,
       "updated": 1788474144,
       "anchors": [],
@@ -534,6 +576,7 @@
       "priority": "normal",
       "labels": [],
       "assignee": null,
+      "author": "",
       "created": 1788474164,
       "updated": 1788474164,
       "anchors": [],
@@ -547,6 +590,7 @@
       "priority": "normal",
       "labels": [],
       "assignee": null,
+      "author": "",
       "created": 1788474195,
       "updated": 1788474195,
       "anchors": [],
@@ -560,6 +604,7 @@
       "priority": "normal",
       "labels": [],
       "assignee": null,
+      "author": "",
       "created": 1788474238,
       "updated": 1788474238,
       "anchors": [],
@@ -575,6 +620,7 @@
         "tickets"
       ],
       "assignee": null,
+      "author": "",
       "created": 1788474256,
       "updated": 1788466000,
       "anchors": [
@@ -619,6 +665,7 @@
         "ui"
       ],
       "assignee": null,
+      "author": "",
       "created": 1788474656,
       "updated": 1788466000,
       "anchors": [],
@@ -647,6 +694,7 @@
       "priority": "normal",
       "labels": [],
       "assignee": null,
+      "author": "",
       "created": 1788475086,
       "updated": 1788477733,
       "anchors": [],
@@ -660,6 +708,7 @@
       "priority": "normal",
       "labels": [],
       "assignee": null,
+      "author": "",
       "created": 1788475247,
       "updated": 1788467000,
       "anchors": [
@@ -688,6 +737,7 @@
       "priority": "normal",
       "labels": [],
       "assignee": null,
+      "author": "",
       "created": 1788475270,
       "updated": 1788475270,
       "anchors": [],
@@ -703,6 +753,7 @@
         "ui"
       ],
       "assignee": null,
+      "author": "",
       "created": 1788476788,
       "updated": 1788480990,
       "anchors": [
@@ -731,6 +782,7 @@
       "priority": "normal",
       "labels": [],
       "assignee": null,
+      "author": "",
       "created": 1788476825,
       "updated": 1788476871,
       "anchors": [],
@@ -752,6 +804,7 @@
       "priority": "normal",
       "labels": [],
       "assignee": null,
+      "author": "",
       "created": 1788477949,
       "updated": 1788477949,
       "anchors": [],
@@ -765,6 +818,7 @@
       "priority": "normal",
       "labels": [],
       "assignee": null,
+      "author": "",
       "created": 1788479108,
       "updated": 1788479108,
       "anchors": [],
@@ -778,6 +832,7 @@
       "priority": "normal",
       "labels": [],
       "assignee": null,
+      "author": "",
       "created": 1788479117,
       "updated": 1788479117,
       "anchors": [],
@@ -791,6 +846,7 @@
       "priority": "normal",
       "labels": [],
       "assignee": null,
+      "author": "",
       "created": 1788479155,
       "updated": 1788479155,
       "anchors": [],
@@ -807,6 +863,7 @@
         "ui"
       ],
       "assignee": null,
+      "author": "",
       "created": 1788480923,
       "updated": 1788469000,
       "anchors": [
@@ -837,6 +894,7 @@
         "ui"
       ],
       "assignee": null,
+      "author": "",
       "created": 1788481371,
       "updated": 1788481701,
       "anchors": [
