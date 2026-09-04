@@ -178,6 +178,12 @@ impl Repo {
         }
     }
 
+    /// A repo pointing nowhere — no git, an empty root. Backs the GUI's
+    /// "nothing opened" state (PM-5); every git query yields nothing.
+    pub fn none() -> Self {
+        Self { inner: None, root: PathBuf::new() }
+    }
+
     pub fn is_git(&self) -> bool {
         self.inner.is_some()
     }

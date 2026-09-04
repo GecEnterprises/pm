@@ -15,26 +15,33 @@ gpui element that paints only its visible rows.
 irm https://raw.githubusercontent.com/GecEnterprises/pm/trunk/install.ps1 | iex
 ```
 
-downloads the latest `pm.exe` into `%LOCALAPPDATA%\Programs\pm` and adds it to
-your user PATH — no admin. windows may show a SmartScreen "unknown publisher"
-warning (the binary isn't code-signed yet); choose *More info → Run anyway*.
-`pm update` pulls the next release in place.
+downloads the latest `pm.exe` into `%LOCALAPPDATA%\Programs\pm`, adds it to your
+user PATH — no admin — then runs `pm --setup`, which registers a Start Menu
+entry and an uninstaller (so pm shows up in Windows "Installed apps" /
+BCUninstaller) and offers to wire pm's MCP server into Claude Code. windows may
+show a SmartScreen "unknown publisher" warning (the binary isn't code-signed
+yet); choose *More info → Run anyway*. `pm --update` pulls the next release in
+place; `pm --uninstall` reverses everything.
 
 ## run
 
 ```
-cargo run                 # opens the current directory
+cargo run                 # opens with no project (pick one from the window)
+cargo run -- .            # opens the current directory
 cargo run -- path/to/repo
 pm                        # once installed
 ```
 
-`pm` is a single binary with a few subcommands:
+`pm` is a single binary; everything past the GUI is a `--flag`:
 
 | command | does |
 | ------- | ---- |
-| `pm [<path>]` | open the diff GUI |
-| `pm mcp [--project <p>]` | run the [MCP](crates/pm-mcp/README.md) server on stdio |
-| `pm update` | update to the latest release (windows) |
+| `pm` | open pm with nothing loaded — pick a project from the window |
+| `pm .` / `pm <path>` | open the diff GUI on that folder |
+| `pm --mcp [--project <p>]` | run the [MCP](crates/pm-mcp/README.md) server on stdio |
+| `pm --setup [--yes]` | register pm (Start Menu, uninstaller, Claude Code MCP) |
+| `pm --uninstall [--yes]` | undo `--setup` and remove pm |
+| `pm --update` | update to the latest release (windows) |
 | `pm --version` | print version + build commit |
 
 - click a file in **changes** or the **explorer** tree to diff it

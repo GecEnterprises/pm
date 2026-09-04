@@ -1,16 +1,20 @@
-//! Tiny hand-rolled arg parser for the single `pm` binary (PM-14).
+//! Tiny hand-rolled arg parser for the single `pm` binary (PM-14, PM-5).
 //!
-//! `pm` is primarily a GUI, so the default with no recognised subcommand is to
-//! open a folder. The subcommands are the CLI surface: `mcp`, `update`,
-//! `--version`, `--help`.
+//! `pm` is primarily a GUI: `pm` opens it with no project, `pm .` / `pm <path>`
+//! open a folder. Everything else is a `--flag`: `--mcp`, `--setup`,
+//! `--uninstall`, `--update`, `--version`, `--help`.
 
 use std::path::PathBuf;
 
 pub enum Command {
-    /// Open the diff GUI on this folder (or cwd).
+    /// Open the diff GUI on this folder, or with no project when `None`.
     Gui { path: Option<PathBuf> },
-    /// Run the MCP server on stdio (`pm mcp [--project <path>]`).
+    /// Run the MCP server on stdio (`pm --mcp [--project <path>]`).
     Mcp { project: Option<PathBuf> },
+    /// First-run setup: registry, Start Menu, MCP client wiring.
+    Setup { assume_yes: bool },
+    /// Undo what `--setup` did and remove the binary.
+    Uninstall { assume_yes: bool },
     /// Download and install the latest release over this binary.
     Update,
     /// Print `pm <version> (<commit>, <date>)` and exit.
@@ -23,36 +27,45 @@ const USAGE: &str = "\
 pm — Plus Minus, a diff-oriented code viewer
 
 USAGE:
-    pm [<path>]              open the diff GUI on <path> (default: current dir)
-    pm mcp [--project <p>]   run the Model Context Protocol server on stdio
-    pm update               update pm to the latest release (Windows)
+    pm                      open pm with no project
+    pm .                    open the diff GUI on the current directory
+    pm <path>               open the diff GUI on <path>
+    pm --mcp [--project <p>] run the Model Context Protocol server on stdio
+    pm --setup [--yes]      register pm (Start Menu, uninstaller, Claude Code MCP)
+    pm --uninstall [--yes]  undo --setup and remove pm
+    pm --update             update pm to the latest release (Windows)
     pm --version            print version and build info
     pm --help               show this message
 ";
 
 pub fn parse() -> Command {
-    let mut args = std::env::args().skip(1);
-    let Some(first) = args.next() else {
+    let args: Vec<String> = std::env::args().skip(1).collect();
+    let Some(first) = args.first() else {
         return Command::Gui { path: None };
     };
+    let rest = &args[1..];
+    let has_yes = rest.iter().any(|a| a == "--yes" || a == "-y");
 
     match first.as_str() {
         "--version" | "-V" => Command::Version,
         "--help" | "-h" => Command::Help,
-        "mcp" => {
+        "--mcp" | "mcp" => {
             let mut project = None;
-            while let Some(a) = args.next() {
+            let mut it = rest.iter();
+            while let Some(a) = it.next() {
                 match a.as_str() {
-                    "--project" | "-p" => project = args.next().map(PathBuf::from),
+                    "--project" | "-p" => project = it.next().map(PathBuf::from),
                     other if !other.starts_with('-') => project = Some(PathBuf::from(other)),
                     _ => {}
                 }
             }
             Command::Mcp { project }
         }
-        "update" => Command::Update,
+        "--setup" => Command::Setup { assume_yes: has_yes },
+        "--uninstall" => Command::Uninstall { assume_yes: has_yes },
+        "--update" | "update" => Command::Update,
         // Anything else is treated as a path to open.
-        path => Command::Gui { path: Some(PathBuf::from(path)) },
+        _ => Command::Gui { path: Some(PathBuf::from(first)) },
     }
 }
 

@@ -1,8 +1,9 @@
 //! pm (Plus Minus) — a diff-oriented code viewer.
 //!
-//! Opens a folder (arg 1, or the current directory), finds the enclosing git
-//! repository, and shows changed files with a side-by-side line diff. All state
-//! lives in `pm_core`; all rendering in `pm_ui`. This file is just wiring.
+//! Opens a folder (arg 1; `pm` with no arg opens with no project), finds the
+//! enclosing git repository, and shows changed files with a side-by-side line
+//! diff. All state lives in `pm_core`; all rendering in `pm_ui`. This file is
+//! just wiring.
 
 // Release builds are a GUI app with no console window; debug builds keep the
 // console so `eprintln!` / panics are visible during development.
@@ -30,20 +31,27 @@ static ICON: OnceLock<Option<Arc<RgbaImage>>> = OnceLock::new();
 fn main() {
     pm_core::update::cleanup_stale();
 
-    let path = match cli::parse() {
-        cli::Command::Gui { path } => path
-            .or_else(|| std::env::current_dir().ok())
-            .expect("could not determine a folder to open"),
+    // `None` → open the welcome window; `Some(path)` → open a repo window.
+    let start: Option<PathBuf> = match cli::parse() {
+        cli::Command::Gui { path } => path,
         cli::Command::Mcp { project } => {
             attach_console();
             let root = project
                 .or_else(|| std::env::current_dir().ok())
                 .unwrap_or_else(|| PathBuf::from("."));
-            return exit_on_err("pm mcp", pm_mcp::serve_stdio(root));
+            return exit_on_err("pm --mcp", pm_mcp::serve_stdio(root));
+        }
+        cli::Command::Setup { assume_yes } => {
+            attach_console();
+            return exit_on_err("pm --setup", pm_core::setup::run(assume_yes));
+        }
+        cli::Command::Uninstall { assume_yes } => {
+            attach_console();
+            return exit_on_err("pm --uninstall", pm_core::setup::uninstall(assume_yes));
         }
         cli::Command::Update => {
             attach_console();
-            return exit_on_err("pm update", pm_core::update::run_self_update());
+            return exit_on_err("pm --update", pm_core::update::run_self_update());
         }
         cli::Command::Version => {
             attach_console();
@@ -91,7 +99,7 @@ fn main() {
             cx.spawn(async move |cx| {
                 if let Ok(Ok(Some(mut dirs))) = paths.await {
                     if let Some(dir) = dirs.pop() {
-                        cx.update(|cx| open_pm_window(cx, &dir));
+                        cx.update(|cx| open_pm_window(cx, Some(&dir)));
                     }
                 }
             })
@@ -99,7 +107,7 @@ fn main() {
         });
 
         pm_ui::UpdateStatus::init(cx);
-        open_pm_window(cx, &path);
+        open_pm_window(cx, start.as_deref());
         cx.activate(true);
     });
 }
@@ -160,15 +168,19 @@ fn bind_text_input_keys(cx: &mut gpui::App) {
     ]);
 }
 
-/// Open a pm window for `path` — as a git repo if it's inside one, otherwise as
-/// a plain folder browser.
-fn open_pm_window(cx: &mut App, path: &Path) {
-    let repo = Repo::open(path);
-    eprintln!(
-        "pm: opened {}{}",
-        repo.root().display(),
-        if repo.is_git() { "" } else { " (not a git repository)" }
-    );
+/// Open a pm window. `Some(path)` opens it as a git repo (or a plain folder if
+/// it isn't one); `None` opens the "Nothing opened" placeholder (`pm` with no
+/// argument — PM-5), from which the user picks a folder in place.
+fn open_pm_window(cx: &mut App, path: Option<&Path>) {
+    let repo = path.map(Repo::open);
+    match &repo {
+        Some(r) => eprintln!(
+            "pm: opened {}{}",
+            r.root().display(),
+            if r.is_git() { "" } else { " (not a git repository)" }
+        ),
+        None => eprintln!("pm: opened with no project"),
+    }
 
     let bounds = Bounds::centered(None, size(px(1100.), px(720.)), cx);
     let icon = ICON.get().cloned().flatten();
@@ -187,10 +199,13 @@ fn open_pm_window(cx: &mut App, path: &Path) {
             ..Default::default()
         },
         |window, cx| {
-            let view = cx.new(|cx| {
-                let mut pm = Pm::new(repo, cx);
-                pm.start_watch(cx);
-                pm
+            let view = cx.new(|cx| match repo {
+                Some(repo) => {
+                    let mut pm = Pm::new(repo, cx);
+                    pm.start_watch(cx);
+                    pm
+                }
+                None => Pm::new_empty(cx),
             });
             let focus = view.read(cx).root_focus.clone();
             window.focus(&focus, cx);

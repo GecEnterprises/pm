@@ -5,8 +5,9 @@ use std::path::PathBuf;
 use std::time::Duration;
 
 use gpui::{
-    canvas, deferred, div, prelude::*, px, rgb, rgba, Bounds, ClipboardItem, Context, DragMoveEvent,
-    Empty, Entity, FocusHandle, KeyDownEvent, MouseButton, SharedString, Window,
+    canvas, deferred, div, prelude::*, px, rgb, rgba, svg, Bounds, ClipboardItem, Context,
+    DragMoveEvent, Empty, Entity, FocusHandle, KeyDownEvent, MouseButton, PathPromptOptions,
+    SharedString, Window,
 };
 
 use pm_core::text::{BufferPos, DiffCursor};
@@ -174,6 +175,9 @@ pub struct Pm {
     pub filter_menu_open: bool,
     /// The selected ticket's status-picker popover is open.
     pub status_menu_open: bool,
+    /// No project is open — show the "Nothing opened" placeholder and disable
+    /// the view switcher (PM-5). Cleared once [`load_repo`](Self::load_repo) runs.
+    pub empty: bool,
 }
 
 impl Pm {
@@ -248,7 +252,54 @@ impl Pm {
                 .collect(),
             filter_menu_open: false,
             status_menu_open: false,
+            empty: false,
         }
+    }
+
+    /// A window with no project open — the "Nothing opened" placeholder. The
+    /// user picks a folder from here (button or File → Open Folder) and
+    /// [`load_repo`](Self::load_repo) turns it into a normal window in place.
+    pub fn new_empty(cx: &mut Context<Self>) -> Self {
+        let mut pm = Self::new(Repo::none(), cx);
+        pm.empty = true;
+        pm.sentinel = None; // nothing to watch yet
+        pm
+    }
+
+    /// Open `path` into this window, replacing the "Nothing opened" placeholder.
+    pub fn load_repo(&mut self, path: PathBuf, cx: &mut Context<Self>) {
+        let repo = Repo::open(&path);
+        let root = repo.root().to_path_buf();
+        self.state = AppState::new(repo);
+        self.empty = false;
+        self.shaped.clear();
+        self.diff = DiffScroll::default();
+        self.hover_file = None;
+        self.tree_hover = None;
+        self.history_hover = None;
+        self.sentinel = Sentinel::start(root)
+            .map_err(|e| eprintln!("pm: filesystem watch unavailable ({e})"))
+            .ok();
+        self.start_watch(cx);
+        cx.notify();
+    }
+
+    /// Prompt for a folder and [`load_repo`](Self::load_repo) it into this window.
+    pub fn pick_and_open(&mut self, _window: &mut Window, cx: &mut Context<Self>) {
+        let paths = cx.prompt_for_paths(PathPromptOptions {
+            files: false,
+            directories: true,
+            multiple: false,
+            prompt: Some("Open".into()),
+        });
+        cx.spawn(async move |this, cx| {
+            if let Ok(Ok(Some(mut dirs))) = paths.await {
+                if let Some(dir) = dirs.pop() {
+                    let _ = this.update(cx, |pm, cx| pm.load_repo(dir, cx));
+                }
+            }
+        })
+        .detach();
     }
 
     /// VS Code-style window title: `<context> — <repo> — pm`. The leading
@@ -257,6 +308,9 @@ impl Pm {
     /// nothing to name.
     pub(crate) fn window_title(&self) -> String {
         let app = "pm";
+        if self.empty {
+            return app.to_string();
+        }
         let repo = self
             .state
             .repo
@@ -666,10 +720,14 @@ impl Render for Pm {
             self.title = title;
         }
 
-        let body = match self.view {
-            View::Files => self.files_body(cx).into_any_element(),
-            View::Summary => self.summary_body().into_any_element(),
-            View::Tickets => self.tickets_body(cx).into_any_element(),
+        let body = if self.empty {
+            self.empty_body(cx).into_any_element()
+        } else {
+            match self.view {
+                View::Files => self.files_body(cx).into_any_element(),
+                View::Summary => self.summary_body().into_any_element(),
+                View::Tickets => self.tickets_body(cx).into_any_element(),
+            }
         };
 
         let root = div()
@@ -1010,6 +1068,47 @@ impl Pm {
             ))
             .child(self.left_column(cx))
             .child(self.diff_pane(cx))
+    }
+
+    /// The "Nothing opened" placeholder shown when no project is loaded (PM-5).
+    fn empty_body(&self, cx: &mut Context<Self>) -> impl IntoElement {
+        div()
+            .flex_1()
+            .min_h_0()
+            .flex()
+            .flex_col()
+            .items_center()
+            .justify_center()
+            .gap_4()
+            .bg(rgb(BG))
+            .text_color(rgb(DIM))
+            .child(
+                svg()
+                    .size(rm(56.0))
+                    .flex_none()
+                    .text_color(rgb(BORDER))
+                    .data(crate::icons::svg_bytes("diff.svg")),
+            )
+            .child(SharedString::from("Nothing opened"))
+            .child(
+                div()
+                    .id("open-project")
+                    .mt_2()
+                    .px_4()
+                    .py_2()
+                    .rounded_md()
+                    .border_1()
+                    .border_color(rgb(BORDER))
+                    .bg(rgb(PANEL))
+                    .text_color(rgb(TEXT))
+                    .cursor_pointer()
+                    .hover(|s| s.bg(rgb(SELECT)))
+                    .child(SharedString::from("Open a project\u{2026}"))
+                    .on_mouse_down(
+                        MouseButton::Left,
+                        cx.listener(|pm, _, window, cx| pm.pick_and_open(window, cx)),
+                    ),
+            )
     }
 
     /// The Summary view — a placeholder until summary diffing lands.

@@ -6,6 +6,7 @@ pub mod git;
 pub mod highlight;
 pub mod identity;
 pub mod pm;
+pub mod setup;
 pub mod state;
 pub mod text;
 pub mod update;

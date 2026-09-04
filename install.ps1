@@ -54,7 +54,8 @@ if ($shaAsset) {
 }
 Move-Item $tmp $target -Force
 
-# Add to user PATH if it isn't already there.
+# Add to user PATH if it isn't already there. (`pm --setup` also does this, but
+# doing it here means the PATH is ready even if setup is skipped.)
 $userPath = [Environment]::GetEnvironmentVariable("Path", "User")
 if (($userPath -split ";") -notcontains $dest) {
     [Environment]::SetEnvironmentVariable("Path", "$userPath;$dest", "User")
@@ -62,3 +63,12 @@ if (($userPath -split ";") -notcontains $dest) {
 }
 
 Write-Host "pm $($rel.tag_name) installed to $target"
+
+# Register pm (Start Menu, uninstaller, Claude Code MCP). Interactive prompts;
+# a failure here doesn't fail the install.
+try {
+    & $target --setup
+} catch {
+    Write-Warning "pm --setup did not complete: $_"
+    Write-Host "You can re-run it any time with:  pm --setup"
+}

@@ -4,7 +4,7 @@
     "name": "pm",
     "key": "PM"
   },
-  "next_id": 44,
+  "next_id": 47,
   "tickets": [
     {
       "id": 5,
@@ -18,7 +18,7 @@
       "assignee": null,
       "author": "",
       "created": 1788448748,
-      "updated": 1788483066,
+      "updated": 1788486266,
       "anchors": [],
       "comments": [
         {
@@ -33,6 +33,13 @@
           "author": "claude",
           "created": 1788483066,
           "body": "MCP server shipped as crates/pm-mcp (rmcp 3.2, stdio). Works directly on .pm/pm.json5 via pm-core (no GUI needed); project chosen by --project / positional / cwd, with per-call project override that walks up to the nearest .pm/. Tools: list_tickets, get_ticket, add_comment, create_ticket, edit_ticket, open_project (spawns the pm GUI), list_projects (dir scan). .mcp.json at the repo root registers it with Claude Code. This comment was posted through pm-mcp itself. Depends on PM-15 (author), also in_progress.",
+          "anchor": null
+        },
+        {
+          "id": 3,
+          "author": "reaganiwadha",
+          "created": 1788486266,
+          "body": "We need MCP Installer. install.ps1 installs the pm binary yes, but we should have a subcommand named `pm setup`. Actually let's change the cli syntax to be `pm .` to open this project `pm` just opens pm without specifying directory, `pm --mcp` to run mcp `pm --setup` is the first thing the install.ps1 launches. and in this pm --setup, it asks whether to associate itself/add itself in the menu, register like windows application registry properly, register an uninstaller so it shows up in the bcuninstaller/windows uninstall thingy. and more importantly, pm --setup has an mcp configurator/mcp plugger. Find like a repository where it has an mcp plugger that detects claude code or something and plugs itself properly. Target claude code first",
           "anchor": null
         }
       ]
@@ -936,6 +943,48 @@
           "anchor": null
         }
       ]
+    },
+    {
+      "id": 44,
+      "title": "When accidentally opening a project in a deep root deep nested trees, the gui hangs. We need a system where atleast the gui shows up and it processes things in the background, like how vscode does it",
+      "body": "",
+      "status": "open",
+      "priority": "normal",
+      "labels": [],
+      "assignee": null,
+      "author": "reaganiwadha",
+      "created": 1788486037,
+      "updated": 1788486037,
+      "anchors": [],
+      "comments": []
+    },
+    {
+      "id": 45,
+      "title": "For files that doesn't have a diff, it should just be a full file view without the diff split",
+      "body": "",
+      "status": "open",
+      "priority": "normal",
+      "labels": [],
+      "assignee": null,
+      "author": "reaganiwadha",
+      "created": 1788486452,
+      "updated": 1788486452,
+      "anchors": [],
+      "comments": []
+    },
+    {
+      "id": 46,
+      "title": "Escape button should dismiss modal. Modal in like About pm",
+      "body": "",
+      "status": "open",
+      "priority": "normal",
+      "labels": [],
+      "assignee": null,
+      "author": "reaganiwadha",
+      "created": 1788487569,
+      "updated": 1788487569,
+      "anchors": [],
+      "comments": []
     }
   ]
 }

@@ -85,6 +85,8 @@ impl Pm {
             ("File-to-File", "diff.svg", View::Files),
             ("Tickets", "hash.svg", View::Tickets),
         ];
+        // No project open → the switcher is inert (PM-5).
+        let disabled = self.empty;
         let mut strip = div()
             .id("view-switcher")
             .flex()
@@ -99,7 +101,7 @@ impl Pm {
             .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation());
 
         for (label, icon, view) in segs {
-            let active = self.view == view;
+            let active = !disabled && self.view == view;
             let fg = rgb(if active { TEXT } else { DIM });
             strip = strip.child(
                 div()
@@ -110,10 +112,10 @@ impl Pm {
                     .gap_1()
                     .px_2()
                     .py(px(2.0))
-                    .cursor_pointer()
                     .text_color(fg)
                     .when(active, |s| s.bg(rgb(SELECT)))
-                    .when(!active, |s| s.hover(|s| s.bg(rgb(BORDER))))
+                    .when(!disabled, |s| s.cursor_pointer())
+                    .when(!active && !disabled, |s| s.hover(|s| s.bg(rgb(BORDER))))
                     .child(
                         svg()
                             .size(rm(13.0))
@@ -122,13 +124,15 @@ impl Pm {
                             .data(icons::svg_bytes(icon)),
                     )
                     .child(SharedString::from(label))
-                    .on_mouse_down(
-                        MouseButton::Left,
-                        cx.listener(move |pm, _, _, cx| {
-                            pm.set_view(view, cx);
-                            cx.stop_propagation();
-                        }),
-                    ),
+                    .when(!disabled, |s| {
+                        s.on_mouse_down(
+                            MouseButton::Left,
+                            cx.listener(move |pm, _, _, cx| {
+                                pm.set_view(view, cx);
+                                cx.stop_propagation();
+                            }),
+                        )
+                    }),
             );
         }
         strip
