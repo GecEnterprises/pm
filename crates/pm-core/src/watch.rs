@@ -24,17 +24,23 @@ pub struct Sentinel {
 }
 
 impl Sentinel {
-    pub fn start(root: PathBuf) -> Result<Self> {
+    /// Watch `root` recursively. `extra` is an out-of-repo ticket-store directory
+    /// (`~/.pm/projects/<slug>/` — PM-34); when set it's watched too so external
+    /// edits to `pm.json5` still reach the GUI.
+    pub fn start(root: PathBuf, extra: Option<PathBuf>) -> Result<Self> {
         let pending = Arc::new(Mutex::new(Pending::default()));
         let sink = pending.clone();
         let filter_root = root.clone();
+        let filter_extra = extra.clone();
 
         let mut watcher = notify::recommended_watcher(move |res: notify::Result<notify::Event>| {
             let Ok(event) = res else { return };
             let mut guard = sink.lock().unwrap();
             let mut hit = false;
             for path in event.paths {
-                if relevant(&path, &filter_root) {
+                if relevant(&path, &filter_root)
+                    || filter_extra.as_ref().is_some_and(|e| path.starts_with(e))
+                {
                     guard.paths.insert(path);
                     hit = true;
                 }
@@ -44,6 +50,13 @@ impl Sentinel {
             }
         })?;
         watcher.watch(&root, RecursiveMode::Recursive)?;
+        if let Some(extra) = &extra {
+            // The store dir may not exist yet (Home store chosen, no ticket
+            // written). Create it so the watch takes; a failure here is not
+            // fatal — the GUI still reads/writes the file directly.
+            let _ = std::fs::create_dir_all(extra);
+            let _ = watcher.watch(extra, RecursiveMode::NonRecursive);
+        }
 
         Ok(Self {
             _watcher: watcher,

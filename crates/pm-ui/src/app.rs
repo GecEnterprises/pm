@@ -5,7 +5,7 @@ use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 use gpui::{
-    canvas, deferred, div, prelude::*, px, rgb, rgba, svg, Bounds, ClipboardItem, Context,
+    canvas, deferred, div, prelude::*, px, rgb, rgba, svg, App, Bounds, ClipboardItem, Context,
     DragMoveEvent, Empty, Entity, FocusHandle, KeyDownEvent, MouseButton, PathPromptOptions,
     SharedString, Window,
 };
@@ -182,11 +182,15 @@ pub struct Pm {
     /// No project is open — show the "Nothing opened" placeholder and disable
     /// the view switcher (PM-5). Cleared once [`load_repo`](Self::load_repo) runs.
     pub empty: bool,
+    /// A project with no `.pm/` and no saved choice was opened; the storage
+    /// modal is up (PM-34). Holds the project root awaiting the choice.
+    pub pending_store_choice: Option<PathBuf>,
 }
 
 impl Pm {
     pub fn new(repo: Repo, cx: &mut Context<Self>) -> Self {
-        let sentinel = Sentinel::start(repo.root().to_path_buf())
+        let (store_dir, extra_watch) = Self::resolve_store(repo.root(), cx);
+        let sentinel = Sentinel::start(repo.root().to_path_buf(), extra_watch)
             .map_err(|e| eprintln!("pm: filesystem watch unavailable ({e})"))
             .ok();
 
@@ -201,7 +205,7 @@ impl Pm {
 
         let scale = ConfigStore::get(cx).ui_scale();
 
-        let state = AppState::new(repo);
+        let state = AppState::new(repo, store_dir);
         let author_box =
             cx.new(|cx| TextInput::single(cx).placeholder("author").text(state.author.clone(), cx));
         cx.subscribe(&author_box, |pm, _, ev, cx| match ev {
@@ -266,7 +270,24 @@ impl Pm {
             filter_menu_open: false,
             status_menu_open: false,
             empty: false,
+            pending_store_choice: None,
         }
+    }
+
+    /// Resolve where this project's tickets live from the config registry
+    /// (PM-34), plus an out-of-repo directory to also watch when the store isn't
+    /// `<root>/.pm`.
+    fn resolve_store(root: &Path, cx: &mut App) -> (PathBuf, Option<PathBuf>) {
+        if root.as_os_str().is_empty() {
+            return (root.join(".pm"), None);
+        }
+        let cfg = ConfigStore::get(cx);
+        let dir = cfg.resolve_store_dir(root);
+        let extra = cfg
+            .store_for(root)
+            .filter(|s| s.location == pm_core::config::StoreLocation::Home)
+            .map(|_| dir.clone());
+        (dir, extra)
     }
 
     /// A window with no project open — the "Nothing opened" placeholder. The
@@ -286,19 +307,21 @@ impl Pm {
         let repo = Repo::open(&path);
         let root = repo.root().to_path_buf();
         Self::record_recent(&root, cx);
-        self.state = AppState::new(repo);
+        let (store_dir, extra_watch) = Self::resolve_store(&root, cx);
+        self.state = AppState::new(repo, store_dir);
         // Re-seed the "Acting as" field from the new repo's identity — the
         // window may have started empty (`unknown`) before a folder was picked.
         let author = self.state.author.clone();
         self.author_box.update(cx, |ti, cx| ti.set_text(author, cx));
         self.empty = false;
         self.selected_ticket = None;
+        self.pending_store_choice = None;
         self.shaped.clear();
         self.diff = DiffScroll::default();
         self.hover_file = None;
         self.tree_hover = None;
         self.history_hover = None;
-        self.sentinel = Sentinel::start(root)
+        self.sentinel = Sentinel::start(root, extra_watch)
             .map_err(|e| eprintln!("pm: filesystem watch unavailable ({e})"))
             .ok();
         self.start_watch(cx);
@@ -398,8 +421,54 @@ impl Pm {
     pub fn set_view(&mut self, view: View, cx: &mut Context<Self>) {
         if self.view != view {
             self.view = view;
+            if view == View::Tickets {
+                self.maybe_prompt_store(cx);
+            }
             cx.notify();
         }
+    }
+
+    /// First time the Tickets view is opened for a project that has no `.pm/`
+    /// and no saved storage choice, put up the modal (PM-34). Diffing never
+    /// triggers this.
+    fn maybe_prompt_store(&mut self, cx: &mut Context<Self>) {
+        if self.empty || self.pending_store_choice.is_some() {
+            return;
+        }
+        let root = self.state.repo.root().to_path_buf();
+        if root.as_os_str().is_empty() {
+            return;
+        }
+        let decided = ConfigStore::get(cx).store_for(&root).is_some()
+            || root.join(".pm").join("pm.json5").exists();
+        if !decided {
+            self.pending_store_choice = Some(root);
+        }
+    }
+
+    /// Record the storage choice for the pending project (PM-34), re-point the
+    /// ticket store, and restart the watcher.
+    fn apply_store_choice(
+        &mut self,
+        loc: pm_core::config::StoreLocation,
+        cx: &mut Context<Self>,
+    ) {
+        let Some(root) = self.pending_store_choice.take() else {
+            return;
+        };
+        let root_for_cfg = root.clone();
+        ConfigStore::update(cx, move |c| {
+            c.set_store(&root_for_cfg, loc);
+        });
+        let dir = ConfigStore::get(cx).resolve_store_dir(&root);
+        self.state.store_dir = dir.clone();
+        self.state.reload_pm();
+        let extra = matches!(loc, pm_core::config::StoreLocation::Home).then_some(dir);
+        self.sentinel = Sentinel::start(root, extra)
+            .map_err(|e| eprintln!("pm: filesystem watch unavailable ({e})"))
+            .ok();
+        self.start_watch(cx);
+        cx.notify();
     }
 
     /// Cycle the top-level view by `dir` (+1 / -1), in switcher order
@@ -870,7 +939,10 @@ impl Render for Pm {
             .on_key_down(cx.listener(|pm, e: &KeyDownEvent, _, cx| {
                 if e.keystroke.key == "escape" {
                     // Dismiss the topmost dismissible thing (PM-46).
-                    if pm.open_menu.take().is_some() || std::mem::take(&mut pm.show_about) {
+                    if pm.pending_store_choice.is_some() {
+                        // Esc = accept the preselection: keep tickets in the repo.
+                        pm.apply_store_choice(pm_core::config::StoreLocation::InRepo, cx);
+                    } else if pm.open_menu.take().is_some() || std::mem::take(&mut pm.show_about) {
                         cx.notify();
                     }
                 }
@@ -892,6 +964,9 @@ impl Render for Pm {
             .child(self.title_bar(window, cx))
             .child(body)
             .when(self.show_about, |r| r.child(self.about_overlay(cx)))
+            .when(self.pending_store_choice.is_some(), |r| {
+                r.child(self.store_choice_overlay(cx))
+            })
             .child(self.status_bar(window, cx));
 
         client_side_decorations(root, window, cx)
@@ -1310,6 +1385,104 @@ impl Pm {
                     .text_size(rm(11.0))
                     .child(SharedString::from(name)),
             )
+    }
+
+    /// Modal shown the first time the Tickets view is opened for a project with
+    /// no `.pm/` and no saved choice (PM-34). Mandatory — the scrim doesn't
+    /// dismiss; Esc accepts the preselection (in-repo).
+    fn store_choice_overlay(&self, cx: &mut Context<Self>) -> impl IntoElement {
+        let button = |id: &'static str, label: &'static str, sub: String, primary: bool| {
+            div()
+                .id(id)
+                .flex()
+                .flex_col()
+                .gap_1()
+                .w_full()
+                .px_3()
+                .py_2()
+                .rounded_md()
+                .border_1()
+                .border_color(rgb(if primary { SELECT } else { BORDER }))
+                .when(primary, |d| d.bg(rgb(SELECT)))
+                .cursor_pointer()
+                .hover(|s| s.bg(rgb(SELECT)))
+                .child(div().text_color(rgb(TEXT)).child(SharedString::from(label)))
+                .child(
+                    div()
+                        .text_size(rm(11.0))
+                        .text_color(rgb(DIM))
+                        .child(SharedString::from(sub)),
+                )
+        };
+
+        deferred(
+            div()
+                .absolute()
+                .inset_0()
+                .flex()
+                .items_center()
+                .justify_center()
+                .bg(rgba(0x0000_00aa))
+                .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
+                .child(
+                    div()
+                        .occlude()
+                        .flex()
+                        .flex_col()
+                        .gap_3()
+                        .w(px(380.0))
+                        .p_4()
+                        .bg(rgb(PANEL))
+                        .border_1()
+                        .border_color(rgb(BORDER))
+                        .rounded_lg()
+                        .shadow_lg()
+                        .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
+                        .child(
+                            div()
+                                .text_size(rm(15.0))
+                                .text_color(rgb(TEXT))
+                                .child("Where should this project's tickets live?"),
+                        )
+                        .child(div().text_color(rgb(DIM)).child(SharedString::from(
+                            "This project has no .pm/ folder yet.",
+                        )))
+                        .child(
+                            button(
+                                "store-in-repo",
+                                "In this repository",
+                                ".pm/pm.json5 \u{2014} committed alongside the code".into(),
+                                true,
+                            )
+                            .on_mouse_down(
+                                MouseButton::Left,
+                                cx.listener(|pm, _, _, cx| {
+                                    pm.apply_store_choice(
+                                        pm_core::config::StoreLocation::InRepo,
+                                        cx,
+                                    );
+                                }),
+                            ),
+                        )
+                        .child(
+                            button(
+                                "store-in-home",
+                                "In ~/.pm (outside the repo)",
+                                "~/.pm/projects/\u{2026} \u{2014} the repo stays untouched".into(),
+                                false,
+                            )
+                            .on_mouse_down(
+                                MouseButton::Left,
+                                cx.listener(|pm, _, _, cx| {
+                                    pm.apply_store_choice(
+                                        pm_core::config::StoreLocation::Home,
+                                        cx,
+                                    );
+                                }),
+                            ),
+                        ),
+                ),
+        )
     }
 
     fn about_overlay(&self, cx: &mut Context<Self>) -> impl IntoElement {

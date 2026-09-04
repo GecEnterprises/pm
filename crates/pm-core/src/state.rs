@@ -12,14 +12,6 @@ use crate::highlight::{Highlighter, Line};
 use crate::pm::{self, PmData};
 use crate::text::{BufferPos, DiffCursor, DiffText};
 
-/// Whether `p` ends with `.pm/pm.json5` (the ticket store), regardless of how
-/// the watcher spelled the rest of the path.
-fn ends_with_pm_store(p: &Path) -> bool {
-    let mut it = p.components().rev();
-    it.next().map(|c| c.as_os_str()) == Some(OsStr::new("pm.json5"))
-        && it.next().map(|c| c.as_os_str()) == Some(OsStr::new(".pm"))
-}
-
 /// Hard cap on the number of diff rows laid out.
 pub const MAX_ROWS: usize = 200_000;
 
@@ -112,10 +104,15 @@ pub struct AppState {
     /// Seeded from config / git; the Tickets pane "as:" field can override it
     /// per action.
     pub author: String,
+    /// Directory that holds this project's `pm.json5` (PM-34) — `<root>/.pm` by
+    /// default, or an out-of-repo store under `~/.pm/`.
+    pub store_dir: PathBuf,
 }
 
 impl AppState {
-    pub fn new(repo: Repo) -> Self {
+    /// `store_dir` is the directory that holds `pm.json5` (PM-34); pass
+    /// `repo.root().join(".pm")` for the in-repo default.
+    pub fn new(repo: Repo, store_dir: PathBuf) -> Self {
         let target = DiffTarget::WorkingTree;
         let changes = repo.changes(target);
         let change_names = compute_change_names(&changes);
@@ -124,7 +121,7 @@ impl AppState {
         let branch = repo.branch();
         let commits = repo.log(git::LOG_LIMIT);
         let author = crate::identity::resolve_author(None, &repo);
-        let (pm, pm_error) = match pm::load(repo.root()) {
+        let (pm, pm_error) = match pm::load_in(&store_dir) {
             Ok(d) => (d, None),
             Err(pm::LoadError::Parse(s)) => (PmData::default(), Some(s)),
             // A read failure at startup is almost always transient; start empty
@@ -158,6 +155,7 @@ impl AppState {
             pm,
             pm_error,
             author,
+            store_dir,
         };
         s.rebuild_visible();
         // Open the first changed file, or — with no git — the first file in the
@@ -182,14 +180,25 @@ impl AppState {
 
     /// Absolute path of the ticket store.
     pub fn pm_path(&self) -> PathBuf {
-        self.repo.root().join(".pm").join("pm.json5")
+        self.store_dir.join("pm.json5")
+    }
+
+    /// Whether `p` names this project's `pm.json5`. Matches on the file name plus
+    /// its parent directory's name — the watcher can spell the rest of the path
+    /// differently (separators / prefix) on Windows.
+    fn is_pm_store(&self, p: &Path) -> bool {
+        if p.file_name() != Some(OsStr::new("pm.json5")) {
+            return false;
+        }
+        let Some(parent) = p.parent() else { return false };
+        parent == self.store_dir || parent.file_name() == self.store_dir.file_name()
     }
 
     /// Re-read `pm.json5` from disk. A read hiccup (watcher fired mid-write, an
     /// antivirus scan holding the file) keeps the last-good data with no error —
     /// the next watcher tick picks it up. Only a genuine parse failure surfaces.
     pub fn reload_pm(&mut self) {
-        match pm::load(self.repo.root()) {
+        match pm::load_in(&self.store_dir) {
             Ok(d) => {
                 self.pm = d;
                 self.pm_error = None;
@@ -200,7 +209,7 @@ impl AppState {
     }
 
     fn save_pm(&mut self) {
-        match self.pm.save(self.repo.root()) {
+        match self.pm.save_in(&self.store_dir) {
             Ok(()) => self.pm_error = None,
             Err(e) => self.pm_error = Some(e.to_string()),
         }
@@ -382,7 +391,7 @@ impl AppState {
     pub fn apply_fs_change(&mut self, changed: &[PathBuf]) -> Option<PathBuf> {
         // Match by trailing components, not exact PathBuf — the watcher's paths
         // and `pm_path()` can differ by prefix / separators on Windows.
-        if changed.iter().any(|p| ends_with_pm_store(p)) {
+        if changed.iter().any(|p| self.is_pm_store(p)) {
             self.reload_pm();
         }
         if self.target != DiffTarget::WorkingTree {
@@ -545,7 +554,9 @@ mod tests {
 
     #[test]
     fn changed_in_batch_guards_and_filters() {
-        let st = AppState::new(Repo::discover(Path::new(".")).unwrap());
+        let repo = Repo::discover(Path::new(".")).unwrap();
+        let store_dir = repo.root().join(".pm");
+        let st = AppState::new(repo, store_dir);
         let root = st.repo.root().to_path_buf();
 
         // A `.git` touch is a checkout/commit, never a jump target.

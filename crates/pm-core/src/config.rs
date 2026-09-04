@@ -8,6 +8,7 @@
 //! The layer is deliberately a plain JSON key/value document (no sqlite) — see
 //! PM-34. New settings are just `#[serde(default)]` fields.
 
+use std::hash::{Hash, Hasher};
 use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result};
@@ -41,6 +42,10 @@ pub struct Config {
     /// list opens that file in the diff pane (PM-30). Toggled from the footer.
     #[serde(default)]
     pub watchjump: bool,
+    /// Per-project ticket-store locations (PM-34). A project whose root isn't
+    /// listed here uses the in-repo default (`<root>/.pm`).
+    #[serde(default)]
+    pub stores: Vec<ProjectStore>,
 }
 
 impl Default for Config {
@@ -51,12 +56,70 @@ impl Default for Config {
             author: String::new(),
             recent: Vec::new(),
             watchjump: false,
+            stores: Vec::new(),
         }
     }
 }
 
+/// Where a project's `pm.json5` lives (PM-34).
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum StoreLocation {
+    /// `<project-root>/.pm/` — the default; committed alongside the code.
+    InRepo,
+    /// `~/.pm/projects/<slug>/` — the repo is left untouched.
+    Home,
+}
+
+/// A remembered choice of where one project keeps its ticket store.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ProjectStore {
+    /// Absolute project root (the key).
+    pub root: PathBuf,
+    pub location: StoreLocation,
+    /// Absolute directory that contains `pm.json5`. Stored explicitly so a
+    /// future change to the slug scheme can't strand an existing store.
+    pub dir: PathBuf,
+}
+
 /// How many recent projects [`Config::push_recent`] keeps.
 pub const RECENT_CAP: usize = 10;
+
+/// Absolutise a path without touching the filesystem (matches `push_recent`).
+fn abs(path: &Path) -> PathBuf {
+    std::path::absolute(path).unwrap_or_else(|_| path.to_path_buf())
+}
+
+/// A filesystem-safe directory name derived from a project root — a sanitised
+/// rendering of the absolute path plus a short hash so distinct paths that
+/// sanitise the same still get distinct slugs (PM-34).
+pub fn project_slug(root: &Path) -> String {
+    let full = abs(root);
+    let text = full.to_string_lossy();
+
+    let mut slug = String::new();
+    let mut last_dash = false;
+    for ch in text.chars() {
+        if ch.is_ascii_alphanumeric() || ch == '.' || ch == '_' || ch == '-' {
+            slug.push(ch);
+            last_dash = false;
+        } else if !last_dash {
+            slug.push('-');
+            last_dash = true;
+        }
+    }
+    let slug = slug.trim_matches('-');
+    // Keep the tail (the project folder name) when the path is very long.
+    let tail: String = {
+        let chars: Vec<char> = slug.chars().collect();
+        let start = chars.len().saturating_sub(60);
+        chars[start..].iter().collect::<String>()
+    };
+
+    let mut h = std::collections::hash_map::DefaultHasher::new();
+    text.hash(&mut h);
+    format!("{}-{:08x}", tail.trim_matches('-'), h.finish() as u32)
+}
 
 impl Config {
     /// `ui_scale` clamped to a sane range.
@@ -77,6 +140,37 @@ impl Config {
         self.recent.insert(0, path);
         self.recent.truncate(RECENT_CAP);
         true
+    }
+
+    /// The remembered ticket-store choice for `root`, if any (PM-34).
+    pub fn store_for(&self, root: &Path) -> Option<&ProjectStore> {
+        let root = abs(root);
+        self.stores.iter().find(|s| s.root == root)
+    }
+
+    /// The directory that holds this project's `pm.json5` — the remembered
+    /// choice, or the in-repo default `<root>/.pm` (PM-34).
+    pub fn resolve_store_dir(&self, root: &Path) -> PathBuf {
+        self.store_for(root)
+            .map(|s| s.dir.clone())
+            .unwrap_or_else(|| abs(root).join(".pm"))
+    }
+
+    /// Record where `root` keeps its ticket store, computing the directory.
+    /// Replaces any existing entry for the same root. Returns the resolved dir.
+    pub fn set_store(&mut self, root: &Path, location: StoreLocation) -> PathBuf {
+        let root = abs(root);
+        let dir = match location {
+            StoreLocation::InRepo => root.join(".pm"),
+            StoreLocation::Home => home_dir()
+                .unwrap_or_else(|| root.clone())
+                .join(".pm")
+                .join("projects")
+                .join(project_slug(&root)),
+        };
+        self.stores.retain(|s| s.root != root);
+        self.stores.push(ProjectStore { root, location, dir: dir.clone() });
+        dir
     }
 
     /// Pretty JSON text with a trailing newline.
@@ -192,6 +286,11 @@ mod tests {
             author: "alice".into(),
             recent: vec![PathBuf::from("/tmp/a"), PathBuf::from("/tmp/b")],
             watchjump: true,
+            stores: vec![ProjectStore {
+                root: PathBuf::from("/tmp/proj"),
+                location: StoreLocation::Home,
+                dir: PathBuf::from("/home/u/.pm/projects/tmp-proj-0"),
+            }],
         };
         c.save_to(&p).unwrap();
         assert_eq!(Config::load_from(&p), c);
@@ -214,6 +313,34 @@ mod tests {
         std::fs::write(&p, r#"{ "ui_scale": 2.0, "future_setting": "hi" }"#).unwrap();
         assert_eq!(Config::load_from(&p).ui_scale, 2.0);
         let _ = std::fs::remove_dir_all(p.parent().unwrap());
+    }
+
+    #[test]
+    fn slug_is_stable_and_distinct() {
+        let a = project_slug(Path::new("/home/u/Projects/pm"));
+        assert_eq!(a, project_slug(Path::new("/home/u/Projects/pm")));
+        // Distinct paths that sanitise the same still differ (the hash suffix).
+        assert_ne!(
+            project_slug(Path::new("/home/u/a-b")),
+            project_slug(Path::new("/home/u/a/b"))
+        );
+        assert!(a.chars().all(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '_' | '-')));
+    }
+
+    #[test]
+    fn store_dir_default_vs_registered() {
+        let root = Path::new("/tmp/some/proj");
+        let abs_pm = std::path::absolute(root).unwrap().join(".pm");
+        let mut c = Config::default();
+        assert_eq!(c.resolve_store_dir(root), abs_pm);
+
+        let dir = c.set_store(root, StoreLocation::Home);
+        assert_eq!(c.resolve_store_dir(root), dir);
+        assert!(dir.ends_with(project_slug(root)));
+
+        c.set_store(root, StoreLocation::InRepo);
+        assert_eq!(c.stores.len(), 1); // replaced, not appended
+        assert_eq!(c.resolve_store_dir(root), abs_pm);
     }
 
     #[test]

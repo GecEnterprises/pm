@@ -226,7 +226,13 @@ impl std::fmt::Display for LoadError {
 /// default (empty) store. The read is retried briefly past a mid-write; bytes
 /// are decoded lossily so one stray non-UTF-8 byte doesn't hide every ticket.
 pub fn load(root: &Path) -> std::result::Result<PmData, LoadError> {
-    let path = root.join(".pm").join(FILE);
+    load_in(&root.join(".pm"))
+}
+
+/// Like [`load`], but `dir` is the directory that directly contains `pm.json5`
+/// (`<root>/.pm`, or an out-of-repo store under `~/.pm/` — PM-34).
+pub fn load_in(dir: &Path) -> std::result::Result<PmData, LoadError> {
+    let path = dir.join(FILE);
     let mut err = LoadError::Io(format!("reading {}", path.display()));
     for attempt in 0..5 {
         if attempt > 0 {
@@ -263,8 +269,13 @@ impl PmData {
     /// temp file and renames it into place so a concurrent reader never sees a
     /// half-written file.
     pub fn save(&self, root: &Path) -> Result<()> {
-        let dir = root.join(".pm");
-        std::fs::create_dir_all(&dir)
+        self.save_in(&root.join(".pm"))
+    }
+
+    /// Like [`save`](Self::save), but `dir` directly contains `pm.json5`
+    /// (`<root>/.pm`, or an out-of-repo store under `~/.pm/` — PM-34).
+    pub fn save_in(&self, dir: &Path) -> Result<()> {
+        std::fs::create_dir_all(dir)
             .with_context(|| format!("creating {}", dir.display()))?;
         let path = dir.join(FILE);
         let tmp = dir.join(format!(".{FILE}.{}.tmp", std::process::id()));

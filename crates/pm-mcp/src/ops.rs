@@ -11,7 +11,7 @@ use anyhow::{anyhow, bail, Context, Result};
 use serde_json::{json, Value};
 
 use pm_core::pm::{self, PmData, Priority, Status};
-use pm_core::{resolve_author, Repo};
+use pm_core::{resolve_author, Config, Repo};
 
 /// Serializes every read-modify-write of a `pm.json5` in this process. `rmcp`
 /// runs tool calls concurrently, so two writes in one client batch would
@@ -41,12 +41,23 @@ pub fn resolve_root(arg: Option<&str>, default: &Path) -> PathBuf {
     start
 }
 
+/// The directory holding this project's `pm.json5` — the in-repo `.pm/` by
+/// default, or an out-of-repo store from the `~/.pm/config.json` registry
+/// (PM-34).
+fn store_dir(root: &Path) -> PathBuf {
+    Config::load().resolve_store_dir(root)
+}
+
 fn store_path(root: &Path) -> PathBuf {
-    root.join(".pm").join("pm.json5")
+    store_dir(root).join("pm.json5")
 }
 
 fn load(root: &Path) -> Result<PmData> {
-    pm::load(root).map_err(|e| anyhow!("{e}"))
+    pm::load_in(&store_dir(root)).map_err(|e| anyhow!("{e}"))
+}
+
+fn save(data: &PmData, root: &Path) -> Result<()> {
+    data.save_in(&store_dir(root))
 }
 
 fn parse_status(s: &str) -> Result<Status> {
@@ -113,7 +124,7 @@ pub fn add_comment(root: &Path, id: u64, body: &str, author: Option<&str>) -> Re
     if !data.add_comment(id, author.clone(), body, pm::now_unix()) {
         bail!("no ticket with id {id}");
     }
-    data.save(root)?;
+    save(&data, root)?;
     let comment_id = data
         .ticket(id)
         .and_then(|t| t.comments.last())
@@ -145,7 +156,7 @@ pub fn create_ticket(
     if let Some(l) = labels {
         data.set_labels(id, l, now);
     }
-    data.save(root)?;
+    save(&data, root)?;
     let display = data.ticket(id).map(|t| data.display_id(t)).unwrap_or_default();
     Ok(json!({ "ok": true, "id": id, "display_id": display, "author": author }))
 }
@@ -205,7 +216,7 @@ pub fn edit_ticket(
         }
     }
     if !changed.is_empty() {
-        data.save(root)?;
+        save(&data, root)?;
     }
     Ok(json!({ "ok": true, "id": id, "changed": changed }))
 }
@@ -245,10 +256,16 @@ fn locate_gui() -> Option<PathBuf> {
 pub fn list_projects(root: &Path, depth: usize) -> Result<Value> {
     let mut found = Vec::new();
     scan(root, depth, &mut found);
+    // Fold in projects whose store lives outside any repo (PM-34).
+    for s in Config::load().stores {
+        if s.dir.join("pm.json5").is_file() && !found.contains(&s.root) {
+            found.push(s.root);
+        }
+    }
     let projects: Vec<Value> = found
         .into_iter()
         .filter_map(|dir| {
-            let data = pm::load(&dir).ok()?;
+            let data = pm::load_in(&store_dir(&dir)).ok()?;
             Some(json!({
                 "path": dir.display().to_string(),
                 "name": data.project.name,
