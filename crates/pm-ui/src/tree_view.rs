@@ -100,7 +100,7 @@ impl Element for TreeView {
         let h = f32::from(bounds.size.height).max(0.0);
 
         let s = crate::theme::scale_of(window);
-        let row_h = TREE_ROW_H * s;
+        let row_h = (TREE_ROW_H * s).round(); // whole px — see PM-54 / diff_view
         let bar_w = BAR * s;
         let icon_sz = ICON_SIZE * s;
         let indent = TREE_INDENT * s;

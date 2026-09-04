@@ -4,7 +4,7 @@
     "name": "pm",
     "key": "PM"
   },
-  "next_id": 54,
+  "next_id": 55,
   "tickets": [
     {
       "id": 5,
@@ -1081,6 +1081,20 @@
       "author": "unknown",
       "created": 1788492966,
       "updated": 1788492966,
+      "anchors": [],
+      "comments": []
+    },
+    {
+      "id": 54,
+      "title": "Squiggling lines/shaky lines when scrolling in the code viewer. Each line would randomly go up and down sometimes. Investigate why and investigate why zed doesn't have this issue.",
+      "body": "",
+      "status": "open",
+      "priority": "normal",
+      "labels": [],
+      "assignee": null,
+      "author": "reaganiwadha",
+      "created": 1788494128,
+      "updated": 1788494128,
       "anchors": [],
       "comments": []
     }

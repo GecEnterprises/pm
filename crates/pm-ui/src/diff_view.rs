@@ -250,7 +250,12 @@ impl Element for DiffView {
         // Whole-window zoom (PM-36): every metric here is a 1× constant times the
         // rem-size ratio, so the diff scales with the rest of the UI.
         let s = f32::from(window.rem_size()) / BASE_REM;
-        let row_h = ROW_H * s;
+        // Row height MUST be a whole logical pixel (PM-54). gpui quantises glyph
+        // baselines to ¼-physical-pixel; a fractional row height (any non-100%
+        // zoom, e.g. 19.8 at 110%) makes the gap between successive lines wobble
+        // ±¼px as you scroll — the "squiggling lines". gpui's own
+        // `line_height_in_pixels` rounds for exactly this reason.
+        let row_h = (ROW_H * s).round();
         let gutter_w = GUTTER_W * s;
         let gutter_pad = GUTTER_PAD * s;
         let text_pad_l = TEXT_PAD_L * s;

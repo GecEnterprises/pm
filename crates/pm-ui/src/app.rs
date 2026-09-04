@@ -427,9 +427,10 @@ impl Pm {
     }
 
     /// Diff row height at the current zoom (the custom diff element scales its
-    /// own metrics; this is for the scroll math that lives here).
+    /// own metrics; this is for the scroll math that lives here). Rounded to a
+    /// whole pixel to match `diff_view`'s paint (PM-54).
     fn diff_row_h(&self) -> f32 {
-        ROW_H * self.scale
+        (ROW_H * self.scale).round()
     }
 
     pub fn refresh(&mut self) {

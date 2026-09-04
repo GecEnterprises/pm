@@ -113,7 +113,7 @@ impl Element for HistoryView {
         let h = f32::from(bounds.size.height).max(0.0);
 
         let s = crate::theme::scale_of(window);
-        let row_h = LIST_ROW_H * s;
+        let row_h = (LIST_ROW_H * s).round(); // whole px — see PM-54 / diff_view
         let bar_w = BAR * s;
         let ui = font(UI_FONT);
         let text_size = px(12.5 * s);
