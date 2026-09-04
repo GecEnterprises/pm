@@ -4,7 +4,7 @@
     "name": "pm",
     "key": "PM"
   },
-  "next_id": 42,
+  "next_id": 43,
   "tickets": [
     {
       "id": 5,
@@ -697,14 +697,14 @@
       "id": 36,
       "title": "CTRL + + and CTRL + - to scale text and increase scaling factor like how in vscode",
       "body": "",
-      "status": "in_progress",
+      "status": "done",
       "priority": "normal",
       "labels": [
         "ui"
       ],
       "assignee": null,
       "created": 1788476788,
-      "updated": 1788468000,
+      "updated": 1788480990,
       "anchors": [
         {
           "file": "crates/pm-ui/src/theme.rs",
@@ -795,6 +795,37 @@
       "updated": 1788479155,
       "anchors": [],
       "comments": []
+    },
+    {
+      "id": 42,
+      "title": "Sidebar of the ticket tab is not resizable like file-to-file? It should share the common component so it should be resizable as well",
+      "body": "",
+      "status": "in_progress",
+      "priority": "normal",
+      "labels": [
+        "tickets",
+        "ui"
+      ],
+      "assignee": null,
+      "created": 1788480923,
+      "updated": 1788469000,
+      "anchors": [
+        {
+          "file": "crates/pm-ui/src/tickets_view.rs",
+          "start_line": 1,
+          "end_line": 1,
+          "rev": "working"
+        }
+      ],
+      "comments": [
+        {
+          "id": 1,
+          "author": "reaganiwadha",
+          "created": 1788469000,
+          "body": "Done. Pulled the sidebar drag handle (Pm::sidebar_resize_handle) and the root-bounds canvas / drag router out of left_column + files_body so both panes share them. The Tickets list panel is now .relative().w(sidebar_w) with the handle appended, and tickets_body mounts the canvas + on_drag_move. Dragging either sidebar moves the same sidebar_w. File-to-File verified unchanged; Tickets drag needs a run to confirm.",
+          "anchor": null
+        }
+      ]
     }
   ]
 }
