@@ -9,6 +9,7 @@ use gpui::{
 use pm_core::DiffTarget;
 
 use crate::app::Pm;
+use crate::config::ConfigStore;
 use crate::theme::*;
 
 impl Pm {
@@ -101,6 +102,33 @@ impl Pm {
 
     fn status_right(&self, cx: &mut Context<Self>) -> impl IntoElement {
         let mut row = div().flex().flex_row().items_center().gap_3().flex_none();
+
+        // Watch-jump toggle (PM-30) — only meaningful with a change list.
+        if self.state.is_git() {
+            let on = ConfigStore::get(cx).watchjump;
+            let mut chip = div()
+                .id("watch-jump")
+                .px_1()
+                .rounded_sm()
+                .cursor_pointer()
+                .child(SharedString::from(if on {
+                    "\u{25c9} watch-jump"
+                } else {
+                    "\u{25cb} watch-jump"
+                }))
+                .on_mouse_down(
+                    MouseButton::Left,
+                    cx.listener(|_, _, _, cx| {
+                        ConfigStore::update(cx, |c| c.watchjump = !c.watchjump);
+                    }),
+                );
+            chip = if on {
+                chip.bg(rgb(SELECT)).text_color(rgb(TEXT))
+            } else {
+                chip.text_color(rgb(DIM)).hover(|s| s.text_color(rgb(TEXT)))
+            };
+            row = row.child(chip);
+        }
 
         if let Some(rel) = crate::update::UpdateStatus::available(cx) {
             let tag = rel.tag.clone();

@@ -22,5 +22,6 @@ pub use update::UpdateStatus;
 pub use text_input::{TextInput, TextInputEvent};
 pub use menu::{
     app_menus, About, Copy, NextView, OpenFolder, PrevView, Quit, Refresh, SelectAll, ToggleChanges,
-    ToggleExplorer, ToggleHistory, ViewFiles, ViewSummary, ViewTickets, ZoomIn, ZoomOut, ZoomReset,
+    ToggleExplorer, ToggleHistory, ToggleWatchJump, ViewFiles, ViewSummary, ViewTickets, ZoomIn,
+    ZoomOut, ZoomReset,
 };

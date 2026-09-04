@@ -4,7 +4,7 @@
     "name": "pm",
     "key": "PM"
   },
-  "next_id": 51,
+  "next_id": 54,
   "tickets": [
     {
       "id": 5,
@@ -1039,6 +1039,48 @@
       "author": "reaganiwadha",
       "created": 1788491393,
       "updated": 1788491393,
+      "anchors": [],
+      "comments": []
+    },
+    {
+      "id": 51,
+      "title": "Make diffing more obvious by darkening the rest of none changed code and having in line separators and a \"merge squab\" or a \"merge pipe\" so it shows liek directions",
+      "body": "",
+      "status": "open",
+      "priority": "normal",
+      "labels": [],
+      "assignee": null,
+      "author": "unknown",
+      "created": 1788492438,
+      "updated": 1788492438,
+      "anchors": [],
+      "comments": []
+    },
+    {
+      "id": 52,
+      "title": "Currently it's possibel to open up multiple dropdown without dismissing the previous one",
+      "body": "",
+      "status": "open",
+      "priority": "normal",
+      "labels": [],
+      "assignee": null,
+      "author": "unknown",
+      "created": 1788492807,
+      "updated": 1788492807,
+      "anchors": [],
+      "comments": []
+    },
+    {
+      "id": 53,
+      "title": "A header in the File-To-File view, and then a button to jump between line changes",
+      "body": "",
+      "status": "open",
+      "priority": "normal",
+      "labels": [],
+      "assignee": null,
+      "author": "unknown",
+      "created": 1788492966,
+      "updated": 1788492966,
       "anchors": [],
       "comments": []
     }

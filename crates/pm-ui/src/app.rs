@@ -24,7 +24,7 @@ use crate::list_view::list_view;
 use crate::config::ConfigStore;
 use crate::menu::{
     About, Copy, NextView, PrevView, Refresh, SelectAll, ToggleChanges, ToggleExplorer,
-    ToggleHistory, ViewFiles, ViewSummary, ViewTickets, ZoomIn, ZoomOut, ZoomReset,
+    ToggleHistory, ToggleWatchJump, ViewFiles, ViewSummary, ViewTickets, ZoomIn, ZoomOut, ZoomReset,
 };
 use crate::scroll::{ScrollDrag, ScrollState};
 use crate::text_input::{TextInput, TextInputEvent};
@@ -504,7 +504,20 @@ impl Pm {
         let reload = self.state.apply_fs_change(changed);
         self.hover_file = None;
         self.tree_hover = None;
-        if let Some(rel) = reload {
+
+        // Watch-jump: follow the edit to whichever file just changed (PM-30).
+        // Doesn't touch the active view — silent until the user is on Files.
+        let jump = ConfigStore::get(cx)
+            .watchjump
+            .then(|| self.state.changed_in_batch(changed))
+            .flatten()
+            .filter(|rel| self.state.open.as_deref() != Some(rel.as_path()));
+
+        if let Some(rel) = jump {
+            eprintln!("pm: watch-jump \u{2192} {}", rel.display());
+            self.state.tree_selected = Some(rel.clone());
+            self.open_path(rel);
+        } else if let Some(rel) = reload {
             self.reload_open_keep_scroll(rel);
         }
         cx.notify();
@@ -788,6 +801,9 @@ impl Render for Pm {
             .on_action(cx.listener(|pm, _: &ToggleHistory, _, cx| {
                 pm.history_collapsed = !pm.history_collapsed;
                 cx.notify();
+            }))
+            .on_action(cx.listener(|_, _: &ToggleWatchJump, _, cx| {
+                ConfigStore::update(cx, |c| c.watchjump = !c.watchjump);
             }))
             .on_action(cx.listener(|pm, _: &Copy, _, cx| pm.copy_selection(cx)))
             .on_action(cx.listener(|pm, _: &SelectAll, _, cx| pm.select_all(cx)))

@@ -406,6 +406,30 @@ impl AppState {
         (git_touched || changed.contains(&abs)).then_some(rel)
     }
 
+    /// The repo-relative path of a file in `changed` that shows in the current
+    /// change list — the jump target for watch-jump mode (PM-30). Returns the
+    /// last qualifying path in the batch; `None` if none qualify or the batch
+    /// touched `.git` (a checkout / commit, not a plain edit). Matching against
+    /// `self.changes` also excludes gitignored / untracked-ignored paths.
+    pub fn changed_in_batch(&self, changed: &[PathBuf]) -> Option<PathBuf> {
+        let root = self.repo.root();
+        let touches_git = changed.iter().any(|p| {
+            p.strip_prefix(root)
+                .map(|r| r.starts_with(".git"))
+                .unwrap_or(false)
+        });
+        if touches_git {
+            return None;
+        }
+        changed.iter().rev().find_map(|p| {
+            let rel = p.strip_prefix(root).ok()?;
+            self.changes
+                .iter()
+                .any(|c| c.rel == rel)
+                .then(|| rel.to_path_buf())
+        })
+    }
+
     pub fn diff_rows(&self) -> usize {
         self.rows.len().min(MAX_ROWS)
     }
@@ -512,5 +536,29 @@ impl AppState {
         }
         let (a, b) = cur.ordered();
         Some(self.text.slice(cur.col, a, b).to_string())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn changed_in_batch_guards_and_filters() {
+        let st = AppState::new(Repo::discover(Path::new(".")).unwrap());
+        let root = st.repo.root().to_path_buf();
+
+        // A `.git` touch is a checkout/commit, never a jump target.
+        assert_eq!(st.changed_in_batch(&[root.join(".git/HEAD")]), None);
+        // A path that isn't in the change list is ignored.
+        assert_eq!(st.changed_in_batch(&[root.join("LICENSE")]), None);
+        // A `.git` path anywhere in the batch vetoes the whole batch.
+        let real = st.changes.first().map(|c| root.join(&c.rel));
+        if let Some(real) = &real {
+            assert_eq!(st.changed_in_batch(&[real.clone(), root.join(".git/x")]), None);
+            // …but on its own it's the target.
+            let want = st.changes.first().map(|c| c.rel.clone());
+            assert_eq!(st.changed_in_batch(std::slice::from_ref(real)), want);
+        }
     }
 }

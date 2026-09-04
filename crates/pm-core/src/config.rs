@@ -37,11 +37,21 @@ pub struct Config {
     /// File → Open Recent Projects and the "Nothing opened" screen.
     #[serde(default)]
     pub recent: Vec<PathBuf>,
+    /// Watch-jump mode: when on, a filesystem change to any file in the change
+    /// list opens that file in the diff pane (PM-30). Toggled from the footer.
+    #[serde(default)]
+    pub watchjump: bool,
 }
 
 impl Default for Config {
     fn default() -> Self {
-        Self { version: 1, ui_scale: 1.0, author: String::new(), recent: Vec::new() }
+        Self {
+            version: 1,
+            ui_scale: 1.0,
+            author: String::new(),
+            recent: Vec::new(),
+            watchjump: false,
+        }
     }
 }
 
@@ -181,6 +191,7 @@ mod tests {
             ui_scale: 1.3,
             author: "alice".into(),
             recent: vec![PathBuf::from("/tmp/a"), PathBuf::from("/tmp/b")],
+            watchjump: true,
         };
         c.save_to(&p).unwrap();
         assert_eq!(Config::load_from(&p), c);

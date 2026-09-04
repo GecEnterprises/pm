@@ -28,6 +28,8 @@ actions!(
         ToggleHistory,
         /// Show or hide the Explorer panel.
         ToggleExplorer,
+        /// Toggle watch-jump mode (follow file changes into the diff — PM-30).
+        ToggleWatchJump,
         /// Switch to the Summary view.
         ViewSummary,
         /// Switch to the File-to-File view.
@@ -77,6 +79,8 @@ pub fn app_menus() -> Vec<Menu> {
             MenuItem::action("Changes Panel", ToggleChanges),
             MenuItem::action("Commit History", ToggleHistory),
             MenuItem::action("Explorer Panel", ToggleExplorer),
+            MenuItem::separator(),
+            MenuItem::action("Watch-jump", ToggleWatchJump),
         ]),
         Menu::new("Help").items([MenuItem::action("About pm", About)]),
     ]
@@ -183,6 +187,8 @@ pub fn menu_groups(pm: &Pm, cx: &App) -> Vec<Group> {
                 checkable("Changes Panel", ToggleChanges, !pm.changes_collapsed),
                 checkable("Commit History", ToggleHistory, !pm.history_collapsed),
                 checkable("Explorer Panel", ToggleExplorer, !pm.explorer_collapsed),
+                Entry::Separator,
+                checkable("Watch-jump", ToggleWatchJump, ConfigStore::get(cx).watchjump),
             ],
         },
         Group {
