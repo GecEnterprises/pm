@@ -1,8 +1,0 @@
-{
-  "mcpServers": {
-    "pm": {
-      "command": "cargo",
-      "args": ["run", "-q", "-p", "pm", "--", "--mcp"]
-    }
-  }
-}
