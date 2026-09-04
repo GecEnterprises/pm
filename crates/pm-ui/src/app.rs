@@ -783,8 +783,13 @@ impl Render for Pm {
 
         let title = self.window_title();
         if title != self.title {
-            window.set_window_title(&title);
-            self.title = title;
+            // Deferred, NOT called inline: `SetWindowTextW` can synchronously
+            // deliver a WM_NCMOUSEMOVE for a cursor over the title bar, which
+            // re-enters a `Pm` update via the menu strip's hover listener while
+            // `Pm` is still leased for this render → abort. `defer` runs it once
+            // the entity is off the stack. (PM-44-adjacent crash.)
+            self.title = title.clone();
+            window.defer(cx, move |window, _| window.set_window_title(&title));
         }
 
         let body = if self.empty {

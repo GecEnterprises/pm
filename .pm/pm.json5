@@ -1006,9 +1006,17 @@
       "assignee": null,
       "author": "reaganiwadha",
       "created": 1788486037,
-      "updated": 1788486037,
+      "updated": 1788496725,
       "anchors": [],
-      "comments": []
+      "comments": [
+        {
+          "id": 1,
+          "author": "claude",
+          "created": 1788496725,
+          "body": "Scoping notes after a first implementation pass (reverted — too big for one ticket).\n\nRoot cause: `AppState::new` runs everything synchronously on the main thread before the first frame — `repo.changes()` + `repo.changed_set()` (libgit2 status/diff with `recurse_untracked_dirs`), `repo.walk_tree()` (unbounded `ignore` walk into a Vec), `repo.log()`, `Highlighter::new()`, and `Sentinel::start()` (recursive `notify` watcher; on Linux inotify adds a watch per dir). `refresh()` / `apply_fs_change()` / `set_target()` repeat the git+walk calls, so even after load a save re-hangs.\n\nWhy the full fix is large: `git2::Repository` is `!Send`, so the background task can't hold the `Repo` — it has to re-open its own handle from the path and return a plain `Send` bundle. That means a new `Scan` type, `AppState::new` gutted to be cheap, a shared `apply_scan`, splitting `apply_fs_change` into cheap (pm.json5 reload) + background (git rescan), a scan-in-flight/pending state machine on `Pm`, moving the watcher spawn into the background task, a loading UI state, and rewiring Ctrl+R + the watch loop. ~5 files, touches the load path + watcher + diff-reload logic at once.\n\nSuggested split into smaller tickets:\n1. Bound the tree walk — `walk_tree` caps at N entries + a `truncated` flag. Tiny, self-contained, kills the worst non-git-folder case (`pm ~`, un-gitignored `node_modules`).\n2. Background only the initial scan — window opens on an empty \"Scanning…\" state; leave `refresh`/watch synchronous (they only bite once you're already loaded).\n3. Move `Sentinel::start` off the main thread — isolated, mainly helps Linux.\n4. (later) background `refresh` + the fs-watch rescan — needs #2's `Scan` type first.",
+          "anchor": null
+        }
+      ]
     },
     {
       "id": 45,
