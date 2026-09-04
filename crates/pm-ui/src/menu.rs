@@ -80,7 +80,7 @@ pub fn app_menus() -> Vec<Menu> {
             MenuItem::action("Commit History", ToggleHistory),
             MenuItem::action("Explorer Panel", ToggleExplorer),
             MenuItem::separator(),
-            MenuItem::action("Watch-jump", ToggleWatchJump),
+            MenuItem::action("Watchjump", ToggleWatchJump),
         ]),
         Menu::new("Help").items([MenuItem::action("About pm", About)]),
     ]
@@ -188,7 +188,7 @@ pub fn menu_groups(pm: &Pm, cx: &App) -> Vec<Group> {
                 checkable("Commit History", ToggleHistory, !pm.history_collapsed),
                 checkable("Explorer Panel", ToggleExplorer, !pm.explorer_collapsed),
                 Entry::Separator,
-                checkable("Watch-jump", ToggleWatchJump, ConfigStore::get(cx).watchjump),
+                checkable("Watchjump", ToggleWatchJump, ConfigStore::get(cx).watchjump),
             ],
         },
         Group {

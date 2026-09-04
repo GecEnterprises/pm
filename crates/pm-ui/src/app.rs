@@ -10,6 +10,7 @@ use gpui::{
     SharedString, Window,
 };
 
+use pm_core::diff::RowKind;
 use pm_core::text::{BufferPos, DiffCursor};
 use pm_core::watch::Sentinel;
 use pm_core::{AppState, Repo, Status};
@@ -514,13 +515,36 @@ impl Pm {
             .filter(|rel| self.state.open.as_deref() != Some(rel.as_path()));
 
         if let Some(rel) = jump {
-            eprintln!("pm: watch-jump \u{2192} {}", rel.display());
+            eprintln!("pm: watchjump \u{2192} {}", rel.display());
             self.state.tree_selected = Some(rel.clone());
             self.open_path(rel);
+            self.scroll_to_first_change();
         } else if let Some(rel) = reload {
             self.reload_open_keep_scroll(rel);
         }
         cx.notify();
+    }
+
+    /// Scroll the diff so the first changed row sits near the top and drop a
+    /// caret on it — the "jump to the changed line" half of watchjump (PM-30).
+    fn scroll_to_first_change(&mut self) {
+        let Some(i) = self.state.rows.iter().position(|r| r.kind != RowKind::Equal) else {
+            return;
+        };
+        // A few rows of lead-in for context; the next paint clamps the rest.
+        let rh = self.diff_row_h();
+        self.diff.y.offset.y = px((i.saturating_sub(3) as f32 * rh).max(0.0));
+        self.diff.y.clamp();
+
+        let row = &self.state.rows[i];
+        let (col, line_no) = match row.kind {
+            RowKind::Remove => (0usize, row.left_no),
+            _ => (1usize, row.right_no),
+        };
+        if let Some(n) = line_no {
+            let pos = BufferPos { file_row: n.saturating_sub(1), byte: 0 };
+            self.state.caret = Some(DiffCursor { col, anchor: pos, head: pos, goal_x: None });
+        }
     }
 
     fn clamp_layout(&mut self, root: Bounds<gpui::Pixels>) {

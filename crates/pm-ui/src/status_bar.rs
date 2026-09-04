@@ -3,7 +3,7 @@
 //! token, muted text).
 
 use gpui::{
-    div, prelude::*, px, rgb, Context, Decorations, MouseButton, SharedString, Styled, Window,
+    div, prelude::*, px, rgb, svg, Context, Decorations, MouseButton, SharedString, Styled, Window,
 };
 
 use pm_core::DiffTarget;
@@ -103,19 +103,28 @@ impl Pm {
     fn status_right(&self, cx: &mut Context<Self>) -> impl IntoElement {
         let mut row = div().flex().flex_row().items_center().gap_3().flex_none();
 
-        // Watch-jump toggle (PM-30) — only meaningful with a change list.
+        // Watchjump toggle (PM-30) — only meaningful with a change list.
         if self.state.is_git() {
             let on = ConfigStore::get(cx).watchjump;
+            let fg = rgb(if on { TEXT } else { DIM });
             let mut chip = div()
-                .id("watch-jump")
+                .id("watchjump")
+                .flex()
+                .flex_row()
+                .items_center()
+                .gap_1()
                 .px_1()
                 .rounded_sm()
                 .cursor_pointer()
-                .child(SharedString::from(if on {
-                    "\u{25c9} watch-jump"
-                } else {
-                    "\u{25cb} watch-jump"
-                }))
+                .text_color(fg)
+                .child(
+                    svg()
+                        .size(rm(12.0))
+                        .flex_none()
+                        .text_color(fg)
+                        .data(crate::icons::svg_bytes("watchjump.svg")),
+                )
+                .child(SharedString::from("Watchjump"))
                 .on_mouse_down(
                     MouseButton::Left,
                     cx.listener(|_, _, _, cx| {
@@ -123,9 +132,9 @@ impl Pm {
                     }),
                 );
             chip = if on {
-                chip.bg(rgb(SELECT)).text_color(rgb(TEXT))
+                chip.bg(rgb(SELECT))
             } else {
-                chip.text_color(rgb(DIM)).hover(|s| s.text_color(rgb(TEXT)))
+                chip.hover(|s| s.text_color(rgb(TEXT)))
             };
             row = row.child(chip);
         }
