@@ -31,6 +31,12 @@ actions!(
         ViewFiles,
         /// Switch to the Tickets view.
         ViewTickets,
+        /// Increase the window scale.
+        ZoomIn,
+        /// Decrease the window scale.
+        ZoomOut,
+        /// Reset the window scale to 100%.
+        ZoomReset,
         /// Copy the diff selection.
         Copy,
         /// Select the whole open side of the diff.
@@ -56,6 +62,10 @@ pub fn app_menus() -> Vec<Menu> {
             MenuItem::action("Summary", ViewSummary),
             MenuItem::action("File-to-File", ViewFiles),
             MenuItem::action("Tickets", ViewTickets),
+            MenuItem::separator(),
+            MenuItem::action("Zoom In", ZoomIn),
+            MenuItem::action("Zoom Out", ZoomOut),
+            MenuItem::action("Reset Zoom", ZoomReset),
             MenuItem::separator(),
             MenuItem::action("Changes Panel", ToggleChanges),
             MenuItem::action("Commit History", ToggleHistory),
@@ -122,6 +132,10 @@ pub fn menu_groups(pm: &Pm) -> Vec<Group> {
                 checkable("Summary", ViewSummary, pm.view == crate::app::View::Summary),
                 checkable("File-to-File", ViewFiles, pm.view == crate::app::View::Files),
                 checkable("Tickets", ViewTickets, pm.view == crate::app::View::Tickets),
+                Entry::Separator,
+                item("Zoom In", Some("Ctrl+="), ZoomIn),
+                item("Zoom Out", Some("Ctrl+-"), ZoomOut),
+                item("Reset Zoom", Some("Ctrl+0"), ZoomReset),
                 Entry::Separator,
                 checkable("Changes Panel", ToggleChanges, !pm.changes_collapsed),
                 checkable("Commit History", ToggleHistory, !pm.history_collapsed),

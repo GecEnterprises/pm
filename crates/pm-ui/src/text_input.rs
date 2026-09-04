@@ -666,7 +666,7 @@ impl Render for TextInput {
             .border_color(rgb(if focused { SELECT } else { BORDER }))
             .rounded_sm()
             .overflow_hidden()
-            .when(self.multiline, |d| d.min_h(px(64.0)))
+            .when(self.multiline, |d| d.min_h(crate::theme::rm(64.0)))
             .on_action(cx.listener(Self::backspace))
             .on_action(cx.listener(Self::delete))
             .on_action(cx.listener(Self::delete_word_left))

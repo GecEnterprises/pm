@@ -51,6 +51,8 @@ pub struct HistoryPrepaint {
     bar: Option<BarInfo>,
     body_id: HitboxId,
     bar_id: Option<HitboxId>,
+    row_h: f32,
+    bar_w: f32,
 }
 
 /// Compact "time since" label, e.g. `3d`, `2w`, `5mo`.
@@ -110,9 +112,12 @@ impl Element for HistoryView {
         let w = f32::from(bounds.size.width).max(0.0);
         let h = f32::from(bounds.size.height).max(0.0);
 
+        let s = crate::theme::scale_of(window);
+        let row_h = LIST_ROW_H * s;
+        let bar_w = BAR * s;
         let ui = font(UI_FONT);
-        let text_size = px(12.5);
-        let small = px(11.0);
+        let text_size = px(12.5 * s);
+        let small = px(11.0 * s);
 
         let run = |text: &str, color: u32| TextRun {
             len: text.len(),
@@ -127,13 +132,13 @@ impl Element for HistoryView {
             let ts = window.text_system();
             let count = pm.state.commits.len() + 1;
 
-            pm.history_scroll.content = size(px(0.0), px(count as f32 * LIST_ROW_H));
+            pm.history_scroll.content = size(px(0.0), px(count as f32 * row_h));
             pm.history_scroll.viewport = bounds.size;
             pm.history_scroll.clamp();
             let off_y = f32::from(pm.history_scroll.offset.y);
 
-            let first = (off_y / LIST_ROW_H).floor().max(0.0) as usize;
-            let last = (((off_y + h) / LIST_ROW_H).ceil() as usize).min(count);
+            let first = (off_y / row_h).floor().max(0.0) as usize;
+            let last = (((off_y + h) / row_h).ceil() as usize).min(count);
 
             let mut rows = Vec::with_capacity(last - first);
             for i in first..last {
@@ -171,7 +176,7 @@ impl Element for HistoryView {
             (first, off_y, count, pm.history_hover, rows)
         });
 
-        let content_h = count as f32 * LIST_ROW_H;
+        let content_h = count as f32 * row_h;
         let bar = if content_h > h + 0.5 {
             BarInfo::new(top, h, content_h, h, off_y)
         } else {
@@ -182,7 +187,7 @@ impl Element for HistoryView {
         let bar_id = bar.map(|_| {
             window
                 .insert_hitbox(
-                    Bounds::new(point(px(left + w - BAR), px(top)), size(px(BAR), px(h))),
+                    Bounds::new(point(px(left + w - bar_w), px(top)), size(px(bar_w), px(h))),
                     HitboxBehavior::Normal,
                 )
                 .id
@@ -201,6 +206,8 @@ impl Element for HistoryView {
             bar,
             body_id: body.id,
             bar_id,
+            row_h,
+            bar_w,
         }
     }
 
@@ -215,14 +222,15 @@ impl Element for HistoryView {
         cx: &mut App,
     ) {
         let (left, top, w) = (p.left, p.top, p.width);
+        let (row_h, bar_w) = (p.row_h, p.bar_w);
 
         window.with_content_mask(Some(ContentMask { bounds }), |window| {
             window.paint_quad(fill(bounds, rgb(PANEL)));
 
             for (k, row) in p.rows.iter().enumerate() {
                 let i = p.first + k;
-                let y = top + i as f32 * LIST_ROW_H - p.off_y;
-                let rb = Bounds::new(point(px(left), px(y)), size(px(w), px(LIST_ROW_H)));
+                let y = top + i as f32 * row_h - p.off_y;
+                let rb = Bounds::new(point(px(left), px(y)), size(px(w), px(row_h)));
                 if row.selected {
                     window.paint_quad(fill(rb, rgb(SELECT)));
                 } else if p.hover == Some(i) {
@@ -238,19 +246,19 @@ impl Element for HistoryView {
                     .unwrap_or(0.0);
                 if let Some(t) = &row.time {
                     let tx = left + w - 10.0 - f32::from(t.width());
-                    t.paint(point(px(tx), px(y)), px(LIST_ROW_H), TextAlign::Left, None, window, cx)
+                    t.paint(point(px(tx), px(y)), px(row_h), TextAlign::Left, None, window, cx)
                         .ok();
                 }
 
                 let label_bounds = Bounds::new(
                     point(px(left), px(y)),
-                    size(px((w - time_w - 12.0).max(0.0)), px(LIST_ROW_H)),
+                    size(px((w - time_w - 12.0).max(0.0)), px(row_h)),
                 );
                 window.with_content_mask(Some(ContentMask { bounds: label_bounds }), |window| {
                     row.label
                         .paint(
                             point(px(left + 10.0), px(y)),
-                            px(LIST_ROW_H),
+                            px(row_h),
                             TextAlign::Left,
                             None,
                             window,
@@ -262,17 +270,17 @@ impl Element for HistoryView {
 
             if let Some(bar) = p.bar {
                 let hovered = p.bar_id.is_some_and(|id| id.is_hovered(window));
-                let thickness = BAR - 4.0;
+                let thickness = (bar_w - 4.0 * (bar_w / BAR)).max(2.0);
                 window.paint_quad(fill(
                     Bounds::new(
-                        point(px(left + w - BAR), px(top)),
-                        size(px(BAR), px(bar.track_len)),
+                        point(px(left + w - bar_w), px(top)),
+                        size(px(bar_w), px(bar.track_len)),
                     ),
                     rgba(0xffffff08),
                 ));
                 window.paint_quad(fill(
                     Bounds::new(
-                        point(px(left + w - BAR + 2.0), px(bar.thumb_lo)),
+                        point(px(left + w - bar_w + 2.0), px(bar.thumb_lo)),
                         size(px(thickness), px(bar.thumb_len)),
                     ),
                     if hovered { rgb(0x7a7a7a) } else { rgb(0x5a5a5a) },
@@ -291,6 +299,7 @@ impl HistoryView {
         let bar = p.bar;
         let bar_id = p.bar_id;
         let top = p.top;
+        let row_h = p.row_h;
         let page_y = p.height;
         let count = p.count;
 
@@ -298,7 +307,7 @@ impl HistoryView {
             if !body_id.is_hovered(window) {
                 return None;
             }
-            let row = ((py - top + off_y) / LIST_ROW_H).floor();
+            let row = ((py - top + off_y) / row_h).floor();
             if row < 0.0 {
                 return None;
             }
@@ -312,7 +321,7 @@ impl HistoryView {
                 if phase != DispatchPhase::Bubble || !body_id.should_handle_scroll(window) {
                     return;
                 }
-                let dy = f32::from(e.delta.pixel_delta(px(LIST_ROW_H)).y);
+                let dy = f32::from(e.delta.pixel_delta(px(row_h)).y);
                 let mut moved = false;
                 pm.update(cx, |pm, cx| {
                     let y0 = pm.history_scroll.offset.y;

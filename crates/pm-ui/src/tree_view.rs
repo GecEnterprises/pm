@@ -54,6 +54,10 @@ pub struct TreePrepaint {
     bar: Option<BarInfo>,
     body_id: HitboxId,
     bar_id: Option<HitboxId>,
+    row_h: f32,
+    bar_w: f32,
+    icon_sz: f32,
+    indent: f32,
 }
 
 impl Element for TreeView {
@@ -95,20 +99,25 @@ impl Element for TreeView {
         let w = f32::from(bounds.size.width).max(0.0);
         let h = f32::from(bounds.size.height).max(0.0);
 
+        let s = crate::theme::scale_of(window);
+        let row_h = TREE_ROW_H * s;
+        let bar_w = BAR * s;
+        let icon_sz = ICON_SIZE * s;
+        let indent = TREE_INDENT * s;
         let name_font = font(UI_FONT);
-        let font_size = px(13.0);
+        let font_size = px(13.0 * s);
 
         let (first, off_y, count, hover, rows) = self.pm.update(cx, |pm, _cx| {
             let ts = window.text_system();
             let count = pm.state.visible.len();
 
-            pm.tree_scroll.content = size(px(0.0), px(count as f32 * TREE_ROW_H));
+            pm.tree_scroll.content = size(px(0.0), px(count as f32 * row_h));
             pm.tree_scroll.viewport = bounds.size;
             pm.tree_scroll.clamp();
             let off_y = f32::from(pm.tree_scroll.offset.y);
 
-            let first = (off_y / TREE_ROW_H).floor().max(0.0) as usize;
-            let last = (((off_y + h) / TREE_ROW_H).ceil() as usize).min(count);
+            let first = (off_y / row_h).floor().max(0.0) as usize;
+            let last = (((off_y + h) / row_h).ceil() as usize).min(count);
 
             let mut rows = Vec::with_capacity(last - first);
             for vi in first..last {
@@ -145,7 +154,7 @@ impl Element for TreeView {
             (first, off_y, count, pm.tree_hover, rows)
         });
 
-        let content_h = count as f32 * TREE_ROW_H;
+        let content_h = count as f32 * row_h;
         let bar = if content_h > h + 0.5 {
             BarInfo::new(top, h, content_h, h, off_y)
         } else {
@@ -156,7 +165,7 @@ impl Element for TreeView {
         let bar_id = bar.map(|_| {
             window
                 .insert_hitbox(
-                    Bounds::new(point(px(left + w - BAR), px(top)), size(px(BAR), px(h))),
+                    Bounds::new(point(px(left + w - bar_w), px(top)), size(px(bar_w), px(h))),
                     HitboxBehavior::Normal,
                 )
                 .id
@@ -175,6 +184,10 @@ impl Element for TreeView {
             bar,
             body_id: body.id,
             bar_id,
+            row_h,
+            bar_w,
+            icon_sz,
+            indent,
         }
     }
 
@@ -189,10 +202,11 @@ impl Element for TreeView {
         cx: &mut App,
     ) {
         let (left, top, w) = (p.left, p.top, p.width);
+        let (row_h, bar_w, icon_sz, indent) = (p.row_h, p.bar_w, p.icon_sz, p.indent);
 
         let sq = |x: f32, y: f32, s: f32| {
             Bounds::new(
-                point(px(x), px(y + (TREE_ROW_H - s) / 2.0)),
+                point(px(x), px(y + (row_h - s) / 2.0)),
                 size(px(s), px(s)),
             )
         };
@@ -202,16 +216,16 @@ impl Element for TreeView {
 
             for (k, row) in p.rows.iter().enumerate() {
                 let vi = p.first + k;
-                let y = top + vi as f32 * TREE_ROW_H - p.off_y;
+                let y = top + vi as f32 * row_h - p.off_y;
                 let row_bounds =
-                    Bounds::new(point(px(left), px(y)), size(px(w), px(TREE_ROW_H)));
+                    Bounds::new(point(px(left), px(y)), size(px(w), px(row_h)));
                 if row.selected {
                     window.paint_quad(fill(row_bounds, rgb(SELECT)));
                 } else if p.hover == Some(vi) {
                     window.paint_quad(fill(row_bounds, rgb(BORDER)));
                 }
 
-                let x0 = left + 8.0 + row.depth as f32 * TREE_INDENT;
+                let x0 = left + 8.0 + row.depth as f32 * indent;
                 if let Some((key, data)) = row.chevron {
                     window
                         .paint_svg(
@@ -227,7 +241,7 @@ impl Element for TreeView {
                 let (ikey, idata) = row.icon;
                 window
                     .paint_svg(
-                        sq(x0 + 16.0, y, ICON_SIZE),
+                        sq(x0 + 16.0, y, icon_sz),
                         ikey.into(),
                         Some(idata),
                         TransformationMatrix::unit(),
@@ -238,8 +252,8 @@ impl Element for TreeView {
 
                 row.name
                     .paint(
-                        point(px(x0 + 16.0 + ICON_SIZE + 6.0), px(y)),
-                        px(TREE_ROW_H),
+                        point(px(x0 + 16.0 + icon_sz + 6.0), px(y)),
+                        px(row_h),
                         TextAlign::Left,
                         None,
                         window,
@@ -250,17 +264,17 @@ impl Element for TreeView {
 
             if let Some(bar) = p.bar {
                 let hovered = p.bar_id.is_some_and(|id| id.is_hovered(window));
-                let thickness = BAR - 4.0;
+                let thickness = (bar_w - 4.0 * (bar_w / BAR)).max(2.0);
                 window.paint_quad(fill(
                     Bounds::new(
-                        point(px(left + w - BAR), px(top)),
-                        size(px(BAR), px(bar.track_len)),
+                        point(px(left + w - bar_w), px(top)),
+                        size(px(bar_w), px(bar.track_len)),
                     ),
                     rgba(0xffffff08),
                 ));
                 window.paint_quad(fill(
                     Bounds::new(
-                        point(px(left + w - BAR + 2.0), px(bar.thumb_lo)),
+                        point(px(left + w - bar_w + 2.0), px(bar.thumb_lo)),
                         size(px(thickness), px(bar.thumb_len)),
                     ),
                     if hovered { rgb(0x7a7a7a) } else { rgb(0x5a5a5a) },
@@ -279,6 +293,7 @@ impl TreeView {
         let bar = p.bar;
         let bar_id = p.bar_id;
         let top = p.top;
+        let row_h = p.row_h;
         let page_y = p.height;
         let count = p.count;
 
@@ -286,7 +301,7 @@ impl TreeView {
             if !body_id.is_hovered(window) {
                 return None;
             }
-            let row = ((py - top + off_y) / TREE_ROW_H).floor();
+            let row = ((py - top + off_y) / row_h).floor();
             if row < 0.0 {
                 return None;
             }
@@ -300,7 +315,7 @@ impl TreeView {
                 if phase != DispatchPhase::Bubble || !body_id.should_handle_scroll(window) {
                     return;
                 }
-                let dy = f32::from(e.delta.pixel_delta(px(TREE_ROW_H)).y);
+                let dy = f32::from(e.delta.pixel_delta(px(row_h)).y);
                 let mut moved = false;
                 pm.update(cx, |pm, cx| {
                     let y0 = pm.tree_scroll.offset.y;

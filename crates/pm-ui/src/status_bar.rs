@@ -22,14 +22,14 @@ impl Pm {
             .justify_between()
             .w_full()
             .flex_none()
-            .h(px(STATUS_BAR_H))
+            .h(rm(STATUS_BAR_H))
             .px_2()
             .gap_3()
             .bg(rgb(PANEL))
             .border_t_1()
             .border_color(rgb(BORDER))
             .text_color(rgb(DIM))
-            .text_size(px(11.0))
+            .text_size(rm(11.0))
             .child(self.status_left(cx))
             .child(self.status_right());
         round_bottom(bar, decorations)
@@ -101,6 +101,10 @@ impl Pm {
 
     fn status_right(&self) -> impl IntoElement {
         let mut row = div().flex().flex_row().items_center().gap_3().flex_none();
+
+        if self.zoom_pct() != 100 {
+            row = row.child(SharedString::from(format!("{}%", self.zoom_pct())));
+        }
 
         if let Some(cur) = self.state.caret {
             let line = cur.head.file_row + 1;

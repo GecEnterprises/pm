@@ -1,4 +1,26 @@
 //! Colours and pixel metrics for the pm UI.
+//!
+//! The `*_H` / `*_W` / font-size metrics below are quoted at 1× (100% zoom).
+//! Whole-window scaling (PM-36) works by `window.set_rem_size(BASE_REM * scale)`:
+//! gpui's spacing helpers (`px_2`, `gap_1`, `p_4`, …) are already rem-based, and
+//! [`rm`] turns a 1× px metric into rems so it scales too. Custom elements that
+//! paint raw pixels read `window.rem_size() / BASE_REM` and multiply.
+
+use gpui::{rems, Rems, Window};
+
+/// rem size at 1× zoom.
+pub const BASE_REM: f32 = 16.0;
+
+/// A 1×-pixel metric expressed in rems, so `set_rem_size` scales it.
+pub fn rm(px_at_1x: f32) -> Rems {
+    rems(px_at_1x / BASE_REM)
+}
+
+/// The current zoom factor, for custom elements that paint raw pixels: multiply
+/// each 1× metric by this.
+pub fn scale_of(window: &Window) -> f32 {
+    f32::from(window.rem_size()) / BASE_REM
+}
 
 pub const BG: u32 = 0x1e1e1e;
 pub const PANEL: u32 = 0x252526;

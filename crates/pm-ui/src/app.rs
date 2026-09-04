@@ -20,9 +20,10 @@ use crate::diff_view::{diff_view, ShapeCache};
 use crate::history_view::history_view;
 use crate::image_view::ImageView;
 use crate::list_view::list_view;
+use crate::config::ConfigStore;
 use crate::menu::{
     About, Copy, Refresh, SelectAll, ToggleChanges, ToggleExplorer, ToggleHistory, ViewFiles,
-    ViewSummary, ViewTickets,
+    ViewSummary, ViewTickets, ZoomIn, ZoomOut, ZoomReset,
 };
 use crate::scroll::{ScrollDrag, ScrollState};
 use crate::text_input::{TextInput, TextInputEvent};
@@ -45,6 +46,11 @@ pub(crate) enum ResizeHandle {
     SectionSplit,
     /// The centre divider of the image diff (text diff has its own in-element one).
     DiffSplit,
+}
+
+/// Step the zoom factor by `delta`, snapped to 10% and clamped to 50–300%.
+fn zoom_step(scale: f32, delta: f32) -> f32 {
+    (((scale + delta) * 10.0).round() / 10.0).clamp(0.5, 3.0)
 }
 
 /// The (invisible) drag-preview view required by `on_drag`.
@@ -156,6 +162,8 @@ pub struct Pm {
     pub new_ticket_body: Entity<TextInput>,
     pub comment_box: Entity<TextInput>,
     pub ticket_hover: Option<usize>,
+    /// Whole-window zoom, synced from the config each render (1.0 = 100%).
+    pub scale: f32,
     /// Statuses shown in the ticket list (the header filter dropdown).
     pub ticket_filter: std::collections::HashSet<Status>,
     /// The list-header status-filter popover is open.
@@ -179,6 +187,8 @@ impl Pm {
             cx.new(|cx| TextInput::multi(cx).placeholder("Description (optional)"));
         let comment_box = cx.new(|cx| TextInput::multi(cx).placeholder("Add a comment\u{2026}"));
 
+        let scale = ConfigStore::get(cx).ui_scale();
+
         Self {
             state: AppState::new(repo),
             shaped: ShapeCache::default(),
@@ -189,9 +199,9 @@ impl Pm {
             history_scroll: ScrollState::default(),
             history_drag: None,
             history_hover: None,
-            sidebar_w: 280.0,
-            changes_h: 220.0,
-            history_h: 200.0,
+            sidebar_w: 280.0 * scale,
+            changes_h: 220.0 * scale,
+            history_h: 200.0 * scale,
             diff_split: 0.5,
             changes_collapsed: false,
             history_collapsed: true,
@@ -222,6 +232,7 @@ impl Pm {
             new_ticket_body,
             comment_box,
             ticket_hover: None,
+            scale,
             // Active work by default; closed tickets hidden until asked for.
             ticket_filter: [Status::Open, Status::InProgress, Status::Blocked]
                 .into_iter()
@@ -294,6 +305,32 @@ impl Pm {
             self.view = view;
             cx.notify();
         }
+    }
+
+    /// Pull the zoom factor from the config, rescaling the layout state that's
+    /// held in real pixels (`sidebar_w`, `changes_h`, `history_h`). Everything
+    /// else scales through `window.set_rem_size`. Called each render.
+    fn sync_scale(&mut self, cx: &Context<Self>) {
+        let scale = ConfigStore::get(cx).ui_scale();
+        if (scale - self.scale).abs() > 0.001 {
+            let f = scale / self.scale;
+            self.sidebar_w *= f;
+            self.changes_h *= f;
+            self.history_h *= f;
+            self.scale = scale;
+            self.shaped.clear(); // diff text re-shapes at the new font size
+        }
+    }
+
+    /// Current zoom, as a whole percent (for the status bar).
+    pub fn zoom_pct(&self) -> u32 {
+        (self.scale * 100.0).round() as u32
+    }
+
+    /// Diff row height at the current zoom (the custom diff element scales its
+    /// own metrics; this is for the scroll math that lives here).
+    fn diff_row_h(&self) -> f32 {
+        ROW_H * self.scale
     }
 
     pub fn refresh(&mut self) {
@@ -378,10 +415,11 @@ impl Pm {
     fn clamp_layout(&mut self, root: Bounds<gpui::Pixels>) {
         let rw = f32::from(root.size.width);
         let rh = f32::from(root.size.height);
-        let max_sb = (rw - SIDEBAR_MAX_MARGIN).max(SIDEBAR_MIN);
-        self.sidebar_w = self.sidebar_w.clamp(SIDEBAR_MIN, max_sb);
+        let sc = self.scale;
+        let max_sb = (rw - SIDEBAR_MAX_MARGIN * sc).max(SIDEBAR_MIN * sc);
+        self.sidebar_w = self.sidebar_w.clamp(SIDEBAR_MIN * sc, max_sb);
         // Room the three section headers + the one split handle always take.
-        let avail = (rh - 3.0 * SECTION_HEADER_H - SECTION_SPLIT_H).max(0.0);
+        let avail = (rh - (3.0 * SECTION_HEADER_H + SECTION_SPLIT_H) * sc).max(0.0);
         self.history_h = self.history_h.clamp(0.0, avail);
         let history_used = if self.history_collapsed { 0.0 } else { self.history_h };
         self.changes_h = self.changes_h.clamp(0.0, (avail - history_used).max(0.0));
@@ -458,12 +496,13 @@ impl Pm {
             return;
         }
         let Some(disp) = self.state.disp_row(cur.col, cur.head.file_row) else { return };
-        let caret_top = disp as f32 * ROW_H;
+        let rh = self.diff_row_h();
+        let caret_top = disp as f32 * rh;
         let off = f32::from(self.diff.y.offset.y);
         let new = if caret_top < off {
             caret_top
-        } else if caret_top + ROW_H > off + vh {
-            caret_top + ROW_H - vh
+        } else if caret_top + rh > off + vh {
+            caret_top + rh - vh
         } else {
             off
         };
@@ -545,7 +584,7 @@ impl Pm {
                         x
                     }
                 };
-                let page = ((self.diff_viewport_h / ROW_H).floor() as isize - 1).max(1);
+                let page = ((self.diff_viewport_h / self.diff_row_h()).floor() as isize - 1).max(1);
                 let step: isize = match key {
                     "up" => -1,
                     "down" => 1,
@@ -603,6 +642,8 @@ impl Render for Pm {
         // One-shot: surfaces a native dialog if the config store started
         // read-only or failed to load. `take_alert` self-clears.
         crate::config::present_config_alert(window, cx);
+        self.sync_scale(cx);
+        window.set_rem_size(px(BASE_REM * self.scale));
 
         let title = self.window_title();
         if title != self.title {
@@ -625,7 +666,7 @@ impl Render for Pm {
             .bg(rgb(BG))
             .text_color(rgb(TEXT))
             .font_family(UI_FONT)
-            .text_size(px(13.))
+            .text_size(rm(13.))
             .on_action(cx.listener(|pm, _: &Refresh, _, cx| {
                 pm.refresh();
                 cx.notify();
@@ -651,6 +692,15 @@ impl Render for Pm {
             .on_action(cx.listener(|pm, _: &ViewSummary, _, cx| pm.set_view(View::Summary, cx)))
             .on_action(cx.listener(|pm, _: &ViewFiles, _, cx| pm.set_view(View::Files, cx)))
             .on_action(cx.listener(|pm, _: &ViewTickets, _, cx| pm.set_view(View::Tickets, cx)))
+            .on_action(cx.listener(|_, _: &ZoomIn, _, cx| {
+                ConfigStore::update(cx, |c| c.ui_scale = zoom_step(c.ui_scale, 0.1));
+            }))
+            .on_action(cx.listener(|_, _: &ZoomOut, _, cx| {
+                ConfigStore::update(cx, |c| c.ui_scale = zoom_step(c.ui_scale, -0.1));
+            }))
+            .on_action(cx.listener(|_, _: &ZoomReset, _, cx| {
+                ConfigStore::update(cx, |c| c.ui_scale = 1.0);
+            }))
             .on_key_down(cx.listener(|pm, e: &KeyDownEvent, _, cx| {
                 if pm.open_menu.is_some() && e.keystroke.key == "escape" {
                     pm.open_menu = None;
@@ -700,7 +750,7 @@ impl Pm {
             .flex_none()
             .items_center()
             .justify_between()
-            .h(px(SECTION_HEADER_H))
+            .h(rm(SECTION_HEADER_H))
             .px_2()
             .cursor_pointer()
             .text_color(rgb(DIM))
@@ -785,7 +835,7 @@ impl Pm {
             col = col.child(
                 div()
                     .id("section-split")
-                    .h(px(SECTION_SPLIT_H))
+                    .h(rm(SECTION_SPLIT_H))
                     .w_full()
                     .flex_none()
                     .cursor_row_resize()
@@ -841,8 +891,8 @@ impl Pm {
                 .occlude()
                 .absolute()
                 .top_0()
-                .right(px(-RESIZE_HANDLE_W / 2.0))
-                .w(px(RESIZE_HANDLE_W))
+                .right(rm(-RESIZE_HANDLE_W / 2.0))
+                .w(rm(RESIZE_HANDLE_W))
                 .h_full()
                 .cursor_col_resize()
                 .on_drag(ResizeHandle::Sidebar, |_, _, _, cx| {
@@ -888,7 +938,9 @@ impl Pm {
                     let y = f32::from(ev.event.position.y) - f32::from(root.top());
                     match ev.drag(cx) {
                         ResizeHandle::Sidebar => pm.sidebar_w = x,
-                        ResizeHandle::SectionSplit => pm.changes_h = y - SECTION_HEADER_H,
+                        ResizeHandle::SectionSplit => {
+                            pm.changes_h = y - SECTION_HEADER_H * pm.scale
+                        }
                         ResizeHandle::DiffSplit => {
                             let pane_w = f32::from(root.size.width) - pm.sidebar_w;
                             if pane_w > 1.0 {
@@ -919,7 +971,7 @@ impl Pm {
             .child(SharedString::from("Summary"))
             .child(
                 div()
-                    .text_size(px(11.0))
+                    .text_size(rm(11.0))
                     .child(SharedString::from("a whole-diff overview is coming soon")),
             )
     }
@@ -962,7 +1014,7 @@ impl Pm {
             .child(SharedString::from("Binary file — not shown"))
             .child(
                 div()
-                    .text_size(px(11.0))
+                    .text_size(rm(11.0))
                     .child(SharedString::from(name)),
             )
     }
@@ -999,7 +1051,7 @@ impl Pm {
                         .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
                         .child(
                             div()
-                                .text_size(px(16.0))
+                                .text_size(rm(16.0))
                                 .text_color(rgb(TEXT))
                                 .child("pm \u{2014} Plus Minus"),
                         )

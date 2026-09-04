@@ -22,8 +22,8 @@ fn to_hsla(c: CoreRgba) -> gpui::Hsla {
 use crate::scroll::{Axis, BarInfo, ScrollDrag};
 use crate::app::Pm;
 use crate::theme::{
-    ADD_BG, BAR, BG, BODY_FONT, BODY_FONT_SIZE, BORDER, DEL_BG, DIFF_SPLIT_MAX, DIFF_SPLIT_MIN, DIM,
-    DIVIDER_W, GUTTER_PAD, GUTTER_W, ROW_H, TEXT_PAD_L,
+    ADD_BG, BAR, BASE_REM, BG, BODY_FONT, BODY_FONT_SIZE, BORDER, DEL_BG, DIFF_SPLIT_MAX,
+    DIFF_SPLIT_MIN, DIM, DIVIDER_W, GUTTER_PAD, GUTTER_W, ROW_H, TEXT_PAD_L,
 };
 
 /// Shaped lines for the current file, reused across frames until [`clear`](Self::clear).
@@ -193,6 +193,13 @@ pub struct DiffPrepaint {
     kinds: Vec<RowKind>,
     caret: Option<CaretView>,
     autoscroll: Option<(f32, f32)>,
+    // zoom-scaled metrics (1× constant × rem ratio), used by paint + mouse
+    row_h: f32,
+    gutter_w: f32,
+    gutter_pad: f32,
+    text_pad_l: f32,
+    divider_w: f32,
+    bar_w: f32,
 }
 
 impl Element for DiffView {
@@ -240,9 +247,19 @@ impl Element for DiffView {
             .clamp(DIFF_SPLIT_MIN, DIFF_SPLIT_MAX);
         let mid = left + (w * split).floor();
 
-        let text_lo = [left + GUTTER_W, mid + GUTTER_W];
+        // Whole-window zoom (PM-36): every metric here is a 1× constant times the
+        // rem-size ratio, so the diff scales with the rest of the UI.
+        let s = f32::from(window.rem_size()) / BASE_REM;
+        let row_h = ROW_H * s;
+        let gutter_w = GUTTER_W * s;
+        let gutter_pad = GUTTER_PAD * s;
+        let text_pad_l = TEXT_PAD_L * s;
+        let divider_w = (DIVIDER_W * s).max(1.0);
+        let bar_w = BAR * s;
+
+        let text_lo = [left + gutter_w, mid + gutter_w];
         let col_text_w = [
-            (mid - DIVIDER_W - text_lo[0]).max(0.0),
+            (mid - divider_w - text_lo[0]).max(0.0),
             (left + w - text_lo[1]).max(0.0),
         ];
         let left_text = Bounds::new(
@@ -254,12 +271,12 @@ impl Element for DiffView {
             size(px(col_text_w[1]), px(h)),
         );
         let divider = Bounds::new(
-            point(px(mid - DIVIDER_W), px(top)),
-            size(px(DIVIDER_W), px(h)),
+            point(px(mid - divider_w), px(top)),
+            size(px(divider_w), px(h)),
         );
 
         let body_font = font(BODY_FONT);
-        let font_size = px(BODY_FONT_SIZE);
+        let font_size = px(BODY_FONT_SIZE * s);
 
         let (
             row_count,
@@ -322,7 +339,7 @@ impl Element for DiffView {
                     diff.x[col].offset.x = diff.x[col].offset.x + px(vel(mx - ox));
                 }
 
-                diff.y.content = size(px(0.0), px(row_count as f32 * ROW_H));
+                diff.y.content = size(px(0.0), px(row_count as f32 * row_h));
                 diff.y.viewport = bounds.size;
                 diff.y.clamp();
                 for c in 0..2 {
@@ -333,8 +350,8 @@ impl Element for DiffView {
                 let off_y = f32::from(diff.y.offset.y);
                 let off_x = [f32::from(diff.x[0].offset.x), f32::from(diff.x[1].offset.x)];
 
-                let first = (off_y / ROW_H).floor().max(0.0) as usize;
-                let last = (((off_y + h) / ROW_H).ceil() as usize).min(row_count);
+                let first = (off_y / row_h).floor().max(0.0) as usize;
+                let last = (((off_y + h) / row_h).ceil() as usize).min(row_count);
                 let visible = first..last;
 
                 for i in visible.clone() {
@@ -433,7 +450,7 @@ impl Element for DiffView {
                 )
             });
 
-        let row_count_h = row_count as f32 * ROW_H;
+        let row_count_h = row_count as f32 * row_h;
         let v_over = row_count_h > h + 0.5;
         let mw = [f32::from(max_w[0]), f32::from(max_w[1])];
         let h_over = [
@@ -442,10 +459,10 @@ impl Element for DiffView {
         ];
         let any_h = h_over[0] || h_over[1];
 
-        let v_track_len = (h - if any_h { BAR } else { 0.0 }).max(0.0);
+        let v_track_len = (h - if any_h { bar_w } else { 0.0 }).max(0.0);
         let h_track_len = [
             col_text_w[0].max(0.0),
-            (col_text_w[1] - if v_over { BAR } else { 0.0 }).max(0.0),
+            (col_text_w[1] - if v_over { bar_w } else { 0.0 }).max(0.0),
         ];
 
         let bars = [
@@ -468,7 +485,10 @@ impl Element for DiffView {
 
         let body = window.insert_hitbox(bounds, HitboxBehavior::Normal);
         let divider_hitbox = window.insert_hitbox(
-            Bounds::new(point(px(mid - 3.0), px(top)), size(px(6.0), px(h))),
+            Bounds::new(
+                point(px(mid - divider_w - 2.0 * s), px(top)),
+                size(px(4.0 * s + divider_w), px(h)),
+            ),
             HitboxBehavior::Normal,
         );
         let bar_ids = [
@@ -476,8 +496,8 @@ impl Element for DiffView {
                 window
                     .insert_hitbox(
                         Bounds::new(
-                            point(px(text_lo[0]), px(top + h - BAR)),
-                            size(px(h_track_len[0]), px(BAR)),
+                            point(px(text_lo[0]), px(top + h - bar_w)),
+                            size(px(h_track_len[0]), px(bar_w)),
                         ),
                         HitboxBehavior::Normal,
                     )
@@ -487,8 +507,8 @@ impl Element for DiffView {
                 window
                     .insert_hitbox(
                         Bounds::new(
-                            point(px(text_lo[1]), px(top + h - BAR)),
-                            size(px(h_track_len[1]), px(BAR)),
+                            point(px(text_lo[1]), px(top + h - bar_w)),
+                            size(px(h_track_len[1]), px(bar_w)),
                         ),
                         HitboxBehavior::Normal,
                     )
@@ -498,8 +518,8 @@ impl Element for DiffView {
                 window
                     .insert_hitbox(
                         Bounds::new(
-                            point(px(left + w - BAR), px(top)),
-                            size(px(BAR), px(v_track_len)),
+                            point(px(left + w - bar_w), px(top)),
+                            size(px(bar_w), px(v_track_len)),
                         ),
                         HitboxBehavior::Normal,
                     )
@@ -532,6 +552,12 @@ impl Element for DiffView {
             kinds,
             caret,
             autoscroll,
+            row_h,
+            gutter_w,
+            gutter_pad,
+            text_pad_l,
+            divider_w,
+            bar_w,
         }
     }
 
@@ -545,7 +571,10 @@ impl Element for DiffView {
         window: &mut Window,
         cx: &mut App,
     ) {
-        let line_height = px(ROW_H);
+        let (row_h, gutter_w, gutter_pad, text_pad_l, divider_w, bar_w) = (
+            p.row_h, p.gutter_w, p.gutter_pad, p.text_pad_l, p.divider_w, p.bar_w,
+        );
+        let line_height = px(row_h);
         let (left, top, w, mid) = (p.left, p.top, p.width, p.mid);
 
         window.with_content_mask(Some(ContentMask { bounds }), |window| {
@@ -553,20 +582,20 @@ impl Element for DiffView {
 
             for (k, &kind) in p.kinds.iter().enumerate() {
                 let i = p.first + k;
-                let y = top + i as f32 * ROW_H - p.off_y;
+                let y = top + i as f32 * row_h - p.off_y;
                 let (lbg, rbg) = row_bg(kind);
                 if let Some(c) = lbg {
                     window.paint_quad(fill(
                         Bounds::new(
                             point(px(left), px(y)),
-                            size(px(mid - DIVIDER_W - left), px(ROW_H)),
+                            size(px(mid - divider_w - left), px(row_h)),
                         ),
                         c,
                     ));
                 }
                 if let Some(c) = rbg {
                     window.paint_quad(fill(
-                        Bounds::new(point(px(mid), px(y)), size(px(left + w - mid), px(ROW_H))),
+                        Bounds::new(point(px(mid), px(y)), size(px(left + w - mid), px(row_h))),
                         c,
                     ));
                 }
@@ -576,35 +605,35 @@ impl Element for DiffView {
 
             for (k, num) in p.left_nums.iter().enumerate() {
                 if let Some(sl) = num {
-                    let y = px(top + (p.first + k) as f32 * ROW_H - p.off_y);
-                    let x = px(left + GUTTER_W - GUTTER_PAD - f32::from(sl.width()));
+                    let y = px(top + (p.first + k) as f32 * row_h - p.off_y);
+                    let x = px(left + gutter_w - gutter_pad - f32::from(sl.width()));
                     sl.paint(point(x, y), line_height, TextAlign::Left, None, window, cx)
                         .ok();
                 }
             }
             for (k, num) in p.right_nums.iter().enumerate() {
                 if let Some(sl) = num {
-                    let y = px(top + (p.first + k) as f32 * ROW_H - p.off_y);
-                    let x = px(mid + GUTTER_W - GUTTER_PAD - f32::from(sl.width()));
+                    let y = px(top + (p.first + k) as f32 * row_h - p.off_y);
+                    let x = px(mid + gutter_w - gutter_pad - f32::from(sl.width()));
                     sl.paint(point(x, y), line_height, TextAlign::Left, None, window, cx)
                         .ok();
                 }
             }
 
             for (col, text_rect, lines, col_x0, off) in [
-                (0usize, p.left_text, &p.left_lines, left + GUTTER_W + TEXT_PAD_L, p.off_x[0]),
-                (1usize, p.right_text, &p.right_lines, mid + GUTTER_W + TEXT_PAD_L, p.off_x[1]),
+                (0usize, p.left_text, &p.left_lines, left + gutter_w + text_pad_l, p.off_x[0]),
+                (1usize, p.right_text, &p.right_lines, mid + gutter_w + text_pad_l, p.off_x[1]),
             ] {
                 let caret = p.caret.as_ref().filter(|cv| cv.col == col);
                 window.with_content_mask(Some(ContentMask { bounds: text_rect }), |window| {
                     if let Some(cv) = caret {
                         for (k, span) in cv.sel.iter().enumerate() {
                             if let Some((x0, x1)) = span {
-                                let y = top + (p.first + k) as f32 * ROW_H - p.off_y;
+                                let y = top + (p.first + k) as f32 * row_h - p.off_y;
                                 window.paint_quad(fill(
                                     Bounds::new(
                                         point(px(col_x0 - off + x0), px(y)),
-                                        size(px((x1 - x0).max(1.5)), px(ROW_H)),
+                                        size(px((x1 - x0).max(1.5)), px(row_h)),
                                     ),
                                     rgba(0x3a5f8a99),
                                 ));
@@ -613,7 +642,7 @@ impl Element for DiffView {
                     }
                     for (k, line) in lines.iter().enumerate() {
                         if let Some(sl) = line {
-                            let y = px(top + (p.first + k) as f32 * ROW_H - p.off_y);
+                            let y = px(top + (p.first + k) as f32 * row_h - p.off_y);
                             let x = px(col_x0 - off);
                             sl.paint(point(x, y), line_height, TextAlign::Left, None, window, cx)
                                 .ok();
@@ -622,11 +651,11 @@ impl Element for DiffView {
                     if let Some(cv) = caret {
                         if cv.focused {
                             if let Some((k, hx)) = cv.head {
-                                let y = top + (p.first + k) as f32 * ROW_H - p.off_y;
+                                let y = top + (p.first + k) as f32 * row_h - p.off_y;
                                 window.paint_quad(fill(
                                     Bounds::new(
                                         point(px(col_x0 - off + hx), px(y + 1.0)),
-                                        size(px(1.5), px(ROW_H - 2.0)),
+                                        size(px(1.5), px(row_h - 2.0)),
                                     ),
                                     rgb(0xd4d4d4),
                                 ));
@@ -641,26 +670,26 @@ impl Element for DiffView {
                 let Some(bar) = p.bars[idx] else { continue };
                 let vertical = idx == 2;
                 let hovered = p.bar_ids[idx].is_some_and(|id| id.is_hovered(window));
-                let thickness = BAR - 4.0;
+                let thickness = (bar_w - 4.0 * (bar_w / BAR)).max(2.0);
                 let (track, thumb) = if vertical {
                     (
                         Bounds::new(
-                            point(px(left + w - BAR), px(top)),
-                            size(px(BAR), px(bar.track_len)),
+                            point(px(left + w - bar_w), px(top)),
+                            size(px(bar_w), px(bar.track_len)),
                         ),
                         Bounds::new(
-                            point(px(left + w - BAR + 2.0), px(bar.thumb_lo)),
+                            point(px(left + w - bar_w + 2.0), px(bar.thumb_lo)),
                             size(px(thickness), px(bar.thumb_len)),
                         ),
                     )
                 } else {
                     (
                         Bounds::new(
-                            point(px(bar.track_lo), px(top + h - BAR)),
-                            size(px(bar.track_len), px(BAR)),
+                            point(px(bar.track_lo), px(top + h - bar_w)),
+                            size(px(bar.track_len), px(bar_w)),
                         ),
                         Bounds::new(
-                            point(px(bar.thumb_lo), px(top + h - BAR + 2.0)),
+                            point(px(bar.thumb_lo), px(top + h - bar_w + 2.0)),
                             size(px(bar.thumb_len), px(thickness)),
                         ),
                     )
@@ -709,14 +738,15 @@ impl DiffView {
         let page_y = p.height;
         let page_x = p.col_text_w;
         let row_count = p.row_count;
-        let text_lo = [left + GUTTER_W, mid + GUTTER_W];
+        let (row_h, gutter_w, text_pad_l) = (p.row_h, p.gutter_w, p.text_pad_l);
+        let text_lo = [left + gutter_w, mid + gutter_w];
 
         // Resolve a window-space point to (column, visual row, column-local x px).
         let hit = move |px_x: f32, px_y: f32, off_y: f32, off_x: [f32; 2]| {
             let col = if px_x < mid { 0usize } else { 1 };
-            let row = (((px_y - top + off_y) / ROW_H).floor().max(0.0) as usize)
+            let row = (((px_y - top + off_y) / row_h).floor().max(0.0) as usize)
                 .min(row_count.saturating_sub(1));
-            let x_local = px_x - text_lo[col] - TEXT_PAD_L + off_x[col];
+            let x_local = px_x - text_lo[col] - text_pad_l + off_x[col];
             (col, row, x_local)
         };
 
@@ -726,7 +756,7 @@ impl DiffView {
                 if phase != DispatchPhase::Bubble || !body_id.should_handle_scroll(window) {
                     return;
                 }
-                let d = e.delta.pixel_delta(px(ROW_H));
+                let d = e.delta.pixel_delta(px(row_h));
                 let (dx, dy) = (f32::from(d.x), f32::from(d.y));
                 let shift = e.modifiers.shift;
                 let col = if f32::from(e.position.x) < mid { 0 } else { 1 };
