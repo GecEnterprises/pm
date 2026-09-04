@@ -379,7 +379,6 @@ impl Pm {
             )
             .child(self.new_ticket_title.clone())
             .child(self.new_ticket_body.clone())
-            .child(self.author_field())
             .child(
                 div()
                     .flex()
@@ -420,23 +419,6 @@ impl Pm {
                             ),
                     ),
             )
-    }
-
-    /// The "as: [name]" identity field — poses the author of the next ticket or
-    /// comment (PM-15). Free-form and unverified by design.
-    fn author_field(&self) -> impl IntoElement {
-        div()
-            .flex()
-            .flex_row()
-            .items_center()
-            .gap_2()
-            .child(
-                div()
-                    .text_color(rgb(DIM))
-                    .text_size(px(11.0))
-                    .child(SharedString::from("as")),
-            )
-            .child(div().w(px(160.0)).child(self.author_box.clone()))
     }
 
     /// The clickable status chip + its status-picker popover.
@@ -613,7 +595,6 @@ impl Pm {
                 .gap_2()
                 .mt_2()
                 .child(self.comment_box.clone())
-                .child(self.author_field())
                 .child(
                     div()
                         .id("comment-submit")
@@ -630,8 +611,7 @@ impl Pm {
                             cx.listener(move |pm, _, _, cx| {
                                 let body = pm.comment_box.update(cx, |ti, cx| ti.take(cx));
                                 if !body.is_empty() {
-                                    let author = pm.posed_author(cx);
-                                    pm.state.add_comment(tid, body, author);
+                                    pm.state.add_comment(tid, body, None);
                                     cx.notify();
                                 }
                             }),
@@ -640,20 +620,26 @@ impl Pm {
         )
     }
 
-    /// Read the posed author from the "as:" box and adopt it as this window's
-    /// default (persisted to `~/.pm/config.json`). Returns the override to pass
-    /// to the store, or `None` when the box is empty.
-    fn posed_author(&mut self, cx: &mut Context<Self>) -> Option<String> {
+    /// Adopt whatever is in the "Acting as" box as this window's author and
+    /// persist it to `~/.pm/config.json` (PM-15, PM-56). A blank box leaves the
+    /// current identity untouched — use [`reset_user`](Self::reset_user) to fall
+    /// back to the git default.
+    pub(crate) fn commit_user(&mut self, cx: &mut Context<Self>) {
         let name = self.author_box.read(cx).content().trim().to_string();
-        if name.is_empty() {
-            return None;
+        if name.is_empty() || name == self.state.author {
+            return;
         }
-        if name != self.state.author {
-            self.state.author = name.clone();
-            let persisted = name.clone();
-            ConfigStore::update(cx, move |c| c.author = persisted);
-        }
-        Some(name)
+        self.state.author = name.clone();
+        ConfigStore::update(cx, move |c| c.author = name);
+    }
+
+    /// Clear the persisted author so attribution falls back to the git
+    /// `user.name` (PM-56).
+    pub(crate) fn reset_user(&mut self, cx: &mut Context<Self>) {
+        ConfigStore::update(cx, |c| c.author = String::new());
+        self.state.author = pm_core::resolve_author(None, &self.state.repo);
+        let name = self.state.author.clone();
+        self.author_box.update(cx, |ti, cx| ti.set_text(name, cx));
     }
 
     pub(crate) fn submit_new_ticket(&mut self, cx: &mut Context<Self>) {
@@ -662,8 +648,7 @@ impl Pm {
             return;
         }
         let body = self.new_ticket_body.update(cx, |ti, cx| ti.take(cx));
-        let author = self.posed_author(cx);
-        let id = self.state.create_ticket(title, body, author);
+        let id = self.state.create_ticket(title, body, None);
         self.selected_ticket = Some(id);
         self.composing = None;
         cx.notify();

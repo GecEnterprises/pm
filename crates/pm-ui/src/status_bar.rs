@@ -3,7 +3,8 @@
 //! token, muted text).
 
 use gpui::{
-    div, prelude::*, px, rgb, svg, Context, Decorations, MouseButton, SharedString, Styled, Window,
+    deferred, div, prelude::*, px, rgb, svg, Context, Decorations, MouseButton, SharedString, Styled,
+    Window,
 };
 
 use pm_core::DiffTarget;
@@ -32,7 +33,24 @@ impl Pm {
             .text_color(rgb(DIM))
             .text_size(rm(11.0))
             .child(self.status_left(cx))
-            .child(self.status_right(cx));
+            .child(self.status_right(cx))
+            // Click-away closer for the "Acting as" popover — mirrors the
+            // tickets-pane menus. Sits above everything (deferred), so a second
+            // click on the chip is caught here and `stop_propagation` keeps the
+            // chip's own toggle from re-opening it in the same event.
+            .when(self.user_menu_open, |d| {
+                d.child(deferred(
+                    div().absolute().inset_0().on_mouse_down(
+                        MouseButton::Left,
+                        cx.listener(|pm, _, _, cx| {
+                            pm.commit_user(cx);
+                            pm.user_menu_open = false;
+                            cx.notify();
+                            cx.stop_propagation();
+                        }),
+                    ),
+                ))
+            });
         round_bottom(bar, decorations)
     }
 
@@ -102,6 +120,10 @@ impl Pm {
 
     fn status_right(&self, cx: &mut Context<Self>) -> impl IntoElement {
         let mut row = div().flex().flex_row().items_center().gap_3().flex_none();
+
+        // "Acting as" user section (PM-56) — shows the identity written as the
+        // author of tickets / comments, with a popover to change it.
+        row = row.child(self.user_chip(cx));
 
         // Watchjump toggle (PM-30) — only meaningful with a change list.
         if self.state.is_git() {
@@ -183,6 +205,131 @@ impl Pm {
             )));
         }
         row
+    }
+
+    /// The "Acting as <name>" chip and its popover (PM-56). The chip always
+    /// shows `state.author`, which `resolve_author` keeps non-empty (git
+    /// `user.name`, else `"unknown"`).
+    fn user_chip(&self, cx: &mut Context<Self>) -> impl IntoElement {
+        let open = self.user_menu_open;
+        let fg = rgb(if open { TEXT } else { DIM });
+        let mut chip = div()
+            .id("user")
+            .flex()
+            .flex_row()
+            .items_center()
+            .gap_1()
+            .px_1()
+            .rounded_sm()
+            .cursor_pointer()
+            .text_color(fg)
+            .child(
+                svg()
+                    .size(rm(12.0))
+                    .flex_none()
+                    .text_color(fg)
+                    .data(crate::icons::svg_bytes("user.svg")),
+            )
+            .child(SharedString::from(self.state.author.clone()))
+            .on_mouse_down(
+                MouseButton::Left,
+                cx.listener(|pm, _, _, cx| {
+                    pm.user_menu_open = !pm.user_menu_open;
+                    cx.notify();
+                    cx.stop_propagation();
+                }),
+            );
+        chip = if open {
+            chip.bg(rgb(SELECT))
+        } else {
+            chip.hover(|s| s.text_color(rgb(TEXT)))
+        };
+
+        div().relative().child(chip).when(open, |d| {
+            d.child(deferred(
+                div()
+                    .absolute()
+                    .bottom_full()
+                    .right_0()
+                    .mb(px(4.0))
+                    .child(self.user_menu(cx)),
+            ))
+        })
+    }
+
+    /// Body of the "Acting as" popover: a name field, a "Use git username"
+    /// action (when a git name is available), and "Reset to git default".
+    fn user_menu(&self, cx: &mut Context<Self>) -> impl IntoElement {
+        let git_name = self.state.repo.user_name();
+
+        let mut panel = div()
+            .occlude()
+            .flex()
+            .flex_col()
+            .gap_1()
+            .w(px(220.0))
+            .p_2()
+            .bg(rgb(PANEL))
+            .border_1()
+            .border_color(rgb(BORDER))
+            .rounded_md()
+            .shadow_lg()
+            .text_color(rgb(TEXT))
+            .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
+            .child(
+                div()
+                    .text_color(rgb(DIM))
+                    .text_size(rm(11.0))
+                    .child(SharedString::from("Acting as")),
+            )
+            .child(self.author_box.clone());
+
+        if let Some(name) = git_name {
+            let label = format!("Use git username ({name})");
+            panel = panel.child(
+                div()
+                    .id("user-from-git")
+                    .px_1()
+                    .py_1()
+                    .rounded_sm()
+                    .cursor_pointer()
+                    .text_color(rgb(TEXT))
+                    .hover(|s| s.bg(rgb(SELECT)))
+                    .child(SharedString::from(label))
+                    .on_mouse_down(
+                        MouseButton::Left,
+                        cx.listener(move |pm, _, _, cx| {
+                            let name = name.clone();
+                            pm.author_box.update(cx, |ti, cx| ti.set_text(name, cx));
+                            pm.commit_user(cx);
+                            pm.user_menu_open = false;
+                            cx.notify();
+                            cx.stop_propagation();
+                        }),
+                    ),
+            );
+        }
+
+        panel.child(
+            div()
+                .id("user-reset")
+                .px_1()
+                .py_1()
+                .rounded_sm()
+                .cursor_pointer()
+                .text_color(rgb(DIM))
+                .hover(|s| s.bg(rgb(SELECT)).text_color(rgb(TEXT)))
+                .child(SharedString::from("Reset to git default"))
+                .on_mouse_down(
+                    MouseButton::Left,
+                    cx.listener(|pm, _, _, cx| {
+                        pm.reset_user(cx);
+                        pm.user_menu_open = false;
+                        cx.notify();
+                        cx.stop_propagation();
+                    }),
+                ),
+        )
     }
 }
 

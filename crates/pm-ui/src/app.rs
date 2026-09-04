@@ -164,9 +164,12 @@ pub struct Pm {
     pub new_ticket_title: Entity<TextInput>,
     pub new_ticket_body: Entity<TextInput>,
     pub comment_box: Entity<TextInput>,
-    /// "as:" identity field in the Tickets pane — overrides `state.author` for
-    /// the next ticket / comment (PM-15).
+    /// Identity field shown in the status-bar "Acting as" popover — the name
+    /// written as the author of tickets / comments, persisted to `Config.author`
+    /// (PM-15, PM-56).
     pub author_box: Entity<TextInput>,
+    /// The status-bar user ("Acting as") popover is open.
+    pub user_menu_open: bool,
     pub ticket_hover: Option<usize>,
     /// Whole-window zoom, synced from the config each render (1.0 = 100%).
     pub scale: f32,
@@ -201,6 +204,14 @@ impl Pm {
         let state = AppState::new(repo);
         let author_box =
             cx.new(|cx| TextInput::single(cx).placeholder("author").text(state.author.clone(), cx));
+        cx.subscribe(&author_box, |pm, _, ev, cx| match ev {
+            TextInputEvent::Submit => {
+                pm.commit_user(cx);
+                pm.user_menu_open = false;
+                cx.notify();
+            }
+        })
+        .detach();
 
         Self {
             state,
@@ -245,6 +256,7 @@ impl Pm {
             new_ticket_body,
             comment_box,
             author_box,
+            user_menu_open: false,
             ticket_hover: None,
             scale,
             // Active work by default; closed tickets hidden until asked for.
@@ -275,6 +287,10 @@ impl Pm {
         let root = repo.root().to_path_buf();
         Self::record_recent(&root, cx);
         self.state = AppState::new(repo);
+        // Re-seed the "Acting as" field from the new repo's identity — the
+        // window may have started empty (`unknown`) before a folder was picked.
+        let author = self.state.author.clone();
+        self.author_box.update(cx, |ti, cx| ti.set_text(author, cx));
         self.empty = false;
         self.selected_ticket = None;
         self.shaped.clear();
