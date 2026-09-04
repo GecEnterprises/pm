@@ -3,7 +3,10 @@
 //!
 //! It works directly on disk through `pm-core`; no running GUI is required. The
 //! project is chosen per-call via an optional `project` path argument, defaulting
-//! to `--project <path>` / the positional arg / the current directory.
+//! to the `default_root` the server was started with.
+//!
+//! This is a library — the `pm` binary drives it via [`serve_stdio`] as the
+//! `pm mcp` subcommand (PM-5 / PM-14: one binary).
 
 mod ops;
 
@@ -196,34 +199,24 @@ impl ServerHandler for PmServer {
     }
 }
 
-fn parse_root() -> PathBuf {
-    let mut args = std::env::args().skip(1);
-    let mut root: Option<String> = None;
-    while let Some(a) = args.next() {
-        match a.as_str() {
-            "--project" | "-p" => root = args.next(),
-            other if !other.starts_with('-') => root = Some(other.to_string()),
-            _ => {}
-        }
-    }
-    root.map(PathBuf::from)
-        .or_else(|| std::env::current_dir().ok())
-        .unwrap_or_else(|| PathBuf::from("."))
-}
-
-#[tokio::main]
-async fn main() -> Result<()> {
-    tracing_subscriber::fmt()
+/// Run the MCP server on stdio until the client disconnects. Blocks; builds its
+/// own Tokio runtime so the (synchronous) `pm` binary can just call it.
+pub fn serve_stdio(default_root: PathBuf) -> Result<()> {
+    let _ = tracing_subscriber::fmt()
         .with_writer(std::io::stderr)
         .with_ansi(false)
-        .init();
+        .try_init();
 
-    let root = parse_root();
-    eprintln!("pm-mcp: project root {}", root.display());
+    eprintln!("pm mcp: project root {}", default_root.display());
 
-    let service = PmServer::new(root)
-        .serve(rmcp::transport::stdio())
-        .await?;
-    service.waiting().await?;
-    Ok(())
+    let rt = tokio::runtime::Builder::new_multi_thread()
+        .enable_all()
+        .build()?;
+    rt.block_on(async move {
+        let service = PmServer::new(default_root)
+            .serve(rmcp::transport::stdio())
+            .await?;
+        service.waiting().await?;
+        Ok::<(), anyhow::Error>(())
+    })
 }

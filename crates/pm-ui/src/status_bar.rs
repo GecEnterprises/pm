@@ -31,7 +31,7 @@ impl Pm {
             .text_color(rgb(DIM))
             .text_size(rm(11.0))
             .child(self.status_left(cx))
-            .child(self.status_right());
+            .child(self.status_right(cx));
         round_bottom(bar, decorations)
     }
 
@@ -99,8 +99,29 @@ impl Pm {
         row
     }
 
-    fn status_right(&self) -> impl IntoElement {
+    fn status_right(&self, cx: &mut Context<Self>) -> impl IntoElement {
         let mut row = div().flex().flex_row().items_center().gap_3().flex_none();
+
+        if let Some(rel) = crate::update::UpdateStatus::available(cx) {
+            let tag = rel.tag.clone();
+            row = row.child(
+                div()
+                    .id("update-available")
+                    .px_1()
+                    .rounded_sm()
+                    .bg(rgb(SELECT))
+                    .text_color(rgb(TEXT))
+                    .cursor_pointer()
+                    .on_mouse_down(
+                        MouseButton::Left,
+                        cx.listener(|pm, _, _, cx| {
+                            pm.show_about = true;
+                            cx.notify();
+                        }),
+                    )
+                    .child(SharedString::from(format!("\u{2191} {tag}"))),
+            );
+        }
 
         if self.zoom_pct() != 100 {
             row = row.child(SharedString::from(format!("{}%", self.zoom_pct())));

@@ -5,12 +5,20 @@
 //! `pm` GUI notices the file change through its filesystem watch.
 
 use std::path::{Path, PathBuf};
+use std::sync::Mutex;
 
 use anyhow::{anyhow, bail, Context, Result};
 use serde_json::{json, Value};
 
 use pm_core::pm::{self, PmData, Priority, Status};
 use pm_core::{resolve_author, Repo};
+
+/// Serializes every read-modify-write of a `pm.json5` in this process. `rmcp`
+/// runs tool calls concurrently, so two writes in one client batch would
+/// otherwise load the same base and the last save would clobber the first.
+/// (Cross-process races are still handled by `pm::load`'s torn-read retry +
+/// `PmData::save`'s atomic rename.)
+static STORE_LOCK: Mutex<()> = Mutex::new(());
 
 /// Resolve a project root from an optional path argument (falling back to
 /// `default`). If the chosen directory has no `.pm/pm.json5`, walk up until one
@@ -99,6 +107,7 @@ pub fn add_comment(root: &Path, id: u64, body: &str, author: Option<&str>) -> Re
     if body.trim().is_empty() {
         bail!("comment body is empty");
     }
+    let _guard = STORE_LOCK.lock().unwrap_or_else(|e| e.into_inner());
     let mut data = load(root)?;
     let author = resolve_author(author, &Repo::open(root));
     if !data.add_comment(id, author.clone(), body, pm::now_unix()) {
@@ -125,6 +134,7 @@ pub fn create_ticket(
     if title.trim().is_empty() {
         bail!("ticket title is empty");
     }
+    let _guard = STORE_LOCK.lock().unwrap_or_else(|e| e.into_inner());
     let mut data = load(root)?;
     let author = resolve_author(author, &Repo::open(root));
     let now = pm::now_unix();
@@ -151,6 +161,7 @@ pub fn edit_ticket(
     labels: Option<Vec<String>>,
     assignee: Option<Value>,
 ) -> Result<Value> {
+    let _guard = STORE_LOCK.lock().unwrap_or_else(|e| e.into_inner());
     let mut data = load(root)?;
     if data.ticket(id).is_none() {
         bail!("no ticket with id {id}");
@@ -312,6 +323,25 @@ mod tests {
         let none = list_tickets(&d, Some("open"), None).unwrap();
         assert_eq!(none["count"], 0);
 
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
+    #[test]
+    fn concurrent_writes_all_land() {
+        let d = tmp_project();
+        let id = create_ticket(&d, "race", None, None, None, None).unwrap()["id"]
+            .as_u64()
+            .unwrap();
+        std::thread::scope(|s| {
+            for i in 0..12 {
+                let d = &d;
+                s.spawn(move || {
+                    add_comment(d, id, &format!("c{i}"), Some("t")).unwrap();
+                });
+            }
+        });
+        let t = get_ticket(&d, id).unwrap();
+        assert_eq!(t["comments"].as_array().unwrap().len(), 12);
         let _ = std::fs::remove_dir_all(&d);
     }
 

@@ -9,12 +9,33 @@ sidebar with a "changes" list and a file tree, and a center pane with a
 side-by-side line diff of head vs the working tree. every panel is a custom
 gpui element that paints only its visible rows.
 
+## install (windows)
+
+```powershell
+irm https://raw.githubusercontent.com/GecEnterprises/pm/trunk/install.ps1 | iex
+```
+
+downloads the latest `pm.exe` into `%LOCALAPPDATA%\Programs\pm` and adds it to
+your user PATH — no admin. windows may show a SmartScreen "unknown publisher"
+warning (the binary isn't code-signed yet); choose *More info → Run anyway*.
+`pm update` pulls the next release in place.
+
 ## run
 
 ```
 cargo run                 # opens the current directory
 cargo run -- path/to/repo
+pm                        # once installed
 ```
+
+`pm` is a single binary with a few subcommands:
+
+| command | does |
+| ------- | ---- |
+| `pm [<path>]` | open the diff GUI |
+| `pm mcp [--project <p>]` | run the [MCP](crates/pm-mcp/README.md) server on stdio |
+| `pm update` | update to the latest release (windows) |
+| `pm --version` | print version + build commit |
 
 - click a file in **changes** or the **explorer** tree to diff it
 - drag the sidebar edge, the changes/explorer split, or the diff's centre

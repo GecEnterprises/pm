@@ -1,3 +1,4 @@
+pub mod buildinfo;
 pub mod config;
 pub mod content;
 pub mod diff;
@@ -7,6 +8,7 @@ pub mod identity;
 pub mod pm;
 pub mod state;
 pub mod text;
+pub mod update;
 pub mod watch;
 
 pub use config::Config;

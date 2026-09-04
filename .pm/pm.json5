@@ -334,13 +334,13 @@
       "id": 14,
       "title": "installscript for windows, and github pointed auto update system",
       "body": "",
-      "status": "open",
+      "status": "in_progress",
       "priority": "low",
       "labels": [],
       "assignee": null,
       "author": "",
       "created": 1788449089,
-      "updated": 1788449287,
+      "updated": 1788484746,
       "anchors": [],
       "comments": [
         {
@@ -348,6 +348,13 @@
           "author": "reaganiwadha",
           "created": 1788449099,
           "body": "This needs further elaboration on how I want it",
+          "anchor": null
+        },
+        {
+          "id": 2,
+          "author": "claude",
+          "created": 1788484746,
+          "body": "First pass landed. pm is now a SINGLE binary with subcommands (src/cli.rs): pm [<path>] = GUI, pm mcp, pm update, pm --version, pm --help. crates/pm-mcp is now a library folded into the pm bin (pm_mcp::serve_stdio). install.ps1 at the repo root (served raw from trunk) does irm|iex -> %LOCALAPPDATA%/Programs/pm + SHA256 verify + user PATH; -Version <tag> pins. Auto-update v1: pm_core::update::latest() checks the GitHub releases API on startup (bg thread); a newer release shows as a status-bar chip and an About line. pm update (Windows) downloads pm.exe.new, renames the running exe to pm.exe.old, swaps, relaunches; cleanup_stale() drops the .old next start. Non-GUI subcommands AttachConsole so output shows under windows_subsystem=windows. Not code-signed -> SmartScreen warning (noted in README). macOS/Linux pm update deferred.",
           "anchor": null
         }
       ]
@@ -558,15 +565,30 @@
       "id": 27,
       "title": "Related to PM-14, add a github actions for building in the release branch",
       "body": "Add a way to carry release notes and changes in a release and make sure it's embedded in the binary so we can see it in about",
-      "status": "open",
+      "status": "in_progress",
       "priority": "normal",
       "labels": [],
       "assignee": null,
       "author": "",
       "created": 1788474144,
-      "updated": 1788474144,
+      "updated": 1788484747,
       "anchors": [],
-      "comments": []
+      "comments": [
+        {
+          "id": 1,
+          "author": "claude",
+          "created": 1788484542,
+          "body": ".github/workflows/release.yml added: triggers on tag v*, builds on windows-latest, guards that the tag matches the root Cargo.toml version and that release-notes/<version>.md exists, then cargo build --release -p pm, sha256, and softprops/action-gh-release with body_path = the release-notes file. Release notes are carried as release-notes/<version>.md (release-notes/0.0.1.md seeded). They are embedded in the binary by crates/pm-core/build.rs -> pm_core::buildinfo (VERSION / COMMIT / DATE / RELEASE_NOTES); the About box shows long_version() = \"pm 0.0.1 (<sha>, <date>)\" plus a scrollable notes block, and pm --version prints the same. Workflow: bump Cargo.toml version + add the notes file, then tag.",
+          "anchor": null
+        },
+        {
+          "id": 2,
+          "author": "claude",
+          "created": 1788484747,
+          "body": ".github/workflows/release.yml added: trigger on tag v*, build on windows-latest, guard (tag == root Cargo.toml version AND release-notes/<version>.md exists), cargo build --release -p pm, sha256, softprops/action-gh-release with body_path = the notes file. Notes live as release-notes/<version>.md (0.0.1 seeded) and are embedded by crates/pm-core/build.rs -> pm_core::buildinfo (VERSION/COMMIT/DATE/RELEASE_NOTES). About shows long_version() = 'pm 0.0.1 (<sha>, <date>)' + a scrollable notes block; pm --version prints the same. Release flow: bump Cargo.toml version + add the notes file, then tag. Also fixed a concurrency bug found while dogfooding: rmcp runs tool calls in parallel and two writes in a batch clobbered each other -> added a process-wide STORE_LOCK around every read-modify-write in pm-mcp ops.",
+          "anchor": null
+        }
+      ]
     },
     {
       "id": 28,

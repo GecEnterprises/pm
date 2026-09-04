@@ -29,6 +29,7 @@ use crate::scroll::{ScrollDrag, ScrollState};
 use crate::text_input::{TextInput, TextInputEvent};
 use crate::theme::*;
 use crate::tree_view::tree_view;
+use crate::update::UpdateStatus;
 
 /// Scroll state for the diff body: one shared vertical offset, one horizontal
 /// offset per column.
@@ -1111,14 +1112,37 @@ impl Pm {
                                 .child("pm \u{2014} Plus Minus"),
                         )
                         .child(
-                            div().text_color(rgb(DIM)).child(SharedString::from(format!(
-                                "version {}",
-                                env!("CARGO_PKG_VERSION")
-                            ))),
+                            div()
+                                .text_color(rgb(DIM))
+                                .child(SharedString::from(pm_core::buildinfo::long_version())),
                         )
                         .child(div().text_color(rgb(DIM)).child(SharedString::from(
                             self.state.repo.root().display().to_string(),
-                        ))),
+                        )))
+                        .when_some(UpdateStatus::available(cx), |d, rel| {
+                            d.child(
+                                div()
+                                    .text_color(rgb(CHANGED))
+                                    .child(SharedString::from(format!(
+                                        "Update available: {}  \u{2014}  run  pm update",
+                                        rel.tag
+                                    ))),
+                            )
+                        })
+                        .child(
+                            div()
+                                .id("about-notes")
+                                .mt_1()
+                                .max_h(px(180.0))
+                                .overflow_y_scroll()
+                                .text_size(rm(11.0))
+                                .text_color(rgb(DIM))
+                                .children(
+                                    pm_core::buildinfo::RELEASE_NOTES
+                                        .lines()
+                                        .map(|l| div().child(SharedString::from(l.to_string()))),
+                                ),
+                        ),
                 ),
         )
     }

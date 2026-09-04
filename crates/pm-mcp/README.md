@@ -3,17 +3,19 @@
 A stdio [Model Context Protocol](https://modelcontextprotocol.io) server over a
 `pm` project's `.pm/pm.json5` ticket store (PM-5).
 
-It works **directly on disk** through `pm-core` — no running `pm` GUI is required.
-A GUI that *is* open picks up writes through its filesystem watch.
+This is a **library** — it ships inside the single `pm` binary as the `pm mcp`
+subcommand. It works **directly on disk** through `pm-core` (no running `pm` GUI
+required); a GUI that *is* open picks up writes through its filesystem watch.
 
 ## Run
 
 ```
-cargo run -p pm-mcp -- --project /path/to/repo
+pm mcp --project /path/to/repo          # installed
+cargo run -q -p pm -- mcp --project .    # from source
 ```
 
-The project root defaults to `--project` / the first positional argument / the
-current directory. Every tool also takes an optional `project` path argument that
+The project root defaults to `--project` / a positional argument / the current
+directory. Every tool also takes an optional `project` path argument that
 overrides it per call; if the path has no `.pm/pm.json5` the server walks up to
 the nearest ancestor that does.
 
@@ -43,7 +45,9 @@ attribute work to a specific name; omit it and the server falls back to the
 ```json
 {
   "mcpServers": {
-    "pm": { "command": "cargo", "args": ["run", "-q", "-p", "pm-mcp", "--"] }
+    "pm": { "command": "cargo", "args": ["run", "-q", "-p", "pm", "--", "mcp"] }
   }
 }
 ```
+
+Once `pm` is installed and on `PATH`, use `{ "command": "pm", "args": ["mcp"] }`.

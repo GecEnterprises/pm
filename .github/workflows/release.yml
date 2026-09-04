@@ -1,0 +1,52 @@
+name: release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # build.rs reads `git log` for the commit + date
+
+      - name: Resolve version
+        id: ver
+        shell: bash
+        run: |
+          tag="${GITHUB_REF_NAME}"
+          ver="${tag#v}"
+          cargo_ver="$(grep -m1 '^version' Cargo.toml | sed -E 's/.*"([^"]+)".*/\1/')"
+          echo "version=$ver" >> "$GITHUB_OUTPUT"
+          if [ "$ver" != "$cargo_ver" ]; then
+            echo "::error::tag $tag != Cargo.toml version $cargo_ver"; exit 1
+          fi
+          if [ ! -f "release-notes/$ver.md" ]; then
+            echo "::error::release-notes/$ver.md is missing"; exit 1
+          fi
+
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Build
+        run: cargo build --release -p pm
+
+      - name: Checksum
+        shell: bash
+        run: |
+          cd target/release
+          certutil -hashfile pm.exe SHA256 | sed -n 2p | tr -d ' \r' > pm.exe.sha256
+          cat pm.exe.sha256
+
+      - uses: softprops/action-gh-release@v2
+        with:
+          name: pm ${{ steps.ver.outputs.version }}
+          body_path: release-notes/${{ steps.ver.outputs.version }}.md
+          files: |
+            target/release/pm.exe
+            target/release/pm.exe.sha256

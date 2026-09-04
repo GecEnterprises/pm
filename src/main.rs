@@ -8,6 +8,7 @@
 // console so `eprintln!` / panics are visible during development.
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+mod cli;
 mod fonts;
 
 use std::path::{Path, PathBuf};
@@ -27,11 +28,34 @@ use pm_ui::{OpenFolder, Pm, Quit, ViewFiles, ViewSummary, ViewTickets, ZoomIn, Z
 static ICON: OnceLock<Option<Arc<RgbaImage>>> = OnceLock::new();
 
 fn main() {
-    let path = std::env::args()
-        .nth(1)
-        .map(PathBuf::from)
-        .or_else(|| std::env::current_dir().ok())
-        .expect("could not determine a folder to open");
+    pm_core::update::cleanup_stale();
+
+    let path = match cli::parse() {
+        cli::Command::Gui { path } => path
+            .or_else(|| std::env::current_dir().ok())
+            .expect("could not determine a folder to open"),
+        cli::Command::Mcp { project } => {
+            attach_console();
+            let root = project
+                .or_else(|| std::env::current_dir().ok())
+                .unwrap_or_else(|| PathBuf::from("."));
+            return exit_on_err("pm mcp", pm_mcp::serve_stdio(root));
+        }
+        cli::Command::Update => {
+            attach_console();
+            return exit_on_err("pm update", pm_core::update::run_self_update());
+        }
+        cli::Command::Version => {
+            attach_console();
+            println!("{}", pm_core::buildinfo::long_version());
+            return;
+        }
+        cli::Command::Help => {
+            attach_console();
+            print!("{}", cli::usage());
+            return;
+        }
+    };
 
     let icon = image::load_from_memory(include_bytes!("../assets/icon.png"))
         .ok()
@@ -74,10 +98,33 @@ fn main() {
             .detach();
         });
 
+        pm_ui::UpdateStatus::init(cx);
         open_pm_window(cx, &path);
         cx.activate(true);
     });
 }
+
+/// Run `r`, printing `<what>: <err>` and exiting non-zero on failure.
+fn exit_on_err(what: &str, r: anyhow::Result<()>) {
+    if let Err(e) = r {
+        eprintln!("{what}: {e}");
+        std::process::exit(1);
+    }
+}
+
+/// On Windows the release build has no console (`windows_subsystem = "windows"`),
+/// so CLI subcommands attach to the parent shell's console for their output.
+#[cfg(windows)]
+fn attach_console() {
+    // SAFETY: FFI with no pointers; failure (no parent console) is ignored.
+    unsafe {
+        windows_sys::Win32::System::Console::AttachConsole(
+            windows_sys::Win32::System::Console::ATTACH_PARENT_PROCESS,
+        );
+    }
+}
+#[cfg(not(windows))]
+fn attach_console() {}
 
 /// Keybindings for the editable text fields (Tickets pane). Scoped to the
 /// `TextInput` key contexts so they never reach the diff view or menus.

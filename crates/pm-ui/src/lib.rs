@@ -14,9 +14,11 @@ pub mod theme;
 pub mod tickets_view;
 pub mod title_bar;
 pub mod tree_view;
+pub mod update;
 
 pub use app::Pm;
 pub use config::ConfigStore;
+pub use update::UpdateStatus;
 pub use text_input::{TextInput, TextInputEvent};
 pub use menu::{
     app_menus, About, Copy, OpenFolder, Quit, Refresh, SelectAll, ToggleChanges, ToggleExplorer,

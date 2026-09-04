@@ -17,6 +17,8 @@ repository = "https://github.com/GecEnterprises/pm"
 [dependencies]
 pm-core = { path = "crates/pm-core" }
 pm-ui = { path = "crates/pm-ui" }
+pm-mcp = { path = "crates/pm-mcp" }
+anyhow = { workspace = true }
 gpui = { workspace = true }
 # gpui_platform ships no backend by default; pick both Linux backends (the
 # features gate `gpui_linux`, which isn't built on Windows/macOS anyway).
@@ -24,6 +26,10 @@ gpui_platform = { workspace = true, features = ["wayland", "x11"] }
 # window icon (x11 runtime path); must match gpui's image version so the
 # RgbaImage types unify
 image = { version = "0.25", default-features = false, features = ["png"] }
+
+[target.'cfg(windows)'.dependencies]
+# AttachConsole for CLI subcommands under `windows_subsystem = "windows"`
+windows-sys = { version = "0.59", features = ["Win32_System_Console"] }
 
 [build-dependencies]
 winresource = "0.1"
