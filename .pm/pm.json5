@@ -4,7 +4,7 @@
     "name": "pm",
     "key": "PM"
   },
-  "next_id": 43,
+  "next_id": 44,
   "tickets": [
     {
       "id": 5,
@@ -823,6 +823,36 @@
           "author": "reaganiwadha",
           "created": 1788469000,
           "body": "Done. Pulled the sidebar drag handle (Pm::sidebar_resize_handle) and the root-bounds canvas / drag router out of left_column + files_body so both panes share them. The Tickets list panel is now .relative().w(sidebar_w) with the handle appended, and tickets_body mounts the canvas + on_drag_move. Dragging either sidebar moves the same sidebar_w. File-to-File verified unchanged; Tickets drag needs a run to confirm.",
+          "anchor": null
+        }
+      ]
+    },
+    {
+      "id": 43,
+      "title": "In File to File, the code editor should show the cursor a caret rather than a pointer, even though its read only",
+      "body": "",
+      "status": "done",
+      "priority": "normal",
+      "labels": [
+        "ui"
+      ],
+      "assignee": null,
+      "created": 1788481371,
+      "updated": 1788481701,
+      "anchors": [
+        {
+          "file": "crates/pm-ui/src/diff_view.rs",
+          "start_line": 716,
+          "end_line": 724,
+          "rev": ""
+        }
+      ],
+      "comments": [
+        {
+          "id": 1,
+          "author": "claude",
+          "created": 1788481701,
+          "body": "Set CursorStyle::IBeam on the diff body hitbox in paint(). The divider hitbox is registered after body and keeps its ResizeColumn style, so the split handle is unaffected.",
           "anchor": null
         }
       ]

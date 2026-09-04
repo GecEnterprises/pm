@@ -184,7 +184,7 @@ pub struct DiffPrepaint {
     divider_hitbox: Hitbox,
     /// `[X-left, X-right, Y]`.
     bars: [Option<BarInfo>; 3],
-    body_id: HitboxId,
+    body: Hitbox,
     bar_ids: [Option<HitboxId>; 3],
     left_lines: Vec<Option<ShapedLine>>,
     right_lines: Vec<Option<ShapedLine>>,
@@ -543,7 +543,7 @@ impl Element for DiffView {
             divider,
             divider_hitbox,
             bars,
-            body_id: body.id,
+            body,
             bar_ids,
             left_lines,
             right_lines,
@@ -718,6 +718,10 @@ impl Element for DiffView {
         if self.pm.read(cx).diff_split_drag.is_some() {
             window.set_window_cursor_style(CursorStyle::ResizeColumn);
         } else {
+            // Read-only, but it's text: an I-beam over the panes reads as
+            // selectable/inspectable rather than clickable. The divider's own
+            // hitbox (registered after `body`) still wins as a resize handle.
+            window.set_cursor_style(CursorStyle::IBeam, &p.body);
             window.set_cursor_style(CursorStyle::ResizeColumn, &p.divider_hitbox);
         }
         self.register_mouse(window, p);
@@ -727,7 +731,7 @@ impl Element for DiffView {
 impl DiffView {
     fn register_mouse(&self, window: &mut Window, p: &DiffPrepaint) {
         let pm = self.pm.clone();
-        let body_id = p.body_id;
+        let body_id = p.body.id;
         let divider_id = p.divider_hitbox.id;
         let bars = p.bars;
         let bar_ids = p.bar_ids;
