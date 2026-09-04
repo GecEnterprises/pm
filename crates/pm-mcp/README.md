@@ -40,14 +40,16 @@ attribute work to a specific name; omit it and the server falls back to the
 
 ## Register with Claude Code
 
-`.mcp.json` in the repo root:
+`pm --setup` does this for you (`claude mcp add pm -s user -- pm --mcp`, or it
+writes the entry into `~/.claude.json`). To wire it up by hand:
 
 ```json
 {
   "mcpServers": {
-    "pm": { "command": "cargo", "args": ["run", "-q", "-p", "pm", "--", "mcp"] }
+    "pm": { "command": "pm", "args": ["--mcp"] }
   }
 }
 ```
 
-Once `pm` is installed and on `PATH`, use `{ "command": "pm", "args": ["mcp"] }`.
+From a source checkout without an installed `pm`, use
+`{ "command": "cargo", "args": ["run", "-q", "-p", "pm", "--", "--mcp"] }`.
