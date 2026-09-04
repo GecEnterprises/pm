@@ -133,6 +133,17 @@ fn runs_for_line(line: &Line, font: &Font) -> (SharedString, Vec<TextRun>) {
     (text.into(), runs)
 }
 
+/// Extra scrollable space below the last line, so the tail of a file isn't
+/// jammed against the bottom edge — you can pull it up ~60% of a viewport past
+/// the end (PM-22). Only when the file actually overflows.
+fn bottom_overhang(content_h: f32, viewport_h: f32) -> f32 {
+    if content_h > viewport_h + 0.5 {
+        (viewport_h * 0.6).min(content_h)
+    } else {
+        0.0
+    }
+}
+
 fn row_bg(kind: RowKind) -> (Option<Rgba>, Option<Rgba>) {
     match kind {
         RowKind::Equal => (None, None),
@@ -344,7 +355,9 @@ impl Element for DiffView {
                     diff.x[col].offset.x = diff.x[col].offset.x + px(vel(mx - ox));
                 }
 
-                diff.y.content = size(px(0.0), px(row_count as f32 * row_h));
+                let content_h = row_count as f32 * row_h;
+                diff.y.content =
+                    size(px(0.0), px(content_h + bottom_overhang(content_h, h)));
                 diff.y.viewport = bounds.size;
                 diff.y.clamp();
                 for c in 0..2 {
@@ -482,7 +495,8 @@ impl Element for DiffView {
                 None
             },
             if v_over {
-                BarInfo::new(top, v_track_len, row_count_h, h, off_y)
+                let total = row_count_h + bottom_overhang(row_count_h, h);
+                BarInfo::new(top, v_track_len, total, h, off_y)
             } else {
                 None
             },
