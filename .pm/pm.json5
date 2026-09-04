@@ -4,13 +4,13 @@
     "name": "pm",
     "key": "PM"
   },
-  "next_id": 55,
+  "next_id": 59,
   "tickets": [
     {
       "id": 5,
       "title": "MCP for PM",
       "body": "Description pending",
-      "status": "open",
+      "status": "done",
       "priority": "high",
       "labels": [
         "mcp"
@@ -18,7 +18,7 @@
       "assignee": null,
       "author": "",
       "created": 1788448748,
-      "updated": 1788486266,
+      "updated": 1788495377,
       "anchors": [],
       "comments": [
         {
@@ -40,6 +40,20 @@
           "author": "reaganiwadha",
           "created": 1788486266,
           "body": "We need MCP Installer. install.ps1 installs the pm binary yes, but we should have a subcommand named `pm setup`. Actually let's change the cli syntax to be `pm .` to open this project `pm` just opens pm without specifying directory, `pm --mcp` to run mcp `pm --setup` is the first thing the install.ps1 launches. and in this pm --setup, it asks whether to associate itself/add itself in the menu, register like windows application registry properly, register an uninstaller so it shows up in the bcuninstaller/windows uninstall thingy. and more importantly, pm --setup has an mcp configurator/mcp plugger. Find like a repository where it has an mcp plugger that detects claude code or something and plugs itself properly. Target claude code first",
+          "anchor": null
+        },
+        {
+          "id": 4,
+          "author": "unknown",
+          "created": 1788495095,
+          "body": "Closed, MCP primitives is there now",
+          "anchor": null
+        },
+        {
+          "id": 5,
+          "author": "claude",
+          "created": 1788495377,
+          "body": "Done. Recap of everything shipped for this ticket:\n\n- crates/pm-mcp — rmcp 3.2 stdio server; tools list_tickets / get_ticket / add_comment / create_ticket / edit_ticket / open_project / list_projects. Works directly on .pm/pm.json5 via pm-core.\n- CLI reshaped to flags (hard switch): `pm` = \"Nothing opened\" screen, `pm .` / `pm <path>` = GUI, `pm --mcp [--project p]`, `pm --setup [--yes]`, `pm --uninstall [--yes]`, `pm --update`.\n- `pm --setup` (crates/pm-core/src/setup.rs, Windows): figlet banner + plain y/n prompts; reg.exe writes App Paths + Uninstall keys (pm shows in \"Installed apps\" / BCUninstaller, UninstallString = \"<exe>\" --uninstall --yes); ensures install dir on PATH; optional Start Menu .lnk; MCP plugger targets Claude Code — `claude mcp add pm -s user -- pm --mcp` if the CLI is present, else edits ~/.claude.json mcpServers.pm.\n- `pm --uninstall` reverses all of it and self-deletes.\n- install.ps1 runs `pm --setup` after install; repo .mcp.json uses `cargo run -q -p pm -- --mcp`.\n\nFollow-ups worth their own tickets: MCP plugger support for Cursor / Windsurf; `pm --setup` on macOS/Linux (currently Windows-only, bails elsewhere).",
           "anchor": null
         }
       ]
@@ -301,9 +315,17 @@
       "assignee": null,
       "author": "",
       "created": 1788449204,
-      "updated": 1788449204,
+      "updated": 1788495425,
       "anchors": [],
-      "comments": []
+      "comments": [
+        {
+          "id": 1,
+          "author": "claude",
+          "created": 1788495425,
+          "body": "Partial. Done: Ticket.author / Comment.author (free, unverified strings), Config.author (~/.pm/config.json), pm_core::resolve_author(explicit → config → git user.name → \"unknown\"), the GUI \"as:\" author_box in the Tickets pane, and per-action Option<String> overrides in create_ticket / add_comment (MCP tools take `author`).\n\nNot done: a first-class \"who am I\" control. PM-56 covers that (footer user section, git-username default). Also a bug to fix there: a non-git pm window resolves author to \"unknown\" and the ticket-submit path then persists that into the shared config, poisoning attribution for every project — the default should come from git user.name and only be written to config on an explicit user action.",
+          "anchor": null
+        }
+      ]
     },
     {
       "id": 12,
@@ -341,13 +363,13 @@
       "id": 14,
       "title": "installscript for windows, and github pointed auto update system",
       "body": "",
-      "status": "in_progress",
+      "status": "done",
       "priority": "low",
       "labels": [],
       "assignee": null,
       "author": "",
       "created": 1788449089,
-      "updated": 1788484746,
+      "updated": 1788495402,
       "anchors": [],
       "comments": [
         {
@@ -362,6 +384,13 @@
           "author": "claude",
           "created": 1788484746,
           "body": "First pass landed. pm is now a SINGLE binary with subcommands (src/cli.rs): pm [<path>] = GUI, pm mcp, pm update, pm --version, pm --help. crates/pm-mcp is now a library folded into the pm bin (pm_mcp::serve_stdio). install.ps1 at the repo root (served raw from trunk) does irm|iex -> %LOCALAPPDATA%/Programs/pm + SHA256 verify + user PATH; -Version <tag> pins. Auto-update v1: pm_core::update::latest() checks the GitHub releases API on startup (bg thread); a newer release shows as a status-bar chip and an About line. pm update (Windows) downloads pm.exe.new, renames the running exe to pm.exe.old, swaps, relaunches; cleanup_stale() drops the .old next start. Non-GUI subcommands AttachConsole so output shows under windows_subsystem=windows. Not code-signed -> SmartScreen warning (noted in README). macOS/Linux pm update deferred.",
+          "anchor": null
+        },
+        {
+          "id": 3,
+          "author": "claude",
+          "created": 1788495362,
+          "body": "Done. install.ps1 (irm | iex → %LOCALAPPDATA%\\Programs\\pm, SHA256 verify, user PATH, then runs `pm --setup`) + `pm --update` self-updater (crates/pm-core/src/update.rs: checks GitHub releases/latest, downloads pm.exe, rename-swaps the running exe, relaunches). GitHub-pointed: REPO = GecEnterprises/pm throughout. Status-bar update chip + About-box line when a newer release exists. Releases v0.0.1–v0.0.3 all shipped through this. See also PM-27 (release CI) and PM-5 (pm --setup).",
           "anchor": null
         }
       ]
@@ -426,15 +455,23 @@
       "id": 19,
       "title": "ctrl+tab and ctrl+shift+tab to switch between summary file-to-file and tickets",
       "body": "",
-      "status": "open",
+      "status": "done",
       "priority": "normal",
       "labels": [],
       "assignee": null,
       "author": "",
       "created": 1788449625,
-      "updated": 1788449625,
+      "updated": 1788495381,
       "anchors": [],
-      "comments": []
+      "comments": [
+        {
+          "id": 1,
+          "author": "claude",
+          "created": 1788495322,
+          "body": "Done (commit 0da52c5). Ctrl+Tab / Ctrl+Shift+Tab cycle Summary → File-to-File → Tickets via new NextView / PrevView actions (Pm::cycle_view, switcher order); no-op while nothing is open.",
+          "anchor": null
+        }
+      ]
     },
     {
       "id": 20,
@@ -572,13 +609,13 @@
       "id": 27,
       "title": "Related to PM-14, add a github actions for building in the release branch",
       "body": "Add a way to carry release notes and changes in a release and make sure it's embedded in the binary so we can see it in about",
-      "status": "in_progress",
+      "status": "done",
       "priority": "normal",
       "labels": [],
       "assignee": null,
       "author": "",
       "created": 1788474144,
-      "updated": 1788484747,
+      "updated": 1788495405,
       "anchors": [],
       "comments": [
         {
@@ -593,6 +630,13 @@
           "author": "claude",
           "created": 1788484747,
           "body": ".github/workflows/release.yml added: trigger on tag v*, build on windows-latest, guard (tag == root Cargo.toml version AND release-notes/<version>.md exists), cargo build --release -p pm, sha256, softprops/action-gh-release with body_path = the notes file. Notes live as release-notes/<version>.md (0.0.1 seeded) and are embedded by crates/pm-core/build.rs -> pm_core::buildinfo (VERSION/COMMIT/DATE/RELEASE_NOTES). About shows long_version() = 'pm 0.0.1 (<sha>, <date>)' + a scrollable notes block; pm --version prints the same. Release flow: bump Cargo.toml version + add the notes file, then tag. Also fixed a concurrency bug found while dogfooding: rmcp runs tool calls in parallel and two writes in a batch clobbered each other -> added a process-wide STORE_LOCK around every read-modify-write in pm-mcp ops.",
+          "anchor": null
+        },
+        {
+          "id": 3,
+          "author": "claude",
+          "created": 1788495368,
+          "body": "Done. .github/workflows/release.yml: push tag v* → windows-latest → \"Resolve version\" guard (tag == root Cargo.toml version, release-notes/<v>.md must exist) → cargo build --release -p pm → certutil SHA256 → softprops/action-gh-release with target/release/pm.exe + pm.exe.sha256, body_path release-notes/<v>.md. Exercised by v0.0.1, v0.0.2, v0.0.3. The embedded RELEASE_NOTES (crates/pm-core/build.rs → buildinfo) render in the About box. Bump the 4 crate versions + add release-notes/<v>.md before tagging.",
           "anchor": null
         }
       ]
@@ -629,15 +673,23 @@
       "id": 30,
       "title": "A global watchjump mode, toggled in the footer bar, where it would immediately jump to a file where it just changed, useful for working with code editor",
       "body": "",
-      "status": "open",
+      "status": "done",
       "priority": "normal",
       "labels": [],
       "assignee": null,
       "author": "",
       "created": 1788474238,
-      "updated": 1788474238,
+      "updated": 1788495384,
       "anchors": [],
-      "comments": []
+      "comments": [
+        {
+          "id": 1,
+          "author": "claude",
+          "created": 1788495328,
+          "body": "Done (c1290eb + 7a8d267). Footer \"Watchjump\" toggle (also View → Watchjump), persisted in ~/.pm/config.json as Config.watchjump. When on, a filesystem change to any file in the git change list opens that file in the diff pane and scrolls to the first changed line (drops a caret on it). AppState::changed_in_batch picks the last qualifying path in a watcher batch; vetoes the batch if it touched .git (checkout/commit/rebase), and matching the change list already excludes gitignored paths. No forced view switch — silent while on Summary/Tickets. Has its own assets/watchjump.svg icon.",
+          "anchor": null
+        }
+      ]
     },
     {
       "id": 31,
@@ -976,57 +1028,89 @@
       "id": 46,
       "title": "Escape button should dismiss modal. Modal in like About pm",
       "body": "",
-      "status": "open",
+      "status": "done",
       "priority": "normal",
       "labels": [],
       "assignee": null,
       "author": "reaganiwadha",
       "created": 1788487569,
-      "updated": 1788487569,
+      "updated": 1788495387,
       "anchors": [],
-      "comments": []
+      "comments": [
+        {
+          "id": 1,
+          "author": "claude",
+          "created": 1788495332,
+          "body": "Done (commit 0da52c5). Root on_key_down handler: Escape dismisses the topmost thing — the open title-bar menu first, then the About dialog.",
+          "anchor": null
+        }
+      ]
     },
     {
       "id": 47,
       "title": "pm --setup dialog brokes windows powershell/windows terminal",
       "body": "Perhaps use another library",
-      "status": "open",
+      "status": "done",
       "priority": "normal",
       "labels": [],
       "assignee": null,
       "author": "reaganiwadha",
       "created": 1788489697,
-      "updated": 1788489697,
+      "updated": 1788495390,
       "anchors": [],
-      "comments": []
+      "comments": [
+        {
+          "id": 1,
+          "author": "claude",
+          "created": 1788495337,
+          "body": "Done (commit 53d7f02, shipped in v0.0.3). dialoguer (via the console crate) put Windows Terminal / PowerShell into raw mode and didn't restore it when `pm --setup` ran as a child process of `irm | iex`. Replaced the Confirm prompts with plain print! + read_line; kept the figlet \"pm\" banner. Dropped dialoguer / console / encode_unicode / shell-words deps.",
+          "anchor": null
+        }
+      ]
     },
     {
       "id": 48,
       "title": "Persistence of last opened projects and show it in File > Open Recent Projects | Then have this show up in the nothing opened dialog as well",
       "body": "",
-      "status": "open",
+      "status": "done",
       "priority": "normal",
       "labels": [],
       "assignee": null,
       "author": "reaganiwadha",
       "created": 1788489855,
-      "updated": 1788489855,
+      "updated": 1788495393,
       "anchors": [],
-      "comments": []
+      "comments": [
+        {
+          "id": 1,
+          "author": "claude",
+          "created": 1788495343,
+          "body": "Done (commit 0da52c5). Config.recent: Vec<PathBuf> — absolute (via std::path::absolute so `.` and a full path don't both land), deduped, most-recent-first, capped at 10. Recorded on every open (main.rs open_pm_window + Pm::load_repo). Surfaced in File → \"Open Recent Projects\" (with a \"Clear Recent\" row) and in the \"Nothing opened\" screen's RECENT list. Picking one loads it into the current window in place.",
+          "anchor": null
+        }
+      ]
     },
     {
       "id": 49,
       "title": "Proper text ... ing in window title, because its often gets cutoff",
       "body": "",
-      "status": "open",
+      "status": "done",
       "priority": "normal",
       "labels": [],
       "assignee": null,
       "author": "reaganiwadha",
       "created": 1788489918,
-      "updated": 1788489918,
+      "updated": 1788495396,
       "anchors": [],
-      "comments": []
+      "comments": [
+        {
+          "id": 1,
+          "author": "claude",
+          "created": 1788495347,
+          "body": "Done (commit 0da52c5). The title-bar centre title is wrapped in a max-width box with overflow-hidden + text-ellipsis, so a long \"ticket — repo — pm\" is truncated with … instead of running under the menu strip / window controls. (The OS taskbar tooltip still gets the full string via set_window_title.)",
+          "anchor": null
+        }
+      ]
     },
     {
       "id": 50,
@@ -1088,13 +1172,77 @@
       "id": 54,
       "title": "Squiggling lines/shaky lines when scrolling in the code viewer. Each line would randomly go up and down sometimes. Investigate why and investigate why zed doesn't have this issue.",
       "body": "",
-      "status": "open",
+      "status": "done",
       "priority": "normal",
       "labels": [],
       "assignee": null,
       "author": "reaganiwadha",
       "created": 1788494128,
-      "updated": 1788494128,
+      "updated": 1788495399,
+      "anchors": [],
+      "comments": [
+        {
+          "id": 1,
+          "author": "claude",
+          "created": 1788495355,
+          "body": "Done (commit bd73414).\n\nRoot cause: the custom scrolling elements (diff_view, list_view, tree_view, history_view) computed row_h = CONST * zoom_ratio with no rounding, so at any non-100% zoom the row height is fractional — 18 * 1.1 = 19.8px at 110% (which is where you were). gpui's paint_glyph quantises each glyph baseline to 1/4 of a physical pixel, so with a fractional row height y = base + i*19.8 lands each line on a different quarter-pixel and the gap between consecutive lines wobbles ±1/4px as the scroll offset moves — the shake.\n\nWhy Zed doesn't have it: gpui's own TextStyle::line_height_in_pixels does .round(), so Zed's editor always gets a whole-pixel line height. pm's custom element bypassed that path.\n\nFix: row_h = (CONST * s).round() in the four elements + Pm::diff_row_h (the scroll math must match the paint). An integer logical row height is a clean multiple of 1/4 physical px at every common Windows display scale (100/125/150/175/200%). Sub-pixel-smooth scrolling is preserved (the scroll offset itself is not rounded).",
+          "anchor": null
+        }
+      ]
+    },
+    {
+      "id": 55,
+      "title": "Vendor a new package named fremantle which is just gpui components both primitives and scaffolding for it to be used in other applications. That way, pm-ui is a constrcution of the ui based off those primitives",
+      "body": "",
+      "status": "open",
+      "priority": "normal",
+      "labels": [],
+      "assignee": null,
+      "author": "unknown",
+      "created": 1788494930,
+      "updated": 1788494930,
+      "anchors": [],
+      "comments": []
+    },
+    {
+      "id": 56,
+      "title": "In the bottom bar of the menu, add a user section, and this will be the global override of who's opening pm right now in that project/session. It shows up a popover, but mainly it has \"pull from current git username\" and set that as the user. In fact, that should be the default",
+      "body": "",
+      "status": "open",
+      "priority": "normal",
+      "labels": [],
+      "assignee": null,
+      "author": "unknown",
+      "created": 1788495015,
+      "updated": 1788495015,
+      "anchors": [],
+      "comments": []
+    },
+    {
+      "id": 57,
+      "title": "Should be able to change a ticket title, and clicking on the ticket title will show an input",
+      "body": "",
+      "status": "open",
+      "priority": "normal",
+      "labels": [],
+      "assignee": null,
+      "author": "unknown",
+      "created": 1788495141,
+      "updated": 1788495141,
+      "anchors": [],
+      "comments": []
+    },
+    {
+      "id": 58,
+      "title": "Historical lineage of what happens to a ticket should be preserved, we need a richer struct/json format for this. Description changes, title changes, when did it gets done, everything",
+      "body": "",
+      "status": "open",
+      "priority": "normal",
+      "labels": [],
+      "assignee": null,
+      "author": "unknown",
+      "created": 1788495204,
+      "updated": 1788495204,
       "anchors": [],
       "comments": []
     }
