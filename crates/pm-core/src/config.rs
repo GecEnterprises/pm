@@ -33,18 +33,40 @@ pub struct Config {
     /// Empty means "not set" — callers fall back to the git `user.name`.
     #[serde(default)]
     pub author: String,
+    /// Recently opened project roots, most-recent-first (PM-48). Surfaced in
+    /// File → Open Recent Projects and the "Nothing opened" screen.
+    #[serde(default)]
+    pub recent: Vec<PathBuf>,
 }
 
 impl Default for Config {
     fn default() -> Self {
-        Self { version: 1, ui_scale: 1.0, author: String::new() }
+        Self { version: 1, ui_scale: 1.0, author: String::new(), recent: Vec::new() }
     }
 }
+
+/// How many recent projects [`Config::push_recent`] keeps.
+pub const RECENT_CAP: usize = 10;
 
 impl Config {
     /// `ui_scale` clamped to a sane range.
     pub fn ui_scale(&self) -> f32 {
         self.ui_scale.clamp(0.5, 3.0)
+    }
+
+    /// Record `path` as the most-recently-opened project: move it to the front,
+    /// de-duplicate, cap the list. `path` is resolved to an absolute path first
+    /// (without touching the filesystem) so `.` and a full path don't both land
+    /// in the list. Returns whether anything changed.
+    pub fn push_recent(&mut self, path: &Path) -> bool {
+        let path = std::path::absolute(path).unwrap_or_else(|_| path.to_path_buf());
+        if self.recent.first() == Some(&path) {
+            return false;
+        }
+        self.recent.retain(|p| p != &path);
+        self.recent.insert(0, path);
+        self.recent.truncate(RECENT_CAP);
+        true
     }
 
     /// Pretty JSON text with a trailing newline.
@@ -154,7 +176,12 @@ mod tests {
     #[test]
     fn round_trips() {
         let p = tmp();
-        let c = Config { version: 1, ui_scale: 1.3, author: "alice".into() };
+        let c = Config {
+            version: 1,
+            ui_scale: 1.3,
+            author: "alice".into(),
+            recent: vec![PathBuf::from("/tmp/a"), PathBuf::from("/tmp/b")],
+        };
         c.save_to(&p).unwrap();
         assert_eq!(Config::load_from(&p), c);
         let _ = std::fs::remove_dir_all(p.parent().unwrap());
@@ -180,7 +207,32 @@ mod tests {
 
     #[test]
     fn ui_scale_is_clamped() {
-        assert_eq!(Config { version: 1, ui_scale: 99.0, author: String::new() }.ui_scale(), 3.0);
-        assert_eq!(Config { version: 1, ui_scale: 0.1, author: String::new() }.ui_scale(), 0.5);
+        let mk = |s| Config { ui_scale: s, ..Config::default() };
+        assert_eq!(mk(99.0).ui_scale(), 3.0);
+        assert_eq!(mk(0.1).ui_scale(), 0.5);
+    }
+
+    #[test]
+    fn push_recent_dedupes_and_caps() {
+        let abs = |i: usize| {
+            std::path::absolute(std::env::temp_dir().join(format!("pm-recent-{i}"))).unwrap()
+        };
+        let mut c = Config::default();
+        for i in 0..15 {
+            assert!(c.push_recent(&abs(i)));
+        }
+        assert_eq!(c.recent.len(), RECENT_CAP);
+        assert_eq!(c.recent[0], abs(14));
+        assert!(!c.push_recent(&abs(14))); // already at front
+        assert!(c.push_recent(&abs(9))); // resurface
+        assert_eq!(c.recent[0], abs(9));
+        assert_eq!(c.recent.iter().filter(|p| **p == abs(9)).count(), 1);
+    }
+
+    #[test]
+    fn push_recent_normalises_relative() {
+        let mut c = Config::default();
+        c.push_recent(std::path::Path::new("."));
+        assert!(c.recent[0].is_absolute());
     }
 }

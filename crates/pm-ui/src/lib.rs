@@ -21,6 +21,6 @@ pub use config::ConfigStore;
 pub use update::UpdateStatus;
 pub use text_input::{TextInput, TextInputEvent};
 pub use menu::{
-    app_menus, About, Copy, OpenFolder, Quit, Refresh, SelectAll, ToggleChanges, ToggleExplorer,
-    ToggleHistory, ViewFiles, ViewSummary, ViewTickets, ZoomIn, ZoomOut, ZoomReset,
+    app_menus, About, Copy, NextView, OpenFolder, PrevView, Quit, Refresh, SelectAll, ToggleChanges,
+    ToggleExplorer, ToggleHistory, ViewFiles, ViewSummary, ViewTickets, ZoomIn, ZoomOut, ZoomReset,
 };

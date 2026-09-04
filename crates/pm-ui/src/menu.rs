@@ -4,9 +4,12 @@
 //! structure is mirrored in-window by the custom title bar on Windows/Linux via
 //! [`menu_groups`], which can reflect live `Pm` state (e.g. panel checkmarks).
 
-use gpui::{actions, Action, Menu, MenuItem};
+use std::rc::Rc;
+
+use gpui::{actions, Action, App, Context, Menu, MenuItem, SharedString, Window};
 
 use crate::app::Pm;
+use crate::config::ConfigStore;
 
 actions!(
     pm,
@@ -31,6 +34,10 @@ actions!(
         ViewFiles,
         /// Switch to the Tickets view.
         ViewTickets,
+        /// Cycle to the next top-level view (Ctrl+Tab).
+        NextView,
+        /// Cycle to the previous top-level view (Ctrl+Shift+Tab).
+        PrevView,
         /// Increase the window scale.
         ZoomIn,
         /// Decrease the window scale.
@@ -75,29 +82,37 @@ pub fn app_menus() -> Vec<Menu> {
     ]
 }
 
+/// A closure a menu row runs directly (for rows that can't be a static action —
+/// e.g. "open this specific recent project").
+pub type RunFn = Rc<dyn Fn(&mut Pm, &mut Window, &mut Context<Pm>)>;
+
 /// One row in a dropdown.
 pub enum Entry {
     Separator,
+    /// A non-interactive caption (section label / "None").
+    Header(SharedString),
     Item {
-        label: &'static str,
-        shortcut: Option<&'static str>,
+        label: SharedString,
+        shortcut: Option<SharedString>,
         action: Box<dyn Action>,
         checked: bool,
     },
+    /// A row that runs `run` on click instead of dispatching an action.
+    Run { label: SharedString, run: RunFn },
 }
 
-fn item(label: &'static str, shortcut: Option<&'static str>, action: impl Action) -> Entry {
+fn item(label: impl Into<SharedString>, shortcut: Option<&'static str>, action: impl Action) -> Entry {
     Entry::Item {
-        label,
-        shortcut,
+        label: label.into(),
+        shortcut: shortcut.map(SharedString::from),
         action: Box::new(action),
         checked: false,
     }
 }
 
-fn checkable(label: &'static str, action: impl Action, checked: bool) -> Entry {
+fn checkable(label: impl Into<SharedString>, action: impl Action, checked: bool) -> Entry {
     Entry::Item {
-        label,
+        label: label.into(),
         shortcut: None,
         action: Box::new(action),
         checked,
@@ -109,19 +124,47 @@ pub struct Group {
     pub entries: Vec<Entry>,
 }
 
+/// Rows for the "Open Recent Projects" section of the File menu (PM-48).
+fn recent_entries(cx: &App) -> Vec<Entry> {
+    let recent = ConfigStore::get(cx).recent;
+    let mut out = vec![Entry::Header("Open Recent Projects".into())];
+    if recent.is_empty() {
+        out.push(Entry::Header("  (none)".into()));
+        return out;
+    }
+    for path in &recent {
+        let label: SharedString = format!("  {}", path.display()).into();
+        let p = path.clone();
+        out.push(Entry::Run {
+            label,
+            run: Rc::new(move |pm, _window, cx| pm.load_repo(p.clone(), cx)),
+        });
+    }
+    out.push(Entry::Run {
+        label: "  Clear Recent".into(),
+        run: Rc::new(|_pm, _window, cx| {
+            ConfigStore::update(cx, |c| c.recent.clear());
+        }),
+    });
+    out
+}
+
 /// The in-window menu bar, with checkmarks resolved against `pm`.
-pub fn menu_groups(pm: &Pm) -> Vec<Group> {
+pub fn menu_groups(pm: &Pm, cx: &App) -> Vec<Group> {
+    let mut file = vec![
+        item("Open Folder…", Some("Ctrl+O"), OpenFolder),
+        Entry::Separator,
+    ];
+    file.extend(recent_entries(cx));
+    file.extend([
+        Entry::Separator,
+        item("Refresh", Some("Ctrl+R"), Refresh),
+        Entry::Separator,
+        item("Quit", Some("Ctrl+Q"), Quit),
+    ]);
+
     vec![
-        Group {
-            name: "File",
-            entries: vec![
-                item("Open Folder…", Some("Ctrl+O"), OpenFolder),
-                Entry::Separator,
-                item("Refresh", Some("Ctrl+R"), Refresh),
-                Entry::Separator,
-                item("Quit", Some("Ctrl+Q"), Quit),
-            ],
-        },
+        Group { name: "File", entries: file },
         Group {
             name: "Edit",
             entries: vec![item("Copy", None, Copy), item("Select All", None, SelectAll)],

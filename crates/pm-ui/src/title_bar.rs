@@ -60,7 +60,9 @@ impl Pm {
                     window.zoom_window();
                 }
             }))
-            // centered title — first child, no hitbox, painted under the clusters
+            // centered title — first child, no hitbox, painted under the clusters.
+            // Capped + ellipsised so a long "ticket — repo — pm" doesn't run
+            // under the menu strip / window controls (PM-49).
             .child(
                 div()
                     .absolute()
@@ -68,8 +70,14 @@ impl Pm {
                     .flex()
                     .items_center()
                     .justify_center()
-                    .text_color(rgb(DIM))
-                    .child(SharedString::from(title)),
+                    .child(
+                        div()
+                            .max_w(rm(380.0))
+                            .overflow_hidden()
+                            .text_ellipsis()
+                            .text_color(rgb(DIM))
+                            .child(SharedString::from(title)),
+                    ),
             )
             .child(self.menu_strip(cx))
             .child(self.view_switcher(cx))
@@ -139,7 +147,7 @@ impl Pm {
     }
 
     fn menu_strip(&self, cx: &mut Context<Self>) -> impl IntoElement {
-        let groups = menu::menu_groups(self);
+        let groups = menu::menu_groups(self, cx);
         let mut strip = div()
             .id("menu-strip")
             .flex()
@@ -214,6 +222,39 @@ impl Pm {
             match entry {
                 Entry::Separator => {
                     panel = panel.child(div().h(px(1.0)).my_1().bg(rgb(BORDER)));
+                }
+                Entry::Header(label) => {
+                    panel = panel.child(
+                        div()
+                            .px_3()
+                            .py_1()
+                            .text_size(rm(11.0))
+                            .text_color(rgb(DIM))
+                            .child(label),
+                    );
+                }
+                Entry::Run { label, run } => {
+                    panel = panel.child(
+                        div()
+                            .id(("menu-run", menu_ix * 64 + j))
+                            .flex()
+                            .flex_row()
+                            .items_center()
+                            .px_3()
+                            .py_1()
+                            .cursor_pointer()
+                            .hover(|s| s.bg(rgb(SELECT)))
+                            .child(label)
+                            .on_mouse_down(
+                                MouseButton::Left,
+                                cx.listener(move |pm, _, window, cx| {
+                                    pm.open_menu = None;
+                                    run(pm, window, cx);
+                                    cx.notify();
+                                    cx.stop_propagation();
+                                }),
+                            ),
+                    );
                 }
                 Entry::Item {
                     label,

@@ -22,7 +22,10 @@ use gpui::{
 use gpui_platform::application;
 use image::RgbaImage;
 use pm_core::Repo;
-use pm_ui::{OpenFolder, Pm, Quit, ViewFiles, ViewSummary, ViewTickets, ZoomIn, ZoomOut, ZoomReset};
+use pm_ui::{
+    NextView, OpenFolder, Pm, PrevView, Quit, ViewFiles, ViewSummary, ViewTickets, ZoomIn, ZoomOut,
+    ZoomReset,
+};
 
 /// Loaded once at startup so every window (including ones opened via
 /// File → Open Folder) gets the same taskbar icon.
@@ -82,6 +85,8 @@ fn main() {
             KeyBinding::new("ctrl-1", ViewSummary, None),
             KeyBinding::new("ctrl-2", ViewFiles, None),
             KeyBinding::new("ctrl-3", ViewTickets, None),
+            KeyBinding::new("ctrl-tab", NextView, None),
+            KeyBinding::new("ctrl-shift-tab", PrevView, None),
             KeyBinding::new("ctrl-=", ZoomIn, None),
             KeyBinding::new("ctrl-+", ZoomIn, None),
             KeyBinding::new("ctrl--", ZoomOut, None),
@@ -174,11 +179,17 @@ fn bind_text_input_keys(cx: &mut gpui::App) {
 fn open_pm_window(cx: &mut App, path: Option<&Path>) {
     let repo = path.map(Repo::open);
     match &repo {
-        Some(r) => eprintln!(
-            "pm: opened {}{}",
-            r.root().display(),
-            if r.is_git() { "" } else { " (not a git repository)" }
-        ),
+        Some(r) => {
+            eprintln!(
+                "pm: opened {}{}",
+                r.root().display(),
+                if r.is_git() { "" } else { " (not a git repository)" }
+            );
+            let root = r.root().to_path_buf();
+            pm_ui::ConfigStore::update(cx, move |c| {
+                c.push_recent(&root);
+            });
+        }
         None => eprintln!("pm: opened with no project"),
     }
 

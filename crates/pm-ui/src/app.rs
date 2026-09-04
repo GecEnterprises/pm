@@ -1,7 +1,7 @@
 //! The `Pm` view: a gpui entity that owns an [`AppState`] plus all render and
 //! interaction state (scroll offsets, drags, hovers, the shaped-line cache).
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 use gpui::{
@@ -23,8 +23,8 @@ use crate::image_view::ImageView;
 use crate::list_view::list_view;
 use crate::config::ConfigStore;
 use crate::menu::{
-    About, Copy, Refresh, SelectAll, ToggleChanges, ToggleExplorer, ToggleHistory, ViewFiles,
-    ViewSummary, ViewTickets, ZoomIn, ZoomOut, ZoomReset,
+    About, Copy, NextView, PrevView, Refresh, SelectAll, ToggleChanges, ToggleExplorer,
+    ToggleHistory, ViewFiles, ViewSummary, ViewTickets, ZoomIn, ZoomOut, ZoomReset,
 };
 use crate::scroll::{ScrollDrag, ScrollState};
 use crate::text_input::{TextInput, TextInputEvent};
@@ -266,12 +266,16 @@ impl Pm {
         pm
     }
 
-    /// Open `path` into this window, replacing the "Nothing opened" placeholder.
+    /// Open `path` into this window, replacing whatever was showing (the
+    /// "Nothing opened" placeholder, or another project). Used by File → Open
+    /// Recent and the empty screen (PM-48).
     pub fn load_repo(&mut self, path: PathBuf, cx: &mut Context<Self>) {
         let repo = Repo::open(&path);
         let root = repo.root().to_path_buf();
+        Self::record_recent(&root, cx);
         self.state = AppState::new(repo);
         self.empty = false;
+        self.selected_ticket = None;
         self.shaped.clear();
         self.diff = DiffScroll::default();
         self.hover_file = None;
@@ -282,6 +286,17 @@ impl Pm {
             .ok();
         self.start_watch(cx);
         cx.notify();
+    }
+
+    /// Add a project root to the recent list (PM-48). No-op for the empty root.
+    pub fn record_recent(root: &Path, cx: &mut Context<Self>) {
+        if root.as_os_str().is_empty() {
+            return;
+        }
+        let root = root.to_path_buf();
+        ConfigStore::update(cx, move |c| {
+            c.push_recent(&root);
+        });
     }
 
     /// Prompt for a folder and [`load_repo`](Self::load_repo) it into this window.
@@ -368,6 +383,20 @@ impl Pm {
             self.view = view;
             cx.notify();
         }
+    }
+
+    /// Cycle the top-level view by `dir` (+1 / -1), in switcher order
+    /// Summary → File-to-File → Tickets (Ctrl+Tab / Ctrl+Shift+Tab — PM-19).
+    /// No-op while nothing is open.
+    pub fn cycle_view(&mut self, dir: i32, cx: &mut Context<Self>) {
+        if self.empty {
+            return;
+        }
+        const ORDER: [View; 3] = [View::Summary, View::Files, View::Tickets];
+        let i = ORDER.iter().position(|v| *v == self.view).unwrap_or(1) as i32;
+        let n = ORDER.len() as i32;
+        let next = ORDER[(((i + dir) % n + n) % n) as usize];
+        self.set_view(next, cx);
     }
 
     /// Pull the zoom factor from the config, rescaling the layout state that's
@@ -765,6 +794,8 @@ impl Render for Pm {
             .on_action(cx.listener(|pm, _: &ViewSummary, _, cx| pm.set_view(View::Summary, cx)))
             .on_action(cx.listener(|pm, _: &ViewFiles, _, cx| pm.set_view(View::Files, cx)))
             .on_action(cx.listener(|pm, _: &ViewTickets, _, cx| pm.set_view(View::Tickets, cx)))
+            .on_action(cx.listener(|pm, _: &NextView, _, cx| pm.cycle_view(1, cx)))
+            .on_action(cx.listener(|pm, _: &PrevView, _, cx| pm.cycle_view(-1, cx)))
             .on_action(cx.listener(|_, _: &ZoomIn, _, cx| {
                 ConfigStore::update(cx, |c| c.ui_scale = zoom_step(c.ui_scale, 0.1));
             }))
@@ -775,9 +806,11 @@ impl Render for Pm {
                 ConfigStore::update(cx, |c| c.ui_scale = 1.0);
             }))
             .on_key_down(cx.listener(|pm, e: &KeyDownEvent, _, cx| {
-                if pm.open_menu.is_some() && e.keystroke.key == "escape" {
-                    pm.open_menu = None;
-                    cx.notify();
+                if e.keystroke.key == "escape" {
+                    // Dismiss the topmost dismissible thing (PM-46).
+                    if pm.open_menu.take().is_some() || std::mem::take(&mut pm.show_about) {
+                        cx.notify();
+                    }
                 }
             }))
             .when(self.open_menu.is_some(), |r| {
@@ -1071,7 +1104,49 @@ impl Pm {
     }
 
     /// The "Nothing opened" placeholder shown when no project is loaded (PM-5).
+    /// Also lists recent projects (PM-48).
     fn empty_body(&self, cx: &mut Context<Self>) -> impl IntoElement {
+        let recent = ConfigStore::get(cx).recent;
+
+        let recent_list = (!recent.is_empty()).then(|| {
+            let mut list = div()
+                .flex()
+                .flex_col()
+                .items_stretch()
+                .gap_1()
+                .mt_4()
+                .min_w(rm(280.0))
+                .max_w(rm(560.0))
+                .child(
+                    div()
+                        .text_size(rm(11.0))
+                        .text_color(rgb(DIM))
+                        .child(SharedString::from("RECENT")),
+                );
+            for (i, path) in recent.into_iter().enumerate() {
+                let label: SharedString = path.display().to_string().into();
+                list = list.child(
+                    div()
+                        .id(("recent", i))
+                        .px_3()
+                        .py_1()
+                        .rounded_md()
+                        .overflow_hidden()
+                        .text_ellipsis()
+                        .text_size(rm(12.0))
+                        .text_color(rgb(DIM))
+                        .cursor_pointer()
+                        .hover(|s| s.bg(rgb(PANEL)).text_color(rgb(TEXT)))
+                        .child(label)
+                        .on_mouse_down(
+                            MouseButton::Left,
+                            cx.listener(move |pm, _, _, cx| pm.load_repo(path.clone(), cx)),
+                        ),
+                );
+            }
+            list
+        });
+
         div()
             .flex_1()
             .min_h_0()
@@ -1109,6 +1184,7 @@ impl Pm {
                         cx.listener(|pm, _, window, cx| pm.pick_and_open(window, cx)),
                     ),
             )
+            .children(recent_list)
     }
 
     /// The Summary view — a placeholder until summary diffing lands.
