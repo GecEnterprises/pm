@@ -697,14 +697,31 @@
       "id": 36,
       "title": "CTRL + + and CTRL + - to scale text and increase scaling factor like how in vscode",
       "body": "",
-      "status": "open",
+      "status": "in_progress",
       "priority": "normal",
-      "labels": [],
+      "labels": [
+        "ui"
+      ],
       "assignee": null,
       "created": 1788476788,
-      "updated": 1788476788,
-      "anchors": [],
-      "comments": []
+      "updated": 1788468000,
+      "anchors": [
+        {
+          "file": "crates/pm-ui/src/theme.rs",
+          "start_line": 1,
+          "end_line": 1,
+          "rev": "working"
+        }
+      ],
+      "comments": [
+        {
+          "id": 1,
+          "author": "reaganiwadha",
+          "created": 1788468000,
+          "body": "Done, whole-window (VS Code style). Ctrl+= / Ctrl+- / Ctrl+0 (and a View menu group) step ui_scale in 10% steps, 50-300%, persisted to ~/.pm/config.json via the PM-34 config store. render() sets window.set_rem_size(16 * scale) so the whole gpui div-tree scales; theme.rs rm() expresses fixed metrics in rems; the four custom scroll elements (diff/list/tree/history) scale their own row heights + gutters + fonts; text_input follows the inherited font. Status bar shows the % when != 100. Verified at 1.6x/2x - screenshot attached in chat.",
+          "anchor": null
+        }
+      ]
     },
     {
       "id": 37,
