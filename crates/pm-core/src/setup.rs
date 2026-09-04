@@ -114,18 +114,26 @@ mod imp {
         }
     }
 
-    /// A yes/no prompt via `dialoguer`. `--yes` (or a non-interactive stdin)
-    /// takes the default without asking.
+    /// A plain yes/no prompt. `--yes` (or a non-interactive stdin) takes the
+    /// default without asking. Deliberately just `print!` + `read_line` — a TUI
+    /// prompt library left Windows Terminal / PowerShell in raw mode (PM-47).
     fn confirm(question: &str, default_yes: bool, assume_yes: bool) -> bool {
-        use std::io::IsTerminal;
+        use std::io::{IsTerminal, Write};
         if assume_yes || !std::io::stdin().is_terminal() {
             return default_yes;
         }
-        dialoguer::Confirm::new()
-            .with_prompt(question)
-            .default(default_yes)
-            .interact()
-            .unwrap_or(default_yes)
+        let hint = if default_yes { "[Y/n]" } else { "[y/N]" };
+        print!("{question} {hint} ");
+        let _ = std::io::stdout().flush();
+        let mut line = String::new();
+        if std::io::stdin().read_line(&mut line).is_err() {
+            return default_yes;
+        }
+        match line.trim().to_ascii_lowercase().as_str() {
+            "y" | "yes" => true,
+            "n" | "no" => false,
+            _ => default_yes,
+        }
     }
 
     fn best_effort(what: &str, r: Result<()>) {

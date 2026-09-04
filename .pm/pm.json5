@@ -4,7 +4,7 @@
     "name": "pm",
     "key": "PM"
   },
-  "next_id": 47,
+  "next_id": 51,
   "tickets": [
     {
       "id": 5,
@@ -983,6 +983,62 @@
       "author": "reaganiwadha",
       "created": 1788487569,
       "updated": 1788487569,
+      "anchors": [],
+      "comments": []
+    },
+    {
+      "id": 47,
+      "title": "pm --setup dialog brokes windows powershell/windows terminal",
+      "body": "Perhaps use another library",
+      "status": "open",
+      "priority": "normal",
+      "labels": [],
+      "assignee": null,
+      "author": "reaganiwadha",
+      "created": 1788489697,
+      "updated": 1788489697,
+      "anchors": [],
+      "comments": []
+    },
+    {
+      "id": 48,
+      "title": "Persistence of last opened projects and show it in File > Open Recent Projects | Then have this show up in the nothing opened dialog as well",
+      "body": "",
+      "status": "open",
+      "priority": "normal",
+      "labels": [],
+      "assignee": null,
+      "author": "reaganiwadha",
+      "created": 1788489855,
+      "updated": 1788489855,
+      "anchors": [],
+      "comments": []
+    },
+    {
+      "id": 49,
+      "title": "Proper text ... ing in window title, because its often gets cutoff",
+      "body": "",
+      "status": "open",
+      "priority": "normal",
+      "labels": [],
+      "assignee": null,
+      "author": "reaganiwadha",
+      "created": 1788489918,
+      "updated": 1788489918,
+      "anchors": [],
+      "comments": []
+    },
+    {
+      "id": 50,
+      "title": "Ticket Issue linking/issue hierarchy",
+      "body": "",
+      "status": "open",
+      "priority": "normal",
+      "labels": [],
+      "assignee": null,
+      "author": "reaganiwadha",
+      "created": 1788491393,
+      "updated": 1788491393,
       "anchors": [],
       "comments": []
     }
