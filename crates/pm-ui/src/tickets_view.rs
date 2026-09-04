@@ -48,6 +48,10 @@ impl Pm {
             .flex_row()
             .relative()
             .bg(rgb(BG))
+            // Same resizable sidebar as File-to-File (PM-42): the canvas keeps
+            // `root_bounds` current, the handler routes the drag to `sidebar_w`.
+            .child(self.root_bounds_canvas(cx))
+            .on_drag_move(cx.listener(|pm, ev, _w, cx| Pm::route_sidebar_drag(pm, ev, cx)))
             // Click-away closer for the filter / status popovers. It sits above
             // everything (deferred), so it also catches a second click on the
             // trigger button — `stop_propagation` then keeps that button's own
@@ -308,8 +312,9 @@ impl Pm {
         }
 
         div()
+            .relative()
             .flex_none()
-            .w(px(320.0))
+            .w(px(self.sidebar_w))
             .h_full()
             .flex()
             .flex_col()
@@ -318,6 +323,7 @@ impl Pm {
             .border_color(rgb(BORDER))
             .child(header)
             .child(list)
+            .child(self.sidebar_resize_handle())
     }
 
     fn ticket_detail(&self, cx: &mut Context<Self>) -> impl IntoElement {

@@ -885,7 +885,15 @@ impl Pm {
             );
         }
 
-        col.child(deferred(
+        col.child(self.sidebar_resize_handle())
+    }
+
+    /// The drag strip on the right edge of the sidebar. Shared by File-to-File
+    /// (`left_column`) and Tickets so both panes resize the same `sidebar_w`.
+    /// The parent needs `.relative()` and an `on_drag_move` handling
+    /// `ResizeHandle::Sidebar`.
+    pub(crate) fn sidebar_resize_handle(&self) -> impl IntoElement {
+        deferred(
             div()
                 .id("sidebar-resize")
                 .occlude()
@@ -900,7 +908,40 @@ impl Pm {
                     cx.new(|_| DragPreview)
                 })
                 .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation()),
-        ))
+        )
+    }
+
+    /// The invisible `root_bounds` canvas a resizable-sidebar pane needs (feeds
+    /// the drag math + `clamp_layout`). Pair with `Self::route_sidebar_drag` in
+    /// the pane's `on_drag_move`.
+    pub(crate) fn root_bounds_canvas(&self, cx: &mut Context<Self>) -> impl IntoElement {
+        let entity = cx.entity();
+        canvas(
+            move |b, _w, cx| {
+                entity.update(cx, |pm, _| {
+                    pm.root_bounds = b;
+                    pm.clamp_layout(b);
+                })
+            },
+            |_, _, _, _| {},
+        )
+        .absolute()
+        .size_full()
+    }
+
+    /// Route a `Sidebar` drag to `sidebar_w`. (Other `ResizeHandle`s are ignored;
+    /// `files_body` handles all three itself.)
+    pub(crate) fn route_sidebar_drag(
+        pm: &mut Pm,
+        ev: &DragMoveEvent<ResizeHandle>,
+        cx: &mut Context<Pm>,
+    ) {
+        if let ResizeHandle::Sidebar = ev.drag(cx) {
+            let root = pm.root_bounds;
+            pm.sidebar_w = f32::from(ev.event.position.x) - f32::from(root.left());
+            pm.clamp_layout(root);
+            cx.notify();
+        }
     }
 
     /// The File-to-File view: sidebar + diff. The `root_bounds` canvas lives here
