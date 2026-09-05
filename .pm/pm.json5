@@ -4,7 +4,7 @@
     "name": "pm",
     "key": "PM"
   },
-  "next_id": 59,
+  "next_id": 61,
   "tickets": [
     {
       "id": 5,
@@ -307,7 +307,7 @@
       "id": 15,
       "title": "Author of tickets and author of comments, so someone via MCP can pose as someone, and someone with pm gui can pose as someone",
       "body": "",
-      "status": "open",
+      "status": "done",
       "priority": "normal",
       "labels": [
         "mcp"
@@ -315,7 +315,7 @@
       "assignee": null,
       "author": "",
       "created": 1788449204,
-      "updated": 1788495425,
+      "updated": 1788584041,
       "anchors": [],
       "comments": [
         {
@@ -323,6 +323,13 @@
           "author": "claude",
           "created": 1788495425,
           "body": "Partial. Done: Ticket.author / Comment.author (free, unverified strings), Config.author (~/.pm/config.json), pm_core::resolve_author(explicit → config → git user.name → \"unknown\"), the GUI \"as:\" author_box in the Tickets pane, and per-action Option<String> overrides in create_ticket / add_comment (MCP tools take `author`).\n\nNot done: a first-class \"who am I\" control. PM-56 covers that (footer user section, git-username default). Also a bug to fix there: a non-git pm window resolves author to \"unknown\" and the ticket-submit path then persists that into the shared config, poisoning attribution for every project — the default should come from git user.name and only be written to config on an explicit user action.",
+          "anchor": null
+        },
+        {
+          "id": 2,
+          "author": "claude",
+          "created": 1788584041,
+          "body": "Done via PM-56: the status-bar \"Acting as\" section is the first-class who-am-I control (git username by default, free-text override, persisted to Config.author). Also fixed the poisoning bug: an empty window no longer writes \"unknown\" back into the shared config — load_repo re-seeds the identity field from the freshly resolved git name instead of leaving it stale.",
           "anchor": null
         }
       ]
@@ -859,13 +866,13 @@
       "id": 37,
       "title": "The comment text input doesn't get cleared when jumping between comments? State bug? UI state bug perhaps?",
       "body": "",
-      "status": "open",
+      "status": "done",
       "priority": "normal",
       "labels": [],
       "assignee": null,
       "author": "",
       "created": 1788476825,
-      "updated": 1788476871,
+      "updated": 1788583955,
       "anchors": [],
       "comments": [
         {
@@ -873,6 +880,13 @@
           "author": "reaganiwadha",
           "created": 1788476871,
           "body": "It happens when i have a comment in something, i didn't comment on it, jumped to creating a new ticket and when i posted the new ticket my comment from previous ticket still there",
+          "anchor": null
+        },
+        {
+          "id": 2,
+          "author": "Claude",
+          "created": 1788583952,
+          "body": "Fixed: the \"+ New\" ticket button reset new_ticket_title/new_ticket_body but never comment_box, so a draft comment typed on the previous ticket survived and got submitted incorrectly. Now resets comment_box too, in crates/pm-ui/src/tickets_view.rs.",
           "anchor": null
         }
       ]
@@ -1152,15 +1166,23 @@
       "id": 52,
       "title": "Currently it's possibel to open up multiple dropdown without dismissing the previous one",
       "body": "",
-      "status": "open",
+      "status": "done",
       "priority": "normal",
       "labels": [],
       "assignee": null,
       "author": "unknown",
       "created": 1788492807,
-      "updated": 1788492807,
+      "updated": 1788583957,
       "anchors": [],
-      "comments": []
+      "comments": [
+        {
+          "id": 1,
+          "author": "Claude",
+          "created": 1788583954,
+          "body": "Fixed: filter_menu_open, status_menu_open, and user_menu_open (\"Acting as\" popover) were independent booleans that only partially closed each other (filter/status closed each other, but neither closed user_menu, and user_menu closed neither). Each toggle site now resets the other two flags, so opening any one dropdown dismisses the others. Changed crates/pm-ui/src/status_bar.rs and crates/pm-ui/src/tickets_view.rs.",
+          "anchor": null
+        }
+      ]
     },
     {
       "id": 53,
@@ -1251,6 +1273,34 @@
       "author": "unknown",
       "created": 1788495204,
       "updated": 1788495204,
+      "anchors": [],
+      "comments": []
+    },
+    {
+      "id": 59,
+      "title": "When jumping to a file change in Changes section it should like show me the first change in line",
+      "body": "",
+      "status": "open",
+      "priority": "normal",
+      "labels": [],
+      "assignee": null,
+      "author": "reaganiwadha",
+      "created": 1788539815,
+      "updated": 1788539815,
+      "anchors": [],
+      "comments": []
+    },
+    {
+      "id": 60,
+      "title": "pm setup is still very flaky on powershell",
+      "body": "",
+      "status": "open",
+      "priority": "normal",
+      "labels": [],
+      "assignee": null,
+      "author": "reaganiwadha",
+      "created": 1788584048,
+      "updated": 1788584048,
       "anchors": [],
       "comments": []
     }
