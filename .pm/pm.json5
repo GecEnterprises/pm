@@ -4,7 +4,7 @@
     "name": "pm",
     "key": "PM"
   },
-  "next_id": 62,
+  "next_id": 67,
   "tickets": [
     {
       "id": 5,
@@ -930,15 +930,23 @@
       "id": 40,
       "title": "Commit history should be opened by default",
       "body": "",
-      "status": "open",
+      "status": "done",
       "priority": "normal",
       "labels": [],
       "assignee": null,
       "author": "",
       "created": 1788479117,
-      "updated": 1788479117,
+      "updated": 1788584497,
       "anchors": [],
-      "comments": []
+      "comments": [
+        {
+          "id": 1,
+          "author": "Claude",
+          "created": 1788584495,
+          "body": "Fixed: history_collapsed defaulted to true at startup; flipped to false in crates/pm-ui/src/app.rs so the Commit History panel is open by default. (Not yet persisted across sessions — that's PM-39.)",
+          "anchor": null
+        }
+      ]
     },
     {
       "id": 41,
@@ -1337,6 +1345,76 @@
       "author": "reaganiwadha",
       "created": 1788584061,
       "updated": 1788584061,
+      "anchors": [],
+      "comments": []
+    },
+    {
+      "id": 62,
+      "title": "Kanban view of tickets",
+      "body": "",
+      "status": "open",
+      "priority": "normal",
+      "labels": [],
+      "assignee": null,
+      "author": "reaganiwadha",
+      "created": 1788584289,
+      "updated": 1788584289,
+      "anchors": [],
+      "comments": []
+    },
+    {
+      "id": 63,
+      "title": "A UI More obvious about what filters is being selected",
+      "body": "",
+      "status": "open",
+      "priority": "normal",
+      "labels": [],
+      "assignee": null,
+      "author": "reaganiwadha",
+      "created": 1788584307,
+      "updated": 1788584307,
+      "anchors": [],
+      "comments": []
+    },
+    {
+      "id": 64,
+      "title": "Pressing arrow up on a text input should kind of act like the home button? And arrow down should act like end button. Need it to behave like how browsers do",
+      "body": "",
+      "status": "open",
+      "priority": "normal",
+      "labels": [],
+      "assignee": null,
+      "author": "reaganiwadha",
+      "created": 1788584357,
+      "updated": 1788584357,
+      "anchors": [],
+      "comments": []
+    },
+    {
+      "id": 65,
+      "title": "A system where it can pull profile pictures from GItHub, but it needs to be smart about it too whether the remote is using github or gitlab or whatnot. And caching profile pictures. So yes, each ticketer have a profile picture and profile picture everywhere.",
+      "body": "",
+      "status": "open",
+      "priority": "normal",
+      "labels": [],
+      "assignee": null,
+      "author": "reaganiwadha",
+      "created": 1788584411,
+      "updated": 1788584411,
+      "anchors": [],
+      "comments": []
+    },
+    {
+      "id": 66,
+      "title": "In the ticket list, we should be able to see who made that issue immediately.",
+      "body": "",
+      "status": "open",
+      "priority": "normal",
+      "labels": [],
+      "assignee": null,
+      "author": "reaganiwadha",
+      "created": 1788584427,
+      "updated": 1788584427,
       "anchors": [],
       "comments": []
     }

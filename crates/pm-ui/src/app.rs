@@ -232,7 +232,7 @@ impl Pm {
             history_h: 200.0 * scale,
             diff_split: 0.5,
             changes_collapsed: false,
-            history_collapsed: true,
+            history_collapsed: false,
             explorer_collapsed: false,
             root_bounds: Bounds::default(),
             diff_split_drag: None,
