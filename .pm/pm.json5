@@ -4,7 +4,7 @@
     "name": "pm",
     "key": "PM"
   },
-  "next_id": 61,
+  "next_id": 62,
   "tickets": [
     {
       "id": 5,
@@ -792,13 +792,13 @@
       "id": 34,
       "title": "pm.json5 alternative storage engine/option.",
       "body": "Users can choose whether to store database of pm work in .pm in the repository, or store it locally in ~/.pm/path-to-project-in-strips/. For this to work, we need a layer of persistance working. Keyval db works no need sqlite i think.",
-      "status": "in_progress",
+      "status": "done",
       "priority": "normal",
       "labels": [],
       "assignee": null,
       "author": "",
       "created": 1788475247,
-      "updated": 1788467000,
+      "updated": 1788584041,
       "anchors": [
         {
           "file": "crates/pm-core/src/config.rs",
@@ -813,6 +813,13 @@
           "author": "reaganiwadha",
           "created": 1788467000,
           "body": "Persistence layer done (needed before PM-36). crates/pm-core/src/config.rs is a plain-JSON key/value document - no sqlite - at ~/.pm/config.json, with atomic writes and defaults on missing/broken. crates/pm-ui/src/config.rs exposes it as a gpui global: ConfigStore::get(cx) / ConfigStore::update(cx, |c| ...) (persist + refresh_windows). Loaded in main.rs; writes the default file on first run. First field is ui_scale. Verified: unit tests + hand-edited ui_scale=1.75 survives a restart. Still open on this ticket: letting the user choose where PROJECT ticket data lives (in-repo .pm/pm.json5 vs ~/.pm/<slug>/) - that needs pm_core::pm load/save to take a path.",
+          "anchor": null
+        },
+        {
+          "id": 2,
+          "author": "claude",
+          "created": 1788584041,
+          "body": "Done. ~/.pm/config.json gains a `stores` registry (project root -> in_repo | home + resolved dir); pm_core::Config::resolve_store_dir/set_store/project_slug are the single choke point pm::load_in/save_in, AppState, the watcher, and pm-mcp all route through. The Tickets view (not the diff view — diffing never prompts) shows a modal the first time it's opened for a project with no .pm/ and no saved choice: \"In this repository\" (preselected, Esc accepts it) vs \"In ~/.pm (outside the repo)\", landing at ~/.pm/projects/<slug>/pm.json5. Sentinel::start takes an optional extra watch path so an external store still triggers a live reload. pm-mcp's resolve_root / list_projects consult the same registry so externally-stored projects stay visible to the MCP tools. Follow-ups (separate tickets): moving an existing project's store after the fact, a File-menu control for it, seeding project.name from the folder.",
           "anchor": null
         }
       ]
@@ -951,7 +958,7 @@
       "id": 42,
       "title": "Sidebar of the ticket tab is not resizable like file-to-file? It should share the common component so it should be resizable as well",
       "body": "",
-      "status": "in_progress",
+      "status": "done",
       "priority": "normal",
       "labels": [
         "tickets",
@@ -960,7 +967,7 @@
       "assignee": null,
       "author": "",
       "created": 1788480923,
-      "updated": 1788469000,
+      "updated": 1788584041,
       "anchors": [
         {
           "file": "crates/pm-ui/src/tickets_view.rs",
@@ -975,6 +982,13 @@
           "author": "reaganiwadha",
           "created": 1788469000,
           "body": "Done. Pulled the sidebar drag handle (Pm::sidebar_resize_handle) and the root-bounds canvas / drag router out of left_column + files_body so both panes share them. The Tickets list panel is now .relative().w(sidebar_w) with the handle appended, and tickets_body mounts the canvas + on_drag_move. Dragging either sidebar moves the same sidebar_w. File-to-File verified unchanged; Tickets drag needs a run to confirm.",
+          "anchor": null
+        },
+        {
+          "id": 2,
+          "author": "claude",
+          "created": 1788584041,
+          "body": "Confirmed working by reaganiwadha in chat — closing.",
           "anchor": null
         }
       ]
@@ -1238,15 +1252,23 @@
       "id": 56,
       "title": "In the bottom bar of the menu, add a user section, and this will be the global override of who's opening pm right now in that project/session. It shows up a popover, but mainly it has \"pull from current git username\" and set that as the user. In fact, that should be the default",
       "body": "",
-      "status": "open",
+      "status": "done",
       "priority": "normal",
       "labels": [],
       "assignee": null,
       "author": "unknown",
       "created": 1788495015,
-      "updated": 1788495015,
+      "updated": 1788584041,
       "anchors": [],
-      "comments": []
+      "comments": [
+        {
+          "id": 1,
+          "author": "claude",
+          "created": 1788584041,
+          "body": "Done. Status bar shows an \"Acting as <name>\" chip (git user.name by default via resolve_author) — click it for a popover with a free-text name field, \"Use git username\", and \"Reset to git default\" (clears Config.author). The choice persists to ~/.pm/config.json, syncing across windows. Removed the old inline \"as:\" fields from the new-ticket/comment forms — the status-bar section is now the single place to set the author. Also fixed a related bug: a window opened empty resolved to \"unknown\" and the popover field stayed stale after a folder was picked — load_repo now re-seeds it.",
+          "anchor": null
+        }
+      ]
     },
     {
       "id": 57,
@@ -1301,6 +1323,20 @@
       "author": "reaganiwadha",
       "created": 1788584048,
       "updated": 1788584048,
+      "anchors": [],
+      "comments": []
+    },
+    {
+      "id": 61,
+      "title": "pm installer script need linux/macos",
+      "body": "",
+      "status": "open",
+      "priority": "normal",
+      "labels": [],
+      "assignee": null,
+      "author": "reaganiwadha",
+      "created": 1788584061,
+      "updated": 1788584061,
       "anchors": [],
       "comments": []
     }
