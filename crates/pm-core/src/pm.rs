@@ -15,6 +15,14 @@ use serde::{Deserialize, Serialize};
 /// File name under the `.pm/` directory.
 const FILE: &str = "pm.json5";
 
+/// The `pm.json5` schema version this build understands. A file whose `version`
+/// exceeds this was written by a newer `pm`; we can still *read* it (unknown
+/// keys are dropped by serde, but the tickets load), but [`PmData::save_in`]
+/// refuses to write it back so a stale binary can't silently truncate fields it
+/// doesn't know about (PM-86). Bump this only for a genuinely incompatible
+/// reshape.
+pub const SCHEMA_VERSION: u32 = 1;
+
 /// Seconds since the Unix epoch, right now.
 pub fn now_unix() -> i64 {
     SystemTime::now()
@@ -308,6 +316,13 @@ impl PmData {
     /// Like [`save`](Self::save), but `dir` directly contains `pm.json5`
     /// (`<root>/.pm`, or an out-of-repo store under `~/.pm/` — PM-34).
     pub fn save_in(&self, dir: &Path) -> Result<()> {
+        if self.version > SCHEMA_VERSION {
+            anyhow::bail!(
+                "{FILE} is schema v{} but this pm only understands v{SCHEMA_VERSION}; \
+                 refusing to save so newer fields aren't dropped. Update pm.",
+                self.version
+            );
+        }
         std::fs::create_dir_all(dir)
             .with_context(|| format!("creating {}", dir.display()))?;
         let path = dir.join(FILE);
@@ -618,6 +633,42 @@ mod tests {
         let b = data.create_ticket("b", "", "", 0);
         assert_eq!((a, b), (1, 2));
         assert_eq!(data.next_id, 3);
+    }
+
+    #[test]
+    fn newer_schema_loads_but_wont_save() {
+        let d = tmp();
+        std::fs::create_dir_all(d.join(".pm")).unwrap();
+        std::fs::write(
+            d.join(".pm").join(FILE),
+            r#"{ version: 2, next_id: 2, tickets: [
+                { id: 1, title: "from the future", unknown_field: "keep me" },
+            ] }"#,
+        )
+        .unwrap();
+
+        // Reads fine — the tickets still load.
+        let data = load(&d).unwrap();
+        assert_eq!(data.version, 2);
+        assert_eq!(data.tickets[0].title, "from the future");
+
+        // But saving it back is refused, so the unknown field on disk survives.
+        let err = data.save(&d).unwrap_err().to_string();
+        assert!(err.contains("schema v2"), "unexpected: {err}");
+        let raw = std::fs::read_to_string(d.join(".pm").join(FILE)).unwrap();
+        assert!(raw.contains("unknown_field"));
+
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
+    #[test]
+    fn current_schema_saves() {
+        let d = tmp();
+        let mut data = PmData::default();
+        data.create_ticket("ok", "", "", 0);
+        assert_eq!(data.version, SCHEMA_VERSION);
+        data.save(&d).unwrap();
+        let _ = std::fs::remove_dir_all(&d);
     }
 
     #[test]

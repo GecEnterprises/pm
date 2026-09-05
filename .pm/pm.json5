@@ -4,7 +4,7 @@
     "name": "pm",
     "key": "PM"
   },
-  "next_id": 97,
+  "next_id": 98,
   "tickets": [
     {
       "id": 5,
@@ -2360,15 +2360,23 @@
       "id": 86,
       "title": "pm.json5: `version` is written but never read — an older binary silently drops newer fields",
       "body": "A data-loss hazard that becomes real as soon as the schema grows. Filed now because four open tickets are about to grow it.\n\n## What's actually there\n`PmData.version: u32` (crates/pm-core/src/pm.rs:212, `#[serde(default = \"one\")]`) and `Config.version` (config.rs:29) are both written on every save and **neither is ever read**. There is no migration function, no `match data.version`, no `migrate`/`upgrade` symbol anywhere in the repo. The hook exists; the machinery behind it does not.\n\nForward-compatibility today rests entirely on serde's defaults:\n- Every field on `Ticket` and `Comment` after `id` is `#[serde(default)]` (pm.rs:167-196), so *older* files load into a *newer* binary fine. That direction is genuinely safe.\n- But nothing uses `#[serde(deny_unknown_fields)]`, so unknown keys are **silently discarded on read**, and `to_pretty` (pm.rs:295) always rewrites the whole document from the in-memory struct.\n\nSo the reverse direction destroys data: an older `pm` opens a file written by a newer one, drops every field it doesn't know, and the next save — any save, including one triggered by merely changing a ticket's status — writes the truncated document back. No error, no warning, no way to tell it happened afterwards.\n\n## Why now\nEvery schema-extension ticket in the current backlog adds exactly the kind of field this eats: PM-69 (`Comment.parent`), PM-50 (ticket links), PM-38 (tags, if it doesn't reuse `labels`), PM-33 (attachments). And the exposure is wider than one machine — pm.json5 is committed to the repo, so a teammate on an older release, or a stale `pm --mcp` server left running, is enough. Three writers already share the file: the GUI (`AppState::save_pm`, state.rs:211), the MCP server (ops.rs:59, serialized only by a process-local mutex, ops.rs:21), and the user's editor.\n\n## Suggested first slice (cheap, stops the bleeding)\nRead `version` in `load_in` (pm.rs:267). If it's greater than the version this binary knows, surface it and refuse to save — the GUI already has a channel for this in `AppState::pm_error` (state.rs:102), rendered as a banner at tickets_view.rs:466-475, and pm-mcp can return it as a tool error via `reply()` (lib.rs:35-42). Read-only is a fine, honest degradation; silent truncation is not.\n\n## Later, if wanted\nAn actual migration ladder (`version` N→N+1 functions run on load), and/or preserving unknown keys round-trip via a `#[serde(flatten)] extra: Map<String, Value>` catch-all on `Ticket`/`Comment` so an old binary carries new fields through untouched instead of dropping them. The catch-all is the stronger fix and is worth considering *before* the first schema addition lands, since it only helps for versions written after it exists.\n\n## Open question\nShould a version bump be required for additive-only changes at all? If the catch-all lands, additive changes stop being breaking, and `version` would only need to move for genuinely incompatible reshapes.\n\n## Verify\nUnit test in pm.rs (alongside the existing round-trip tests at :549-631): write a document containing an unknown key plus a bumped `version`, load it, save it, and assert the unknown key survives / the save is refused — whichever behaviour is chosen.",
-      "status": "open",
+      "status": "done",
       "priority": "high",
       "labels": [],
       "assignee": null,
       "author": "claude",
       "created": 1788622421,
-      "updated": 1788622421,
+      "updated": 1788626935,
       "anchors": [],
-      "comments": [],
+      "comments": [
+        {
+          "id": 1,
+          "author": "claude",
+          "created": 1788626918,
+          "body": "Shipped the \"cheap first slice\" — refuse to save a store newer than we understand.\n\n- `pm-core/src/pm.rs`: new `pub const SCHEMA_VERSION: u32 = 1`. `PmData::save_in` bails if `self.version > SCHEMA_VERSION` — the single chokepoint every writer goes through (GUI `save_pm`, MCP `save`, `PmData::save`). Reads are untouched: a v2 file still parses and its tickets load, so the data stays intact in memory; it just never gets written back and truncated.\n- `pm-core/src/state.rs`: `schema_too_new()` helper; `AppState::new` and `reload_pm` set `pm_error` (the existing banner channel, tickets_view.rs:466) when the loaded store is too new, so the GUI shows read-only immediately rather than only after a failed save.\n- MCP: no explicit change needed — a mutating op's `save` bails and surfaces via `reply()` as a tool error.\n- Tests in pm.rs: `newer_schema_loads_but_wont_save` (v2 file loads, save refused, unknown field on disk survives) and `current_schema_saves`.\n\nDeferred (the ticket's \"later\" section): the migration ladder and the `#[serde(flatten)] extra` round-trip catch-all. The catch-all is the stronger fix and only helps for versions written after it lands — worth doing before the first real schema addition (PM-69/50/33). Leaving this ticket open or splitting it is your call; the bleeding is stopped.",
+          "anchor": null
+        }
+      ],
       "history": [
         {
           "at": 1788622421,
@@ -2376,6 +2384,19 @@
           "kind": "priority_changed",
           "old": "normal",
           "new": "high"
+        },
+        {
+          "at": 1788626918,
+          "author": "claude",
+          "kind": "commented",
+          "comment_id": 1
+        },
+        {
+          "at": 1788626935,
+          "author": "claude",
+          "kind": "status_changed",
+          "old": "open",
+          "new": "done"
         }
       ]
     },
@@ -2490,7 +2511,7 @@
       "id": 90,
       "title": "MCP: rewrite the server instructions to say *when* to use pm, not just which tools exist",
       "body": "Cheapest change on the list, probably the biggest behaviour change. Part of what PM-76's \"Needs Claude Code input\" was asking for.\n\n## What it says today\n`crates/pm-mcp/src/lib.rs:194-200`, one hardcoded paragraph:\n\n> \"Ticket tracker for a pm project (in-repo .pm/pm.json5). Tools: list_tickets, get_ticket, add_comment, create_ticket, edit_ticket, open_project, list_projects. Authorship is a free, unverified string — pass `author` to attribute work to a specific name.\"\n\nIt describes the *surface* and nothing else. An agent reading that learns pm exists and what it can call. It learns nothing about when any of it is appropriate — so pm gets used when the user explicitly says \"file a ticket\", and ignored otherwise.\n\n## What's missing\nConcretely, the things an agent should be told and currently isn't:\n- **Check before you start.** Search for an existing ticket before beginning a piece of work, and before filing a new one. (Needs the search tool to exist — see the search ticket.)\n- **Record what you learned.** A comment on the ticket is the right home for scoping notes, dead ends, and decisions. PM-44's scoping comment is the model: an implementation was attempted, reverted, and the *reason* survived. That's the behaviour to ask for explicitly.\n- **Close what you finish.** This backlog had four tickets whose work had shipped and merged while they sat `open`. An agent that just implemented PM-N should close PM-N.\n- **Say who you are.** Pass `author` — otherwise every agent edit is attributed to the resolved fallback (config author → git `user.name` → `\"unknown\"`, crates/pm-core/src/identity.rs:16-28), i.e. it looks like the human wrote it.\n- **Ticket ids are the shared vocabulary.** `PM-N` in a commit message, a body, or a comment refers to a real object; use it consistently.\n- **Don't file duplicates.** With no search and no dedupe this is currently just a hope; worth stating anyway.\n\n## Also worth fixing while in here\n`ServerInfo::default()` (lib.rs:192) is used for the server name and version — so pm reports rmcp's defaults rather than `\"pm\"` and `pm_core::buildinfo::VERSION`. An agent can't tell which pm it's talking to, which matters more once PM-88 ships a second binary.\n\nPer-tool descriptions (lib.rs:126-186) are also thin and in one case actively misleading — see the `list_tickets` bulk-read ticket.\n\n## Open questions\n- How prescriptive should this be? Instructions that read as a rigid workflow get ignored or followed too literally; instructions that read as context get used well. Lean toward describing what pm is *for* and letting the agent infer, rather than issuing a numbered procedure.\n- Should it differ per project? It's currently global and static (one `&'static str`), so it can't say anything about *this* repo's conventions. A project-level hint file is the other half of PM-76 and might be the better home for anything repo-specific.\n- Does length hurt? This string is prepended to agent context every session. Worth keeping it tight rather than exhaustive.\n\n## Verify\nHard to test mechanically. The real check is behavioural: start a fresh agent session on a pm project, give it a task that would benefit from ticketing, and see whether it looks for an existing ticket and closes what it finishes without being told to.",
-      "status": "open",
+      "status": "done",
       "priority": "high",
       "labels": [
         "mcp"
@@ -2498,9 +2519,17 @@
       "assignee": null,
       "author": "claude",
       "created": 1788624552,
-      "updated": 1788624552,
+      "updated": 1788626932,
       "anchors": [],
-      "comments": [],
+      "comments": [
+        {
+          "id": 1,
+          "author": "claude",
+          "created": 1788626908,
+          "body": "Done. `crates/pm-mcp/src/lib.rs` `get_info`:\n- `info.server_info = Implementation::new(\"pm\", pm_core::buildinfo::VERSION)` — the handshake now reports `{\"name\":\"pm\",\"version\":\"0.0.5\"}` instead of rmcp's `env!(\"CARGO_CRATE_NAME\")` default. Verified with a raw `initialize` request.\n- Instructions rewritten from the tool-list blurb to context about *when* to use pm: check for an existing ticket before starting/filing, set status `done` when you finish a ticket's work, leave scoping/dead-end notes as comments, file tickets for follow-ups you spot, and always pass `author`. Framed as context, not a numbered procedure, per the ticket's open question. Kept to ~1KB.\n\nNot done here: the \"search before you start\" line points at `list_tickets` since there's still no text search — PM-91. Per-tool descriptions and the project-specific-hint question (PM-76) left alone.",
+          "anchor": null
+        }
+      ],
       "history": [
         {
           "at": 1788624552,
@@ -2517,6 +2546,19 @@
           "new": [
             "mcp"
           ]
+        },
+        {
+          "at": 1788626908,
+          "author": "claude",
+          "kind": "commented",
+          "comment_id": 1
+        },
+        {
+          "at": 1788626932,
+          "author": "claude",
+          "kind": "status_changed",
+          "old": "open",
+          "new": "done"
         }
       ]
     },
@@ -2690,6 +2732,21 @@
           ]
         }
       ]
+    },
+    {
+      "id": 97,
+      "title": "pm.json5: round-trip unknown keys via a serde(flatten) catch-all",
+      "body": "Split from PM-86, which stopped the bleeding (a too-new store is now read-only rather than silently truncated — `SCHEMA_VERSION` + `save_in` guard).\n\nThis is the stronger fix: add `#[serde(flatten)] extra: Map<String, Value>` catch-alls to `Ticket` and `Comment` (and maybe `PmData`/`Project`) in `crates/pm-core/src/pm.rs` so an older binary carries unknown fields through a save untouched instead of dropping them. With this in place, additive schema changes stop being breaking, and the `version` guard only needs to move for genuinely incompatible reshapes (PM-86's open question).\n\nDo this **before** the first schema addition lands (PM-69 `Comment.parent`, PM-50 ticket links, PM-33 attachments) — it only protects fields written after it exists.\n\nVerify: extend the pm.rs round-trip tests — a document with unknown keys on a ticket and a comment survives load→save byte-for-byte on those keys.",
+      "status": "open",
+      "priority": "normal",
+      "labels": [],
+      "assignee": null,
+      "author": "claude",
+      "created": 1788626929,
+      "updated": 1788626929,
+      "anchors": [],
+      "comments": [],
+      "history": []
     }
   ]
 }

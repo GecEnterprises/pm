@@ -64,6 +64,20 @@ fn compute_change_names(changes: &[FileChange]) -> Vec<String> {
         .collect()
 }
 
+/// Banner text when the store on disk is a newer schema than this build (PM-86).
+/// The data still loads, but [`AppState::save_pm`] / [`PmData::save_in`] refuse
+/// to write it back, so the pane is effectively read-only until pm is updated.
+fn schema_too_new(d: &PmData) -> Option<String> {
+    (d.version > pm::SCHEMA_VERSION).then(|| {
+        format!(
+            "This .pm/pm.json5 is schema v{} but this pm understands v{}. \
+             Showing it read-only — saving is disabled so newer data isn't lost. Update pm.",
+            d.version,
+            pm::SCHEMA_VERSION
+        )
+    })
+}
+
 pub struct AppState {
     pub repo: Repo,
     pub hl: Highlighter,
@@ -122,7 +136,10 @@ impl AppState {
         let commits = repo.log(git::LOG_LIMIT);
         let author = crate::identity::resolve_author(None, &repo);
         let (pm, pm_error) = match pm::load_in(&store_dir) {
-            Ok(d) => (d, None),
+            Ok(d) => {
+                let warn = schema_too_new(&d);
+                (d, warn)
+            }
             Err(pm::LoadError::Parse(s)) => (PmData::default(), Some(s)),
             // A read failure at startup is almost always transient; start empty
             // and let the first watcher tick pick the file up.
@@ -200,8 +217,8 @@ impl AppState {
     pub fn reload_pm(&mut self) {
         match pm::load_in(&self.store_dir) {
             Ok(d) => {
+                self.pm_error = schema_too_new(&d);
                 self.pm = d;
-                self.pm_error = None;
             }
             Err(pm::LoadError::Parse(s)) => self.pm_error = Some(s),
             Err(pm::LoadError::Io(_)) => {}
