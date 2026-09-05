@@ -4267,6 +4267,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "pm-debug"
+version = "0.0.5"
+dependencies = [
+ "pm",
+ "winresource",
+]
+
+[[package]]
 name = "pm-mcp"
 version = "0.0.5"
 dependencies = [

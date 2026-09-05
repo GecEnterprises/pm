@@ -1,5 +1,5 @@
 [workspace]
-members = ["crates/fremantle", "crates/pm-core", "crates/pm-ui", "crates/pm-mcp"]
+members = ["crates/fremantle", "crates/pm-core", "crates/pm-ui", "crates/pm-mcp", "crates/pm-debug"]
 
 [workspace.dependencies]
 gpui = { git = "https://github.com/zed-industries/zed", branch = "main" }
@@ -13,7 +13,6 @@ edition = "2021"
 description = "Plus Minus - a diff-oriented code editor"
 license = "BSD-3-Clause"
 repository = "https://github.com/GecEnterprises/pm"
-default-run = "pm"
 
 [lib]
 name = "pm"
@@ -23,11 +22,9 @@ path = "src/lib.rs"
 name = "pm"
 path = "src/main.rs"
 
-# A visibly distinct development build that runs beside the real `pm` (PM-88).
-# `cargo run --bin pm-debug`, or the `cargo pmd` alias in .cargo/config.toml.
-[[bin]]
-name = "pm-debug"
-path = "src/bin/pm-debug.rs"
+# The distinct development build (`pm-debug`) lives in its own package,
+# `crates/pm-debug` — it needs its own build.rs to embed a different Windows
+# icon resource (winresource is one resource per crate). `cargo pmd`.
 
 [dependencies]
 pm-core = { path = "crates/pm-core" }

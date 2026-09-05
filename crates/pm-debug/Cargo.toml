@@ -1,0 +1,19 @@
+[package]
+name = "pm-debug"
+version = "0.0.5"
+edition = "2021"
+description = "Plus Minus — the development build variant"
+license = "BSD-3-Clause"
+repository = "https://github.com/GecEnterprises/pm"
+
+[[bin]]
+name = "pm-debug"
+path = "src/main.rs"
+
+[dependencies]
+# The whole app lives in the `pm` library crate; this package is just a thin
+# entry point + its own Windows icon resource (PM-88).
+pm = { path = "../.." }
+
+[build-dependencies]
+winresource = "0.1"
