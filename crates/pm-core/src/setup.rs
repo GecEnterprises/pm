@@ -130,6 +130,17 @@ mod imp {
         // clearing it first, `read_line` below silently consumes that stray
         // keystroke as the answer instead of waiting for the user's real one
         // (PM-60 — looks like the Y/n prompt is "randomly" skipped).
+        //
+        // One flush isn't enough under ConPTY (Windows Terminal): pasted
+        // input is translated from VT sequences into console input records
+        // asynchronously, so a stray Enter can still be in flight *after*
+        // this flush and land in the buffer moments later — right as the
+        // real read starts. Flush, give in-flight input a moment to arrive,
+        // then flush again immediately before reading.
+        unsafe {
+            FlushConsoleInputBuffer(GetStdHandle(STD_INPUT_HANDLE));
+        }
+        std::thread::sleep(std::time::Duration::from_millis(150));
         unsafe {
             FlushConsoleInputBuffer(GetStdHandle(STD_INPUT_HANDLE));
         }
