@@ -190,12 +190,31 @@ impl PmServer {
 impl ServerHandler for PmServer {
     fn get_info(&self) -> ServerInfo {
         let mut info = ServerInfo::default();
+        info.server_info = Implementation::new("pm", pm_core::buildinfo::VERSION);
         info.capabilities = ServerCapabilities::builder().enable_tools().build();
         info.instructions = Some(
-            "Ticket tracker for a pm project (in-repo .pm/pm.json5). Tools: list_tickets, \
-             get_ticket, add_comment, create_ticket, edit_ticket, open_project, list_projects. \
-             Authorship is a free, unverified string — pass `author` to attribute work to a \
-             specific name."
+            "pm is the ticket tracker for this project. Tickets live in the repo at \
+             .pm/pm.json5 and are committed alongside the code; each has an id written \
+             `PM-<n>` that is the shared handle for a piece of work — use it in commit \
+             messages, ticket bodies, and comments.\n\
+             \n\
+             When to reach for it:\n\
+             - Before starting a piece of work, check whether a ticket already tracks it \
+             (list_tickets, or get_ticket by id). Don't open a second ticket for work an \
+             existing one already describes.\n\
+             - When you finish work a ticket describes, set its status to `done` \
+             (edit_ticket).\n\
+             - Record what you learned on the ticket as a comment (add_comment) — scoping \
+             decisions, dead ends, why an approach was rejected. This is where the \
+             project's real reasoning lives, and the next agent will read it.\n\
+             - File a ticket for a bug or follow-up you notice but aren't fixing now.\n\
+             \n\
+             Always pass `author` on create_ticket / add_comment / edit_ticket, otherwise \
+             your work is attributed to the human running the session (it falls back to \
+             their git name). Authorship is a free, unverified string.\n\
+             \n\
+             Tools: list_tickets, get_ticket, create_ticket, edit_ticket, add_comment, \
+             open_project (launches the GUI), list_projects."
                 .to_string(),
         );
         info
