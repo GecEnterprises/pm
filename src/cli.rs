@@ -1,4 +1,4 @@
-//! Tiny hand-rolled arg parser for the single `pm` binary (PM-14, PM-5).
+//! Tiny hand-rolled arg parser for the `pm` / `pm-debug` binaries (PM-14, PM-5).
 //!
 //! `pm` is primarily a GUI: `pm` opens it with no project, `pm .` / `pm <path>`
 //! open a folder. Everything else is a `--flag`: `--mcp`, `--setup`,
@@ -23,20 +23,6 @@ pub enum Command {
     Help,
 }
 
-const USAGE: &str = "\
-pm — Plus Minus, a diff-oriented code viewer
-
-USAGE:
-    pm                      open pm with no project
-    pm .                    open the diff GUI on the current directory
-    pm <path>               open the diff GUI on <path>
-    pm --mcp [--project <p>] run the Model Context Protocol server on stdio
-    pm --setup [--yes]      register pm (Start Menu, uninstaller, Claude Code MCP)
-    pm --uninstall [--yes]  undo --setup and remove pm
-    pm --update             update pm to the latest release (Windows)
-    pm --version            print version and build info
-    pm --help               show this message
-";
 
 pub fn parse() -> Command {
     let args: Vec<String> = std::env::args().skip(1).collect();
@@ -69,6 +55,21 @@ pub fn parse() -> Command {
     }
 }
 
-pub fn usage() -> &'static str {
-    USAGE
+pub fn usage(prog: &str) -> String {
+    format!(
+        "\
+{prog} — Plus Minus, a diff-oriented code viewer
+
+USAGE:
+    {prog}                      open {prog} with no project
+    {prog} .                    open the diff GUI on the current directory
+    {prog} <path>               open the diff GUI on <path>
+    {prog} --mcp [--project <p>] run the Model Context Protocol server on stdio
+    {prog} --setup [--yes]      register {prog} (Start Menu, uninstaller, Claude Code MCP)
+    {prog} --uninstall [--yes]  undo --setup and remove {prog}
+    {prog} --update             update {prog} to the latest release (Windows)
+    {prog} --version            print version and build info
+    {prog} --help               show this message
+"
+    )
 }

@@ -4,7 +4,7 @@
     "name": "pm",
     "key": "PM"
   },
-  "next_id": 96,
+  "next_id": 97,
   "tickets": [
     {
       "id": 5,
@@ -2316,15 +2316,23 @@
       "id": 85,
       "title": "pm-core/AppState: expose ticket field mutators (title/body/priority/labels/assignee)",
       "body": "The shared blocker behind PM-4, PM-8, PM-38 and PM-57. Each of those is independently stuck on the same small gap, and none of them said so — hence this ticket.\n\n## The gap\n`PmData` already has every mutator, each one touching `updated` and pushing the right `HistoryEvent`, each returning `bool` for \"did anything change\":\n- `set_title` — crates/pm-core/src/pm.rs:398\n- `set_body` — :423\n- `set_priority` — :448\n- `set_assignee` — :472\n- `set_labels` — :496\n\nBut `AppState` wraps only three of them: `create_ticket` (state.rs:229), `add_comment` (:243), `set_ticket_status` (:252). The other five have **no `AppState` wrapper and no UI call site**, which is why status is the only editable field in the entire Tickets pane (`status_button`, tickets_view.rs:549-601) — title, body, priority, labels and assignee all render read-only (tickets_view.rs:619-654).\n\nNote the asymmetry: the MCP `edit_ticket` tool already reaches all five (pm-mcp/src/ops.rs:164-224). An agent can edit a ticket's title; the person sitting in front of the GUI cannot.\n\n## In scope\nFive wrappers on `AppState`, each mirroring `set_ticket_status` (state.rs:252-262) exactly: resolve the author via `author_or_default` (:220), call the `PmData` mutator with `pm::now_unix()`, and `save_pm()` only when it returned `true`. That's the whole change — no new types, no schema change.\n\n## Out of scope\nThe UI affordances themselves. Each consuming ticket builds its own: PM-57 (click-to-edit title), PM-4 (priority picker), PM-38 (label editor), PM-8 (body editing alongside markdown).\n\n## Worth knowing for whoever picks this up\n`save_pm` (state.rs:211) rewrites the entire pm.json5 on every call, and there are three concurrent writers (GUI, MCP server, the user's editor) reconciled only by the retry loop in `pm::load_in` (pm.rs:270) and the Sentinel debounce (watch.rs:69). Five new save paths don't change that model, but a click-to-edit field that saves per keystroke would hammer it — consumers should save on commit/blur, not on `Changed`.\n\n## Verify\n`cargo check`; then drive one of them from a consuming ticket and confirm the edit persists to .pm/pm.json5 **and** appears in the ticket's History section (tickets_view.rs:687-707) with the right author — the history entry is the real proof the wrapper went through `PmData` rather than mutating the struct directly.",
-      "status": "open",
+      "status": "done",
       "priority": "high",
       "labels": [],
       "assignee": null,
       "author": "claude",
       "created": 1788622400,
-      "updated": 1788622400,
+      "updated": 1788625537,
       "anchors": [],
-      "comments": [],
+      "comments": [
+        {
+          "id": 1,
+          "author": "claude",
+          "created": 1788625534,
+          "body": "Shipped. Added five wrappers on `AppState` (`crates/pm-core/src/state.rs`, after `set_ticket_status`): `set_ticket_title`, `set_ticket_body`, `set_ticket_priority`, `set_ticket_assignee`, `set_ticket_labels`. Each mirrors `set_ticket_status` exactly — `author_or_default`, the `PmData` mutator with `pm::now_unix()`, `save_pm()` only on `true`. No new types, no schema change, no UI call sites (those belong to PM-4/8/38/57).\n\nNew unit test `ticket_field_wrappers_persist_and_record_history` in state.rs: drives all five, asserts field values, a matching `HistoryEvent` per field with the resolved author, persistence to `.pm/pm.json5`, and that a no-op edit pushes no history entry. `cargo test -p pm-core` green (27 passed); clippy clean (the 2 remaining warnings are pre-existing in highlight.rs).",
+          "anchor": null
+        }
+      ],
       "history": [
         {
           "at": 1788622400,
@@ -2332,6 +2340,19 @@
           "kind": "priority_changed",
           "old": "normal",
           "new": "high"
+        },
+        {
+          "at": 1788625534,
+          "author": "claude",
+          "kind": "commented",
+          "comment_id": 1
+        },
+        {
+          "at": 1788625537,
+          "author": "claude",
+          "kind": "status_changed",
+          "old": "open",
+          "new": "done"
         }
       ]
     },
@@ -2389,15 +2410,23 @@
       "id": 88,
       "title": "Build variants: `cargo run` opens a distinct debug preview (own binary name, icon, window identity) so it can run beside the real pm",
       "body": "## The problem\nThere is exactly one `pm` today, and debugging it means closing the one you actually use. Worse, a coding agent that launches pm to test a change is indistinguishable — same executable name, same icon, same window — from the pm you have open with your real tickets in it.\n\nWanted: two clearly-marked variants that coexist.\n- **`cargo run`** → a *release preview* build (the thing you keep open).\n- **`cargo run` for the debug variant** → a **debug preview**: obviously different at a glance, and separately addressable.\n\n## What exists today\n- One binary, `pm`, defined by the root `Cargo.toml` `[package]` (name = \"pm\", v0.0.5). Workspace members are the four `crates/*`; the root package is the only bin target.\n- **No `.cargo/config.toml` exists** — so there are no cargo aliases yet. That's the natural home for `cargo run` shorthands.\n- `[profile.dev]` already sets `opt-level = 2` for itself and all deps (root Cargo.toml), with the comment \"gpui does real per-frame layout/text work; unoptimized it feels laggy\". So the dev build is *already* semi-optimised — the release/debug distinction wanted here is about **identity and marking**, not optimisation level.\n- The window icon is embedded at build time on Windows by `build.rs` from `assets/icon.ico` via `winresource`, failing soft with a warning. The runtime (X11) icon comes from a separate `ICON` static consumed in `open_pm_window` (src/main.rs:201-215).\n- `WindowOptions` (src/main.rs:203-214) sets bounds, a transparent client-decorated titlebar, min size and icon. The window *title* is set separately and deferred out of render (app.rs:898-906) because of a re-entrancy abort.\n- `#![cfg_attr(not(debug_assertions), windows_subsystem = \"windows\")]` (src/main.rs:10) — release has no console, debug does. Already a real behavioural fork between the two.\n\n## Scope (per the decision on 2026-09-05)\nThe debug preview differs by: **icon colour**, **window title marking**, **a distinct window/app identity**, and **its own binary name** (e.g. `pm-debug.exe`).\n\nConfig and ticket store are **shared** — deliberately, so debugging exercises your real data. Flagged as an open question below, because it has teeth.\n\n## Implementation sketch — pick one of two shapes\n**(a) A cargo feature** (`--features debug-preview`) read via `cfg!` for the name/icon/title. Simple; but `[package] name` can't vary by feature, so the binary name has to come from `[[bin]]` targets or a build-script rename, and feature-unification bugs are easy to hit.\n\n**(b) A second `[[bin]]` target** in the root package (`pm` and `pm-debug`), both thin `main`s over the same `pm-ui`/`pm-core` libs, differing in a handful of constants. More explicit, gives a real distinct executable name for free, and makes `cargo run --bin pm-debug` the honest command. **Recommend (b)**, with `.cargo/config.toml` aliases so the day-to-day commands stay short.\n\nEither way the variant identity should be one value threaded through: executable name, `assets/icon-debug.ico` (+ the X11 runtime icon), the window title prefix (app.rs:404 builds the title lead), and the app/window id.\n\nNote `build.rs` currently hardcodes `assets/icon.ico`; it needs to select per target.\n\n## The MCP angle — this is the part that bites\nThe stated symptom is \"MCP is flaky when I `cargo run`\". I checked the actual wiring, and the obvious explanation does **not** hold:\n\n- The server is registered as `{\"command\": \"pm\", \"args\": [\"--mcp\"]}` (`~/.claude.json`, written by `pm --setup`, crates/pm-core/src/setup.rs:385-421).\n- `pm` on PATH resolves to the **installed release** binary at `%LOCALAPPDATA%\\Programs\\pm\\pm.exe`.\n- `cargo run` writes `target\\debug\\pm.exe` — a different file. So a rebuild cannot be locking or overwriting the running MCP server's executable.\n\nThree mechanisms that *are* real, and that this ticket should fix or at least document:\n\n1. **`install.ps1:37` — `Get-Process pm -ErrorAction SilentlyContinue | Stop-Process -Force`.** This kills *every* process named `pm`, by name, with no path check. That includes the running MCP server **and** any debug build you have open. So `--update`, or re-running the installer, silently severs the agent's MCP connection. A distinct binary name fixes half of this by construction; the installer should also match on path, not name.\n2. **`pm --update`** (`run_self_update`, crates/pm-core/src/update.rs:88-126) renames the live `pm.exe` → `pm.exe.old` and swaps in a new one, while an MCP server may be running from it.\n3. **If the server is ever registered from source** — the README explicitly suggests `{\"command\": \"cargo\", \"args\": [\"run\", \"-q\", \"-p\", \"pm\", \"--\", \"--mcp\"]}` (crates/pm-mcp/README.md:55) — then the MCP server *holds cargo's build lock on `target/`*, and every concurrent `cargo run`/`cargo check` blocks on \"waiting for file lock on build directory\" until it exits. That is a genuine deadlock-shaped flakiness and it's in our own docs as a recommendation.\n\n**So the variant should extend to MCP**: a `pm-debug --mcp` that a second agent session can register independently, without either one's rebuild-and-restart cycle disturbing the other. Worth deciding whether the debug MCP server should be registered under a different server name (`pm-debug`) to make it obvious which one an agent is talking to.\n\nAlso relevant: `open_project` (pm-mcp/src/ops.rs:237-256) locates the GUI via `$PM_BIN` → a sibling `pm`/`pm.exe` → `pm` on PATH. With two binaries that resolution becomes ambiguous — the debug MCP server should launch the debug GUI.\n\n## Open questions\n1. **Shared config is riskier than it sounds.** `~/.pm/config.json` holds `ui_scale`, `author`, `recent`, `watchjump` and the per-project store registry, and `ConfigStore::update` (pm-ui/src/config.rs:113-137) rewrites the whole file. Two pm processes running at once already race on it; two *variants* makes that routine rather than rare. Is shared config genuinely wanted, or shared **ticket store** with a separate config? The store is the part you want shared for debugging; the config is the part that will corrupt.\n2. Should the debug variant also get a different **window class / app id** on Linux, so the taskbar separates them (and not just a different title)? Same question for the Windows AppUserModelID.\n3. Should `cargo run` with no arguments open the release preview or the debug one? The framing above says release preview is yours and the agent uses debug — but the agent will run bare `cargo run` unless told otherwise, so the alias names need to make the wrong one hard to type by accident.\n4. Does the release preview differ from a *shipped* release at all, or is \"release preview\" just `cargo run --release`?\n\n## Verify\nBoth variants open simultaneously, visibly distinct by icon and title, each addressable as its own window. `cargo run` in each mode produces the expected executable name. Register `pm-debug --mcp` alongside `pm --mcp` and confirm rebuilding one does not disturb the other's MCP session. Then re-run the installer with a debug build open and confirm it no longer kills it (issue 1 above).",
-      "status": "open",
+      "status": "done",
       "priority": "high",
       "labels": [],
       "assignee": null,
       "author": "claude",
       "created": 1788623489,
-      "updated": 1788623489,
+      "updated": 1788626536,
       "anchors": [],
-      "comments": [],
+      "comments": [
+        {
+          "id": 1,
+          "author": "claude",
+          "created": 1788626533,
+          "body": "Shipped the GUI variant + MCP entry point (shape (b), per the decisions).\n\n**Structure:** root package split into a `pm` lib + two thin `[[bin]]` targets. `src/lib.rs` holds `run(variant: Variant)` and all the wiring that was in `main.rs`; `src/main.rs` → `pm::run(pm::RELEASE)`, new `src/bin/pm-debug.rs` → `pm::run(pm::DEBUG)`. `default-run = \"pm\"` keeps bare `cargo run` = release preview; `.cargo/config.toml` adds `cargo pmd`.\n\n**Variant identity threaded through:**\n- `cx.set_app_identity(app_id, label)` — Windows AUMID.\n- `WindowOptions.app_id` — Linux `_NET_WM_CLASS` (was never set before).\n- Window title: `pm-ui` gets a process-global `set_app_label` / `app_label()` (OnceLock, defaults `\"pm\"`), consumed by `window_title()` (app.rs) — feeds both the OS title and the in-window title bar.\n- Icon: runtime amber tint of the loaded `icon.png` for the debug build (`tint_debug` in lib.rs) — no new asset.\n- `--version` / `--help`: `buildinfo::long_version_named(prog)` and `cli::usage(prog)`; `pm-debug --version` → `pm-debug 0.0.5 (…)`.\n- `pm-mcp` `locate_gui` now prefers a sibling matching the server's own exe stem, so `pm-debug --mcp` launches the `pm-debug` GUI.\n\n**Verified:** `cargo build` produces `pm.exe` + `pm-debug.exe`; `pm-debug .` opens alongside running `pm.exe` processes without conflict; `--version`/`--help` text correct; `cargo test` (all green) and clippy (only pre-existing warnings) clean.\n\n**Deferred → PM-96:** `pm-debug --setup` / registry keys / Start Menu / uninstaller / self-update / installer are all still `pm`-hardcoded in `pm_core::setup` + `update.rs` + `install.ps1`. PM-88 issue 1 (`Get-Process pm | Stop-Process`) is moot for a distinct `pm-debug.exe`. Issues 2–3 (self-update swap, `cargo run --mcp` build lock) don't affect a `cargo run` debug build; the README build-lock note folds into PM-90. Embedded `.exe`-file icon stays shared (winresource is one-resource-per-crate) — runtime icon + AUMID cover the visible cases.",
+          "anchor": null
+        }
+      ],
       "history": [
         {
           "at": 1788623489,
@@ -2405,6 +2434,19 @@
           "kind": "priority_changed",
           "old": "normal",
           "new": "high"
+        },
+        {
+          "at": 1788626533,
+          "author": "claude",
+          "kind": "commented",
+          "comment_id": 1
+        },
+        {
+          "at": 1788626536,
+          "author": "claude",
+          "kind": "status_changed",
+          "old": "open",
+          "new": "done"
         }
       ]
     },
@@ -2618,6 +2660,33 @@
           "new": [
             "mcp",
             "tickets"
+          ]
+        }
+      ]
+    },
+    {
+      "id": 96,
+      "title": "pm-debug: namespace --setup / registry / installer / self-update",
+      "body": "Follow-up carved out of PM-88, which shipped the `pm-debug` GUI variant + MCP entry point but deliberately deferred the Windows install/registration surface.\n\n## Still hardcoded to `pm`\n- `crates/pm-core/src/setup.rs` — `UNINSTALL_KEY` / `APP_PATHS_KEY` consts (`...\\Uninstall\\pm`, `...\\App Paths\\pm.exe`), the Start Menu `pm.lnk` (`create_start_menu_shortcut`), the uninstaller `DisplayName` `\"pm (Plus Minus)\"`, and the MCP server name (`claude mcp add pm ...` + the `mcpServers.pm` key + `command: \"pm\"` in `claude_json_edit`). Running `pm-debug --setup` today would collide with `pm`'s entries.\n- `crates/pm-core/src/update.rs` — `latest()` hardcodes the `pm.exe` release-asset name and the \"pm is up to date\" text. `run_self_update` keys off `current_exe()` so the swap itself is name-agnostic, but a `pm-debug` self-update makes no sense (debug builds are `cargo run`); probably `pm-debug --update` should just refuse.\n- `install.ps1` — installs only `pm`. PM-88 issue 1 (`Get-Process pm | Stop-Process`) is already moot for a distinct `pm-debug.exe` (exact-match), but if the installer ever ships `pm-debug` it needs path-scoped matching.\n\n## Suggested approach\nThread the `Variant` (or just its label + a reverse-DNS id) from `pm`/`pm-mcp` into `pm_core::setup` so every key/name/shortcut is namespaced. Register the debug MCP server under the name `pm-debug` in `~/.claude.json` so an agent can tell which one it's talking to. Decide whether `pm-debug --setup` is even wanted vs. \"wire it by hand with `claude mcp add pm-debug -- <path> --mcp`\".\n\n## Open question\nDoes `pm-debug` need Start Menu / uninstaller entries at all, or only the MCP registration? A `cargo run` build arguably needs neither.",
+      "status": "open",
+      "priority": "normal",
+      "labels": [
+        "mcp"
+      ],
+      "assignee": null,
+      "author": "claude",
+      "created": 1788626518,
+      "updated": 1788626518,
+      "anchors": [],
+      "comments": [],
+      "history": [
+        {
+          "at": 1788626518,
+          "author": "claude",
+          "kind": "labels_changed",
+          "old": [],
+          "new": [
+            "mcp"
           ]
         }
       ]

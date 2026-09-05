@@ -13,6 +13,21 @@ edition = "2021"
 description = "Plus Minus - a diff-oriented code editor"
 license = "BSD-3-Clause"
 repository = "https://github.com/GecEnterprises/pm"
+default-run = "pm"
+
+[lib]
+name = "pm"
+path = "src/lib.rs"
+
+[[bin]]
+name = "pm"
+path = "src/main.rs"
+
+# A visibly distinct development build that runs beside the real `pm` (PM-88).
+# `cargo run --bin pm-debug`, or the `cargo pmd` alias in .cargo/config.toml.
+[[bin]]
+name = "pm-debug"
+path = "src/bin/pm-debug.rs"
 
 [dependencies]
 pm-core = { path = "crates/pm-core" }

@@ -243,8 +243,15 @@ fn locate_gui() -> Option<PathBuf> {
     }
     if let Ok(exe) = std::env::current_exe() {
         if let Some(dir) = exe.parent() {
-            for name in ["pm.exe", "pm"] {
-                let cand = dir.join(name);
+            // Prefer a sibling matching this server's own binary stem, so a
+            // `pm-debug --mcp` launches the `pm-debug` GUI, not the release one
+            // (PM-88). Fall back to `pm`.
+            let stem = exe.file_stem().and_then(|s| s.to_str()).unwrap_or("pm");
+            let mut names = vec![format!("{stem}.exe"), stem.to_string()];
+            names.push("pm.exe".to_string());
+            names.push("pm".to_string());
+            for name in names {
+                let cand = dir.join(&name);
                 if cand.is_file() {
                     return Some(cand);
                 }

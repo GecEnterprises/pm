@@ -2,6 +2,7 @@
 //! interaction state (scroll offsets, drags, hovers, the shaped-line cache).
 
 use std::path::{Path, PathBuf};
+use std::sync::OnceLock;
 use std::time::Duration;
 
 use gpui::{
@@ -34,6 +35,20 @@ use crate::text_input::{TextInput, TextInputEvent};
 use crate::theme::*;
 use crate::tree_view::tree_view;
 use crate::update::UpdateStatus;
+
+/// Program label used in the window title (`… — <label>`). Set once at startup
+/// by the binary so `pm-debug` titles itself distinctly (PM-88); defaults to
+/// `"pm"` when never set (tests, embedders).
+static APP_LABEL: OnceLock<String> = OnceLock::new();
+
+/// Set the window-title program label. Call once, before opening a window.
+pub fn set_app_label(label: &str) {
+    let _ = APP_LABEL.set(label.to_string());
+}
+
+fn app_label() -> &'static str {
+    APP_LABEL.get().map(String::as_str).unwrap_or("pm")
+}
 
 /// Scroll state for the diff body: one shared vertical offset, one horizontal
 /// offset per column.
@@ -388,7 +403,7 @@ impl Pm {
     /// ticket being viewed / created (Tickets) — and is dropped when there's
     /// nothing to name.
     pub(crate) fn window_title(&self) -> String {
-        let app = "pm";
+        let app = app_label();
         if self.empty {
             return app.to_string();
         }
