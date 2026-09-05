@@ -7,8 +7,9 @@ pub mod image_view;
 pub mod list_view;
 pub mod menu;
 pub mod status_bar;
-pub mod text_input;
 pub mod theme;
+
+pub use fremantle::text_input;
 pub mod tickets_view;
 pub mod title_bar;
 pub mod tree_view;

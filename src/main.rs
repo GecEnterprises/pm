@@ -168,6 +168,9 @@ fn bind_text_input_keys(cx: &mut gpui::App) {
         KeyBinding::new("ctrl-c", Copy, ti),
         KeyBinding::new("ctrl-x", Cut, ti),
         KeyBinding::new("ctrl-v", Paste, ti),
+        KeyBinding::new("ctrl-z", Undo, ti),
+        KeyBinding::new("ctrl-shift-z", Redo, ti),
+        KeyBinding::new("ctrl-y", Redo, ti),
         KeyBinding::new("enter", Confirm, Some("TextInputSingleLine")),
         KeyBinding::new("enter", Newline, Some("TextInputMultiLine")),
     ]);

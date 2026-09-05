@@ -6,13 +6,18 @@
 //! shift as the selection moves and a multi-line field wraps + grows to fit its
 //! text (like Zed). Text arrives through the platform IME pipeline
 //! (`window.handle_input` + [`EntityInputHandler`]), so dead keys / compose /
-//! AltGr all work. Editing commands are actions (see [`crate::text_input`]
-//! `actions!`), bound in `src/main.rs` under the `TextInput` key context.
+//! AltGr all work. Editing commands are actions (see the `actions!` below);
+//! the consuming app binds keys to them, scoped to the `TextInput` /
+//! `TextInputSingleLine` / `TextInputMultiLine` key contexts.
 //!
 //! A single-line field never wraps — it scrolls horizontally to keep the caret
-//! in view. Not handled: undo/redo.
+//! in view. Undo/redo coalesces consecutive edits within
+//! [`UNDO_GROUP_INTERVAL`] into one step (Zed's `text::History` grouping
+//! policy), so a burst of typing undoes in one go rather than character by
+//! character.
 
 use std::ops::Range;
+use std::time::{Duration, Instant};
 
 use gpui::{
     actions, div, fill, point, prelude::*, px, relative, rgba, size, App, Bounds, ClipboardItem,
@@ -23,6 +28,15 @@ use gpui::{
 };
 
 use crate::theme::ActiveTheme;
+
+/// Consecutive edits closer together than this merge into one undo step.
+pub const UNDO_GROUP_INTERVAL: Duration = Duration::from_millis(300);
+
+/// A snapshot of editable state, pushed onto the undo/redo stacks.
+struct UndoEntry {
+    content: String,
+    selected_range: Range<usize>,
+}
 
 actions!(
     pm_text_input,
@@ -50,6 +64,8 @@ actions!(
         Copy,
         Cut,
         Paste,
+        Undo,
+        Redo,
         /// Enter on a single-line field.
         Confirm,
         /// Enter on a multi-line field.
@@ -87,6 +103,11 @@ pub struct TextInput {
     last_line_height: Pixels,
     /// Height the wrapped text needed last frame — fed back into layout.
     measured_height: Pixels,
+    undo_stack: Vec<UndoEntry>,
+    redo_stack: Vec<UndoEntry>,
+    /// When the last edit landed — edits within [`UNDO_GROUP_INTERVAL`] of
+    /// this coalesce into the same undo step instead of pushing a new one.
+    last_edit_at: Option<Instant>,
 }
 
 impl TextInput {
@@ -115,6 +136,9 @@ impl TextInput {
             last_bounds: None,
             last_line_height: px(16.0),
             measured_height: px(0.0),
+            undo_stack: Vec::new(),
+            redo_stack: Vec::new(),
+            last_edit_at: None,
         }
     }
 
@@ -164,6 +188,59 @@ impl TextInput {
         self.selection_reversed = false;
         self.marked_range = None;
         self.scroll_x = px(0.0);
+        // A programmatic reset (not a user edit) starts fresh — old undo
+        // history would restore text the caller no longer has any record of.
+        self.undo_stack.clear();
+        self.redo_stack.clear();
+        self.last_edit_at = None;
+        cx.emit(TextInputEvent::Changed);
+        cx.notify();
+    }
+
+    /// Snapshot pre-edit state onto the undo stack, unless this edit lands
+    /// within [`UNDO_GROUP_INTERVAL`] of the last one — coalesces a burst of
+    /// typing into a single undo step (Zed's `text::History` grouping).
+    fn push_undo_snapshot(&mut self) {
+        let now = Instant::now();
+        let coalesce = self.last_edit_at.is_some_and(|t| now.duration_since(t) < UNDO_GROUP_INTERVAL);
+        if !coalesce {
+            self.undo_stack.push(UndoEntry {
+                content: self.content.clone(),
+                selected_range: self.selected_range.clone(),
+            });
+        }
+        self.last_edit_at = Some(now);
+        self.redo_stack.clear();
+    }
+
+    fn undo(&mut self, _: &Undo, _: &mut Window, cx: &mut Context<Self>) {
+        let Some(entry) = self.undo_stack.pop() else { return };
+        self.redo_stack.push(UndoEntry {
+            content: self.content.clone(),
+            selected_range: self.selected_range.clone(),
+        });
+        self.content = entry.content;
+        self.selected_range = entry.selected_range;
+        self.selection_reversed = false;
+        self.marked_range = None;
+        // A fresh undo/redo starts its own group rather than coalescing with
+        // whatever edit happened right before this Ctrl+Z.
+        self.last_edit_at = None;
+        cx.emit(TextInputEvent::Changed);
+        cx.notify();
+    }
+
+    fn redo(&mut self, _: &Redo, _: &mut Window, cx: &mut Context<Self>) {
+        let Some(entry) = self.redo_stack.pop() else { return };
+        self.undo_stack.push(UndoEntry {
+            content: self.content.clone(),
+            selected_range: self.selected_range.clone(),
+        });
+        self.content = entry.content;
+        self.selected_range = entry.selected_range;
+        self.selection_reversed = false;
+        self.marked_range = None;
+        self.last_edit_at = None;
         cx.emit(TextInputEvent::Changed);
         cx.notify();
     }
@@ -598,6 +675,7 @@ impl EntityInputHandler for TextInput {
     ) {
         let range = self.edit_range(range_utf16.as_ref());
 
+        self.push_undo_snapshot();
         self.content =
             self.content[..range.start].to_owned() + new_text + &self.content[range.end..];
         let caret = range.start + new_text.len();
@@ -706,6 +784,8 @@ impl Render for TextInput {
             .on_action(cx.listener(Self::copy))
             .on_action(cx.listener(Self::cut))
             .on_action(cx.listener(Self::paste))
+            .on_action(cx.listener(Self::undo))
+            .on_action(cx.listener(Self::redo))
             .on_action(cx.listener(Self::confirm))
             .on_action(cx.listener(Self::newline))
             .on_mouse_down(MouseButton::Left, cx.listener(Self::on_mouse_down))
