@@ -261,6 +261,76 @@ impl AppState {
         }
     }
 
+    /// Set a ticket's title and persist. `author` overrides this window's
+    /// default when non-empty (PM-15).
+    pub fn set_ticket_title(
+        &mut self,
+        ticket_id: u64,
+        title: impl Into<String>,
+        author: Option<String>,
+    ) {
+        let author = self.author_or_default(author);
+        if self.pm.set_title(ticket_id, title, author, pm::now_unix()) {
+            self.save_pm();
+        }
+    }
+
+    /// Set a ticket's body and persist. `author` overrides this window's
+    /// default when non-empty (PM-15).
+    pub fn set_ticket_body(
+        &mut self,
+        ticket_id: u64,
+        body: impl Into<String>,
+        author: Option<String>,
+    ) {
+        let author = self.author_or_default(author);
+        if self.pm.set_body(ticket_id, body, author, pm::now_unix()) {
+            self.save_pm();
+        }
+    }
+
+    /// Set a ticket's priority and persist. `author` overrides this window's
+    /// default when non-empty (PM-15).
+    pub fn set_ticket_priority(
+        &mut self,
+        ticket_id: u64,
+        priority: crate::pm::Priority,
+        author: Option<String>,
+    ) {
+        let author = self.author_or_default(author);
+        if self.pm.set_priority(ticket_id, priority, author, pm::now_unix()) {
+            self.save_pm();
+        }
+    }
+
+    /// Set a ticket's assignee and persist. `author` overrides this window's
+    /// default when non-empty (PM-15).
+    pub fn set_ticket_assignee(
+        &mut self,
+        ticket_id: u64,
+        assignee: Option<String>,
+        author: Option<String>,
+    ) {
+        let author = self.author_or_default(author);
+        if self.pm.set_assignee(ticket_id, assignee, author, pm::now_unix()) {
+            self.save_pm();
+        }
+    }
+
+    /// Replace a ticket's labels and persist. `author` overrides this window's
+    /// default when non-empty (PM-15).
+    pub fn set_ticket_labels(
+        &mut self,
+        ticket_id: u64,
+        labels: Vec<String>,
+        author: Option<String>,
+    ) {
+        let author = self.author_or_default(author);
+        if self.pm.set_labels(ticket_id, labels, author, pm::now_unix()) {
+            self.save_pm();
+        }
+    }
+
         pub fn open_path(&mut self, rel: PathBuf) {
         self.open = Some(rel.clone());
         self.caret = None;
@@ -578,5 +648,62 @@ mod tests {
             let want = st.changes.first().map(|c| c.rel.clone());
             assert_eq!(st.changed_in_batch(std::slice::from_ref(real)), want);
         }
+    }
+
+    fn tmp_store() -> PathBuf {
+        use std::sync::atomic::{AtomicUsize, Ordering};
+        static N: AtomicUsize = AtomicUsize::new(0);
+        let d = std::env::temp_dir().join(format!(
+            "pm-state-test-{}-{}",
+            std::process::id(),
+            N.fetch_add(1, Ordering::Relaxed)
+        ));
+        let _ = std::fs::remove_dir_all(&d);
+        std::fs::create_dir_all(&d).unwrap();
+        d
+    }
+
+    #[test]
+    fn ticket_field_wrappers_persist_and_record_history() {
+        let repo = Repo::discover(Path::new(".")).unwrap();
+        let store_dir = tmp_store();
+        let mut st = AppState::new(repo, store_dir.clone());
+
+        let id = st.create_ticket("original", "original body", Some("tester".into()));
+
+        st.set_ticket_title(id, "renamed", Some("tester".into()));
+        st.set_ticket_body(id, "new body", Some("tester".into()));
+        st.set_ticket_priority(id, crate::pm::Priority::High, Some("tester".into()));
+        st.set_ticket_assignee(id, Some("bob".into()), Some("tester".into()));
+        st.set_ticket_labels(id, vec!["bug".into()], Some("tester".into()));
+
+        let t = st.pm.ticket(id).unwrap();
+        assert_eq!(t.title, "renamed");
+        assert_eq!(t.body, "new body");
+        assert_eq!(t.priority, crate::pm::Priority::High);
+        assert_eq!(t.assignee.as_deref(), Some("bob"));
+        assert_eq!(t.labels, vec!["bug".to_string()]);
+
+        use crate::pm::HistoryEvent;
+        let kinds: Vec<&HistoryEvent> = t.history.iter().map(|h| &h.event).collect();
+        assert!(kinds.iter().any(|e| matches!(e, HistoryEvent::TitleChanged { .. })));
+        assert!(kinds.iter().any(|e| matches!(e, HistoryEvent::BodyChanged { .. })));
+        assert!(kinds.iter().any(|e| matches!(e, HistoryEvent::PriorityChanged { .. })));
+        assert!(kinds.iter().any(|e| matches!(e, HistoryEvent::AssigneeChanged { .. })));
+        assert!(kinds.iter().any(|e| matches!(e, HistoryEvent::LabelsChanged { .. })));
+        assert!(t.history.iter().all(|h| h.author == "tester"));
+
+        // Persisted to disk.
+        let on_disk = pm::load_in(&store_dir).unwrap();
+        assert_eq!(on_disk.ticket(id).unwrap().title, "renamed");
+        assert_eq!(on_disk.ticket(id).unwrap().labels, vec!["bug".to_string()]);
+
+        // A no-op edit adds no history entry.
+        let before = st.pm.ticket(id).unwrap().history.len();
+        st.set_ticket_title(id, "renamed", Some("tester".into()));
+        st.set_ticket_labels(id, vec!["bug".into()], Some("tester".into()));
+        assert_eq!(st.pm.ticket(id).unwrap().history.len(), before);
+
+        let _ = std::fs::remove_dir_all(&store_dir);
     }
 }
