@@ -35,23 +35,23 @@ pub struct Variant {
     /// Linux window class (`_NET_WM_CLASS`) and Windows AppUserModelID, so the
     /// two variants group separately in the taskbar / dock.
     pub app_id: &'static str,
-    /// Recolour the taskbar/window icon at runtime so the debug build is
-    /// obvious at a glance.
-    pub tint_icon: bool,
+    /// PNG for the taskbar / window icon — a distinct hue per variant so the
+    /// debug build is obvious at a glance (`assets/icon*.png`).
+    pub icon_png: &'static [u8],
 }
 
 /// The installed build you keep open. Bare `cargo run` opens this one.
 pub const RELEASE: Variant = Variant {
     label: "pm",
     app_id: "com.gecenterprises.pm",
-    tint_icon: false,
+    icon_png: include_bytes!("../assets/icon.png"),
 };
 
 /// The throwaway build for development, runnable beside [`RELEASE`].
 pub const DEBUG: Variant = Variant {
     label: "pm-debug",
     app_id: "com.gecenterprises.pm-debug",
-    tint_icon: true,
+    icon_png: include_bytes!("../assets/icon-debug.png"),
 };
 
 /// Loaded once at startup so every window (including ones opened via
@@ -96,15 +96,9 @@ pub fn run(variant: Variant) {
         }
     };
 
-    let icon = image::load_from_memory(include_bytes!("../assets/icon.png"))
+    let icon = image::load_from_memory(variant.icon_png)
         .ok()
-        .map(|img| {
-            let mut img = img.into_rgba8();
-            if variant.tint_icon {
-                tint_debug(&mut img);
-            }
-            Arc::new(img)
-        });
+        .map(|img| Arc::new(img.into_rgba8()));
 
     application().run(move |cx: &mut App| {
         cx.set_app_identity(variant.app_id, variant.label);
@@ -152,20 +146,6 @@ pub fn run(variant: Variant) {
         open_pm_window(cx, start.as_deref(), variant);
         cx.activate(true);
     });
-}
-
-/// Push the icon toward amber so the debug build reads differently in the
-/// taskbar without needing a second asset.
-fn tint_debug(img: &mut RgbaImage) {
-    for px in img.pixels_mut() {
-        let [r, g, b, a] = px.0;
-        px.0 = [
-            r.saturating_add(60),
-            (g as u16 * 3 / 4) as u8,
-            b / 3,
-            a,
-        ];
-    }
 }
 
 /// Run `r`, printing `<what>: <err>` and exiting non-zero on failure.
