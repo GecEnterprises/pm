@@ -173,6 +173,7 @@ impl Pm {
                         cx.listener(|pm, _, _, cx| {
                             pm.filter_menu_open = !pm.filter_menu_open;
                             pm.status_menu_open = false;
+                            pm.user_menu_open = false;
                             cx.notify();
                             cx.stop_propagation();
                         }),
@@ -241,6 +242,7 @@ impl Pm {
                                         ti.reset(cx);
                                         ti.focus(window, cx);
                                     });
+                                    pm.comment_box.update(cx, |ti, cx| ti.reset(cx));
                                     cx.notify();
                                 }),
                             ),
@@ -458,6 +460,7 @@ impl Pm {
                         cx.listener(|pm, _, _, cx| {
                             pm.status_menu_open = !pm.status_menu_open;
                             pm.filter_menu_open = false;
+                            pm.user_menu_open = false;
                             cx.notify();
                             cx.stop_propagation();
                         }),
