@@ -1,5 +1,5 @@
-//! Scroll geometry shared by the diff body and the file list. No gpui elements —
-//! just the math for clamping an offset and sizing a scrollbar thumb. Modelled on
+//! Scroll geometry shared by any scrollable region. No gpui elements — just
+//! the math for clamping an offset and sizing a scrollbar thumb. Modelled on
 //! Zed's `EditorElement` scrollbar layout.
 
 use gpui::{px, Pixels, Point, Size};

@@ -4,7 +4,7 @@
     "name": "pm",
     "key": "PM"
   },
-  "next_id": 77,
+  "next_id": 80,
   "tickets": [
     {
       "id": 5,
@@ -1707,6 +1707,86 @@
       "anchors": [],
       "comments": [],
       "history": []
+    },
+    {
+      "id": 77,
+      "title": "fremantle: comments should remove assumptions that it's being used for pm, it should be generic ui primitives",
+      "body": "Audited both prose and API surface. Fixed:\n\n- `lib.rs` crate doc said \"`pm-ui` is fremantle's first consumer; see PM-70..PM-74\" — removed, describes fremantle standalone now.\n- `scroll.rs` module doc said \"shared by the diff body and the file list\" (pm-ui domain language) — reworded to \"shared by any scrollable region\".\n\n`decorations.rs`'s doc only references Linux/Zed (attribution, not pm) — no change needed. API surface (`DecorationStyle`, `client_side_decorations`, `ScrollState`, `Axis`, `BarInfo`, `ScrollDrag`) was already generic — colors/metrics are caller-supplied params, no pm types or naming leak in. No renames needed.",
+      "status": "done",
+      "priority": "normal",
+      "labels": [
+        "fremantle"
+      ],
+      "assignee": null,
+      "author": "reaganiwadha",
+      "created": 1788593030,
+      "updated": 1788593658,
+      "anchors": [],
+      "comments": [],
+      "history": [
+        {
+          "at": 1788593658,
+          "author": "reaganiwadha",
+          "kind": "status_changed",
+          "old": "open",
+          "new": "done"
+        }
+      ]
+    },
+    {
+      "id": 78,
+      "title": "a fremantle binary with a list and layout switcher to see all available components",
+      "body": "A showcase/gallery app: a sidebar list of fremantle's components, a main panel showing whichever one is selected. Storybook-style, for browsing what fremantle offers.\n\nScoping decisions:\n\n- **Structure**: `crates/fremantle/examples/gallery.rs`, run via `cargo run -p fremantle --example gallery`. No new workspace member, no `[[bin]]` — an example living next to what it showcases.\n- **Bootstrap**: plain `gpui::App::new()` + `cx.open_window(..)`, not pm's `gpui_platform::application()` wrapper — that wrapper only exists to pick Linux windowing backends (`wayland`/`x11` features) for the shipped `pm` binary; a dev-only example doesn't need that ceremony. If Linux launch ever needs backend selection, add `gpui_platform` as a dev-dependency then — not a blocker now.\n- **Shape**: mirror pm-ui's list+detail split visually (`tickets_view.rs`'s sidebar-list + detail-panel pattern) for familiarity — styling reference only; fremantle cannot depend on pm-ui (backwards dependency).\n\n**Blocked on PM-71 (Theme) and PM-72 (TextInput)**: right now fremantle only has `scroll` (pure math, nothing visual to show) and `decorations` (wraps a whole window, not a list-browsable item) — nothing substantive to switch between yet. Revisit once those land.",
+      "status": "blocked",
+      "priority": "normal",
+      "labels": [
+        "fremantle"
+      ],
+      "assignee": null,
+      "author": "reaganiwadha",
+      "created": 1788593081,
+      "updated": 1788593658,
+      "anchors": [],
+      "comments": [],
+      "history": [
+        {
+          "at": 1788593658,
+          "author": "reaganiwadha",
+          "kind": "status_changed",
+          "old": "open",
+          "new": "blocked"
+        }
+      ]
+    },
+    {
+      "id": 79,
+      "title": "fremantle + docs, fremantle needs more documentation in that it will be used by people to build ui easily. the best testcase is a rustdoc parser and a rustdoc reflector with custom embeds. It's like viewing a documentation, but built out of fremantle",
+      "body": "",
+      "status": "open",
+      "priority": "normal",
+      "labels": [],
+      "assignee": null,
+      "author": "reaganiwadha",
+      "created": 1788593278,
+      "updated": 1788593658,
+      "anchors": [],
+      "comments": [
+        {
+          "id": 1,
+          "author": "reaganiwadha",
+          "created": 1788593658,
+          "body": "Holding off on this one — it bundles two differently-sized efforts. Writing good `///` doc comments as each primitive lands is fine to just do by default, no ticket needed. A custom rustdoc parser + reflector with embeds (a doc-site generator) is a real tool-building project of its own and needs a separate design pass before anyone starts it. Also thin on material right now — fremantle only has `scroll`/`decorations` (see PM-71/PM-72 for what's coming). Recommend re-scoping/splitting this ticket, and revisiting once there's enough surface area to make a doc-site worth building.",
+          "anchor": null
+        }
+      ],
+      "history": [
+        {
+          "at": 1788593658,
+          "author": "reaganiwadha",
+          "kind": "commented",
+          "comment_id": 1
+        }
+      ]
     }
   ]
 }
