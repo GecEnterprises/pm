@@ -1572,13 +1572,13 @@
       "id": 60,
       "title": "pm setup is still very flaky on powershell",
       "body": "",
-      "status": "in_progress",
+      "status": "open",
       "priority": "normal",
       "labels": [],
       "assignee": null,
       "author": "reaganiwadha",
       "created": 1788584048,
-      "updated": 1788622354,
+      "updated": 1788628071,
       "anchors": [],
       "comments": [
         {
@@ -1586,6 +1586,13 @@
           "author": "claude",
           "created": 1788622354,
           "body": "Moved to in_progress — there is an uncommitted fix sitting in the working tree.\n\nThis is the **second** attempt at the same bug. Commit c04f5bf already added one `FlushConsoleInputBuffer` before the y/n read (`confirm`, crates/pm-core/src/setup.rs:121). The uncommitted diff (+11 lines at setup.rs:130) makes it flush → `sleep(150ms)` → flush → read, because under ConPTY (Windows Terminal) pasted input is translated from VT sequences into console input records *asynchronously*, so a stray Enter from the `irm | iex` paste can still land after the first flush.\n\nWorth being honest in the ticket: that is a timing race, not a fix — a slow enough machine still loses. Two things that would close it properly rather than narrow the window:\n\n- `confirm` (setup.rs:157) falls through to the default on *any* unrecognised answer, including a bare Enter — so the stray-Enter bug and a deliberate \"just press Enter\" are indistinguishable. Requiring an explicit y/n (re-prompting on empty) would make the failure visible instead of silent.\n- The trigger is `install.ps1:69-74` chaining straight into `& $target --setup` inside the piped-to-`iex` session. A `-NoSetup` switch on the installer, or having the installer pass `--yes`, sidesteps the console-input race entirely.\n\nAlso note `confirm` silently takes the default when stdin is not a terminal (setup.rs:123).",
+          "anchor": null
+        },
+        {
+          "id": 2,
+          "author": "claude",
+          "created": 1788628067,
+          "body": "Grooming: the working-tree mitigation is now committed as 316ceb8 (flush → 150ms sleep → flush → read, PM-60). Per the analysis above that narrows the ConPTY race window but doesn't close it — a slow enough machine still loses, and a stray Enter is still indistinguishable from a deliberate one.\n\nMoving back to `open`: the mitigation shipped (in 0.0.6), but the proper fixes are still unstarted — (1) `confirm` should re-prompt on an empty/unrecognised answer instead of silently taking the default, and (2) the installer should pass `--yes` or gain a `-NoSetup` switch so the `irm | iex` session never feeds the y/n prompt. Either removes the race entirely.",
           "anchor": null
         }
       ],
@@ -1602,6 +1609,19 @@
           "author": "claude",
           "kind": "commented",
           "comment_id": 1
+        },
+        {
+          "at": 1788628067,
+          "author": "claude",
+          "kind": "commented",
+          "comment_id": 2
+        },
+        {
+          "at": 1788628071,
+          "author": "claude",
+          "kind": "status_changed",
+          "old": "in_progress",
+          "new": "open"
         }
       ]
     },
