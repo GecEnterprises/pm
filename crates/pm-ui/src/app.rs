@@ -26,8 +26,9 @@ use crate::image_view::ImageView;
 use crate::list_view::list_view;
 use crate::config::ConfigStore;
 use crate::menu::{
-    About, Copy, NextView, PrevView, Refresh, SelectAll, ToggleChanges, ToggleExplorer,
-    ToggleHistory, ToggleWatchJump, ViewFiles, ViewSummary, ViewTickets, ZoomIn, ZoomOut, ZoomReset,
+    About, Copy, FindTickets, NextView, PrevView, Refresh, SelectAll, ToggleChanges,
+    ToggleExplorer, ToggleHistory, ToggleWatchJump, ViewFiles, ViewSummary, ViewTickets, ZoomIn,
+    ZoomOut, ZoomReset,
 };
 use crate::text_input::{TextInput, TextInputEvent};
 use crate::theme::*;
@@ -952,6 +953,7 @@ impl Render for Pm {
             .on_action(cx.listener(|pm, _: &ViewSummary, _, cx| pm.set_view(View::Summary, cx)))
             .on_action(cx.listener(|pm, _: &ViewFiles, _, cx| pm.set_view(View::Files, cx)))
             .on_action(cx.listener(|pm, _: &ViewTickets, _, cx| pm.set_view(View::Tickets, cx)))
+            .on_action(cx.listener(|pm, _: &FindTickets, window, cx| pm.find_tickets(window, cx)))
             .on_action(cx.listener(|pm, _: &NextView, _, cx| pm.cycle_view(1, cx)))
             .on_action(cx.listener(|pm, _: &PrevView, _, cx| pm.cycle_view(-1, cx)))
             .on_action(cx.listener(|_, _: &ZoomIn, _, cx| {

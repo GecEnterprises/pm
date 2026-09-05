@@ -4,7 +4,9 @@
 
 use std::path::PathBuf;
 
-use gpui::{deferred, div, prelude::*, px, rgb, svg, Context, Hsla, MouseButton, SharedString};
+use gpui::{
+    deferred, div, prelude::*, px, rgb, svg, Context, Hsla, MouseButton, SharedString, Window,
+};
 
 use pm_core::{HistoryEntry, HistoryEvent, Status, Ticket};
 
@@ -70,6 +72,18 @@ fn history_line(h: &HistoryEntry) -> String {
 }
 
 impl Pm {
+    /// Ctrl+F in the Tickets view (PM-80) — opens the search box (if
+    /// collapsed) and focuses it, same as clicking the search icon. A no-op
+    /// outside the Tickets view, so it doesn't steal the shortcut elsewhere.
+    pub(crate) fn find_tickets(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        if self.view != View::Tickets {
+            return;
+        }
+        self.ticket_search_open = true;
+        self.ticket_search.update(cx, |ti, cx| ti.focus(window, cx));
+        cx.notify();
+    }
+
     pub(crate) fn tickets_body(&self, cx: &mut Context<Self>) -> impl IntoElement {
         div()
             .flex_1()

@@ -4263,6 +4263,7 @@ dependencies = [
  "similar",
  "syntect",
  "ureq",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]

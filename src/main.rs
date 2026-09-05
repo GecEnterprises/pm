@@ -23,8 +23,8 @@ use gpui_platform::application;
 use image::RgbaImage;
 use pm_core::Repo;
 use pm_ui::{
-    NextView, OpenFolder, Pm, PrevView, Quit, ViewFiles, ViewSummary, ViewTickets, ZoomIn, ZoomOut,
-    ZoomReset,
+    FindTickets, NextView, OpenFolder, Pm, PrevView, Quit, ViewFiles, ViewSummary, ViewTickets,
+    ZoomIn, ZoomOut, ZoomReset,
 };
 
 /// Loaded once at startup so every window (including ones opened via
@@ -85,6 +85,7 @@ fn main() {
             KeyBinding::new("ctrl-1", ViewSummary, None),
             KeyBinding::new("ctrl-2", ViewFiles, None),
             KeyBinding::new("ctrl-3", ViewTickets, None),
+            KeyBinding::new("ctrl-f", FindTickets, None),
             KeyBinding::new("ctrl-tab", NextView, None),
             KeyBinding::new("ctrl-shift-tab", PrevView, None),
             KeyBinding::new("ctrl-=", ZoomIn, None),

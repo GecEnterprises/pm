@@ -20,3 +20,9 @@ ureq = "2"
 # `pm --setup` (PM-5): the "pm" ASCII banner. Prompts are plain stdin reads —
 # a TUI prompt lib (dialoguer/console) left Windows Terminal in raw mode (PM-47).
 figlet-rs = "0.1"
+
+[target.'cfg(windows)'.dependencies]
+# Flushing the console input buffer before each `pm --setup` prompt (PM-60) —
+# stray keystrokes queued from an `irm | iex` paste otherwise get consumed as
+# the answer instead of the user's actual keypress.
+windows-sys = { version = "0.59", features = ["Win32_System_Console"] }

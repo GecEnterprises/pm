@@ -40,6 +40,7 @@ mod imp {
     use std::process::Command;
 
     use anyhow::{anyhow, Context, Result};
+    use windows_sys::Win32::System::Console::{FlushConsoleInputBuffer, GetStdHandle, STD_INPUT_HANDLE};
 
     use crate::buildinfo as build;
 
@@ -121,6 +122,16 @@ mod imp {
         use std::io::{IsTerminal, Write};
         if assume_yes || !std::io::stdin().is_terminal() {
             return default_yes;
+        }
+        // `pm --setup` is almost always launched at the tail of
+        // `irm ... | iex` (install.ps1 chains straight into it). The console
+        // input buffer can still be holding the Enter that submitted that
+        // pasted command, queued up before we ever printed a prompt; without
+        // clearing it first, `read_line` below silently consumes that stray
+        // keystroke as the answer instead of waiting for the user's real one
+        // (PM-60 — looks like the Y/n prompt is "randomly" skipped).
+        unsafe {
+            FlushConsoleInputBuffer(GetStdHandle(STD_INPUT_HANDLE));
         }
         let hint = if default_yes { "[Y/n]" } else { "[y/N]" };
         print!("{question} {hint} ");

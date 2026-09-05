@@ -40,6 +40,8 @@ actions!(
         NextView,
         /// Cycle to the previous top-level view (Ctrl+Shift+Tab).
         PrevView,
+        /// Jump to the ticket search box (Ctrl+F in the Tickets view — PM-80).
+        FindTickets,
         /// Increase the window scale.
         ZoomIn,
         /// Decrease the window scale.
