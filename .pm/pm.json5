@@ -1596,7 +1596,7 @@
       "id": 71,
       "title": "fremantle: Theme system (closes PM-18)",
       "body": "Part of PM-55 (phase 2/5). Closes PM-18.\n\npm-ui's `theme.rs` today is just flat `pub const` hex colors (`BG`, `PANEL`, `BORDER`, `TEXT`, `DIM`, `SELECT`, `ADD_BG`, `DEL_BG`, `CHANGED`, `CLOSE_HOVER`) plus pixel-metric constants and a rem-scaling helper — no struct, no light/dark support. Every one of pm-ui's 15+ view files does `use crate::theme::*` or imports individual constants directly.\n\nDesign a `Theme` struct/trait in fremantle holding the same tokens (colors + metrics + rem-scaling), instantiable so each consuming app supplies its own palette (paves the way for light/dark or per-app themes). Migrate pm-ui's `theme.rs` to a concrete `Theme` instance passed via gpui context (e.g. a global or `Entity<Theme>`), and update all call sites off `use crate::theme::*`.\n\nThis is the highest-touch migration (touches nearly every pm-ui view file) — do it as its own phase, after PM-55 phase 1 has proven the workspace wiring.\n\nVerify: `cargo check`/`cargo build`; visual smoke-test of pm-ui confirming colors/metrics are pixel-identical to before the migration.",
-      "status": "open",
+      "status": "done",
       "priority": "normal",
       "labels": [
         "fremantle"
@@ -1604,10 +1604,32 @@
       "assignee": null,
       "author": "reaganiwadha",
       "created": 1788590660,
-      "updated": 1788590660,
+      "updated": 1788595622,
       "anchors": [],
-      "comments": [],
-      "history": []
+      "comments": [
+        {
+          "id": 1,
+          "author": "reaganiwadha",
+          "created": 1788595622,
+          "body": "Implemented the full runtime migration (Zed's Global + ActiveTheme ext-trait pattern, not the lighter const-derivation option). `fremantle::theme::Theme { appearance, colors: ThemeColors, metrics: ThemeMetrics, base_rem }` installed once via `fremantle::theme::set_theme(cx, ...)` at the top of `Pm::new`, read anywhere via `cx.theme()`. pm-ui's `theme.rs` now just builds one concrete `Theme` value (`build()`) with every old literal preserved exactly, and re-exports `ActiveTheme` so existing `use crate::theme::*;` call sites picked up `.theme()` with no import changes needed.\n\nMigrated all ~260 call sites across 10 files (rgb(CONST) -> cx.theme().colors.x, px(CONST) -> px(cx.theme().metrics.x), rm()/scale_of() -> methods on Theme). A few free helper functions with no `cx` in scope (`chip`, `text_block` in tickets_view.rs, `image_divider`/`sidebar_resize_handle`, `round_bottom` in status_bar.rs) gained an explicit color/metric or `cx` parameter instead, resolved at their call sites. Full workspace test suite passes (33 tests); `cargo check --workspace` clean, no warnings.",
+          "anchor": null
+        }
+      ],
+      "history": [
+        {
+          "at": 1788595622,
+          "author": "reaganiwadha",
+          "kind": "commented",
+          "comment_id": 1
+        },
+        {
+          "at": 1788595622,
+          "author": "reaganiwadha",
+          "kind": "status_changed",
+          "old": "open",
+          "new": "done"
+        }
+      ]
     },
     {
       "id": 72,

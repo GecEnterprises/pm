@@ -8,7 +8,7 @@
 use std::sync::Arc;
 
 use gpui::{
-    canvas, div, img, prelude::*, px, relative, rgb, Context, Image, ImageFormat, MouseButton,
+    canvas, div, img, prelude::*, px, relative, Context, Image, ImageFormat, MouseButton,
     MouseMoveEvent, ObjectFit, ScrollDelta, ScrollWheelEvent, SharedString,
 };
 
@@ -56,7 +56,7 @@ impl Pm {
         };
         let fmt = to_format(*kind);
         let view = self.image_view;
-        let split = self.diff_split.clamp(DIFF_SPLIT_MIN, DIFF_SPLIT_MAX);
+        let split = self.diff_split.clamp(cx.theme().metrics.diff_split_min, cx.theme().metrics.diff_split_max);
 
         let pane = self.image_pane;
         let pane_w = f32::from(pane.size.width);
@@ -69,7 +69,7 @@ impl Pm {
             .size_full()
             .flex()
             .flex_row()
-            .bg(rgb(BG))
+            .bg(cx.theme().colors.bg)
             .child(
                 canvas(
                     move |b, _w, cx| entity.update(cx, |pm, _| pm.image_pane = b),
@@ -89,7 +89,7 @@ impl Pm {
                     cx,
                 )),
             )
-            .child(self.image_divider())
+            .child(self.image_divider(cx))
             .child(
                 div().h_full().flex_1().child(image_panel(
                     "img-new",
@@ -103,13 +103,13 @@ impl Pm {
             )
     }
 
-    fn image_divider(&self) -> impl IntoElement {
+    fn image_divider(&self, cx: &Context<Self>) -> impl IntoElement {
         div()
             .id("image-split")
             .w(px(5.0))
             .h_full()
             .flex_none()
-            .bg(rgb(BORDER))
+            .bg(cx.theme().colors.border)
             .cursor_col_resize()
             .on_drag(ResizeHandle::DiffSplit, |_, _, _, cx| {
                 cx.stop_propagation();
@@ -136,7 +136,7 @@ fn image_panel(
             .flex()
             .items_center()
             .justify_center()
-            .text_color(rgb(DIM))
+            .text_color(cx.theme().colors.dim)
             .child(SharedString::from(format!("{label}: absent")))
             .into_any_element(),
         Some(b) => {
@@ -160,7 +160,7 @@ fn image_panel(
         .size_full()
         .relative()
         .overflow_hidden()
-        .bg(rgb(BG))
+        .bg(cx.theme().colors.bg)
         .on_scroll_wheel(cx.listener(move |pm, e: &ScrollWheelEvent, _, cx| {
             let dy = match e.delta {
                 ScrollDelta::Pixels(p) => f32::from(p.y),
@@ -213,9 +213,9 @@ fn image_panel(
                 .left_2()
                 .px_1()
                 .rounded_sm()
-                .bg(rgb(PANEL))
+                .bg(cx.theme().colors.panel)
                 .text_size(px(10.0))
-                .text_color(rgb(DIM))
+                .text_color(cx.theme().colors.dim)
                 .child(SharedString::from(label)),
         )
 }

@@ -9,7 +9,7 @@ use gpui::{
     fill, font, point, px, rgb, rgba, size, App, Bounds, ContentMask, CursorStyle, DispatchPhase,
     Element, ElementId, Entity, Font, GlobalElementId, Hitbox, HitboxBehavior, HitboxId,
     InspectorElementId, IntoElement, LayoutId, MouseButton, MouseDownEvent, MouseMoveEvent,
-    MouseUpEvent, Pixels, Rgba, ScrollWheelEvent, SharedString, ShapedLine, Style, TextAlign,
+    MouseUpEvent, Pixels, ScrollWheelEvent, SharedString, ShapedLine, Style, TextAlign,
     TextRun, Window, WindowTextSystem,
 };
 
@@ -20,11 +20,9 @@ fn to_hsla(c: CoreRgba) -> gpui::Hsla {
     gpui::Rgba { r: c.r, g: c.g, b: c.b, a: c.a }.into()
 }
 use fremantle::scroll::{Axis, BarInfo, ScrollDrag};
+use gpui::Hsla;
 use crate::app::Pm;
-use crate::theme::{
-    ADD_BG, BAR, BASE_REM, BG, BODY_FONT, BODY_FONT_SIZE, BORDER, DEL_BG, DIFF_SPLIT_MAX,
-    DIFF_SPLIT_MIN, DIM, DIVIDER_W, GUTTER_PAD, GUTTER_W, ROW_H, TEXT_PAD_L,
-};
+use crate::theme::ActiveTheme;
 
 /// Shaped lines for the current file, reused across frames until [`clear`](Self::clear).
 #[derive(Default)]
@@ -94,7 +92,7 @@ impl ShapeCache {
         }
     }
 
-    fn ensure_num(&mut self, n: usize, ts: &WindowTextSystem, font: &Font, size: Pixels) {
+    fn ensure_num(&mut self, n: usize, ts: &WindowTextSystem, font: &Font, size: Pixels, dim: Hsla) {
         if self.nums.contains_key(&n) {
             return;
         }
@@ -102,7 +100,7 @@ impl ShapeCache {
         let run = TextRun {
             len: text.len(),
             font: font.clone(),
-            color: rgb(DIM).into(),
+            color: dim,
             background_color: None,
             underline: None,
             strikethrough: None,
@@ -144,12 +142,12 @@ fn bottom_overhang(content_h: f32, viewport_h: f32) -> f32 {
     }
 }
 
-fn row_bg(kind: RowKind) -> (Option<Rgba>, Option<Rgba>) {
+fn row_bg(kind: RowKind, add_bg: Hsla, del_bg: Hsla) -> (Option<Hsla>, Option<Hsla>) {
     match kind {
         RowKind::Equal => (None, None),
-        RowKind::Add => (None, Some(rgb(ADD_BG))),
-        RowKind::Remove => (Some(rgb(DEL_BG)), None),
-        RowKind::Modify => (Some(rgb(DEL_BG)), Some(rgb(ADD_BG))),
+        RowKind::Add => (None, Some(add_bg)),
+        RowKind::Remove => (Some(del_bg), None),
+        RowKind::Modify => (Some(del_bg), Some(add_bg)),
     }
 }
 
@@ -251,27 +249,28 @@ impl Element for DiffView {
         let top = f32::from(bounds.top());
         let w = f32::from(bounds.size.width).max(0.0);
         let h = f32::from(bounds.size.height).max(0.0);
+        let theme = cx.theme().clone();
         let split = self
             .pm
             .read(cx)
             .diff_split
-            .clamp(DIFF_SPLIT_MIN, DIFF_SPLIT_MAX);
+            .clamp(theme.metrics.diff_split_min, theme.metrics.diff_split_max);
         let mid = left + (w * split).floor();
 
         // Whole-window zoom (PM-36): every metric here is a 1× constant times the
         // rem-size ratio, so the diff scales with the rest of the UI.
-        let s = f32::from(window.rem_size()) / BASE_REM;
+        let s = theme.scale_of(window);
         // Row height MUST be a whole logical pixel (PM-54). gpui quantises glyph
         // baselines to ¼-physical-pixel; a fractional row height (any non-100%
         // zoom, e.g. 19.8 at 110%) makes the gap between successive lines wobble
         // ±¼px as you scroll — the "squiggling lines". gpui's own
         // `line_height_in_pixels` rounds for exactly this reason.
-        let row_h = (ROW_H * s).round();
-        let gutter_w = GUTTER_W * s;
-        let gutter_pad = GUTTER_PAD * s;
-        let text_pad_l = TEXT_PAD_L * s;
-        let divider_w = (DIVIDER_W * s).max(1.0);
-        let bar_w = BAR * s;
+        let row_h = (theme.metrics.row_h * s).round();
+        let gutter_w = theme.metrics.gutter_w * s;
+        let gutter_pad = theme.metrics.gutter_pad * s;
+        let text_pad_l = theme.metrics.text_pad_l * s;
+        let divider_w = (theme.metrics.divider_w * s).max(1.0);
+        let bar_w = theme.metrics.bar * s;
 
         let text_lo = [left + gutter_w, mid + gutter_w];
         let col_text_w = [
@@ -291,8 +290,8 @@ impl Element for DiffView {
             size(px(divider_w), px(h)),
         );
 
-        let body_font = font(BODY_FONT);
-        let font_size = px(BODY_FONT_SIZE * s);
+        let body_font = font(theme.metrics.body_font);
+        let font_size = px(theme.metrics.body_font_size * s);
 
         let (
             row_count,
@@ -383,10 +382,10 @@ impl Element for DiffView {
                         shaped.ensure((true, i), r, ts, &body_font, font_size);
                     }
                     if let Some(n) = rows[i].left_no {
-                        shaped.ensure_num(n, ts, &body_font, font_size);
+                        shaped.ensure_num(n, ts, &body_font, font_size, theme.colors.dim);
                     }
                     if let Some(n) = rows[i].right_no {
-                        shaped.ensure_num(n, ts, &body_font, font_size);
+                        shaped.ensure_num(n, ts, &body_font, font_size, theme.colors.dim);
                     }
                 }
 
@@ -590,6 +589,7 @@ impl Element for DiffView {
         window: &mut Window,
         cx: &mut App,
     ) {
+        let theme = cx.theme().clone();
         let (row_h, gutter_w, gutter_pad, text_pad_l, divider_w, bar_w) = (
             p.row_h, p.gutter_w, p.gutter_pad, p.text_pad_l, p.divider_w, p.bar_w,
         );
@@ -597,12 +597,12 @@ impl Element for DiffView {
         let (left, top, w, mid) = (p.left, p.top, p.width, p.mid);
 
         window.with_content_mask(Some(ContentMask { bounds }), |window| {
-            window.paint_quad(fill(bounds, rgb(BG)));
+            window.paint_quad(fill(bounds, theme.colors.bg));
 
             for (k, &kind) in p.kinds.iter().enumerate() {
                 let i = p.first + k;
                 let y = top + i as f32 * row_h - p.off_y;
-                let (lbg, rbg) = row_bg(kind);
+                let (lbg, rbg) = row_bg(kind, theme.colors.add_bg, theme.colors.del_bg);
                 if let Some(c) = lbg {
                     window.paint_quad(fill(
                         Bounds::new(
@@ -620,7 +620,7 @@ impl Element for DiffView {
                 }
             }
 
-            window.paint_quad(fill(p.divider, rgb(BORDER)));
+            window.paint_quad(fill(p.divider, theme.colors.border));
 
             for (k, num) in p.left_nums.iter().enumerate() {
                 if let Some(sl) = num {
@@ -676,7 +676,7 @@ impl Element for DiffView {
                                         point(px(col_x0 - off + hx), px(y + 1.0)),
                                         size(px(1.5), px(row_h - 2.0)),
                                     ),
-                                    rgb(0xd4d4d4),
+                                    theme.colors.text,
                                 ));
                             }
                         }
@@ -689,7 +689,7 @@ impl Element for DiffView {
                 let Some(bar) = p.bars[idx] else { continue };
                 let vertical = idx == 2;
                 let hovered = p.bar_ids[idx].is_some_and(|id| id.is_hovered(window));
-                let thickness = (bar_w - 4.0 * (bar_w / BAR)).max(2.0);
+                let thickness = (bar_w - 4.0 * (bar_w / theme.metrics.bar)).max(2.0);
                 let (track, thumb) = if vertical {
                     (
                         Bounds::new(
@@ -948,7 +948,7 @@ impl DiffView {
                             return;
                         }
                         let frac = ((f32::from(e.position.x) - left) / width.max(1.0))
-                            .clamp(DIFF_SPLIT_MIN, DIFF_SPLIT_MAX);
+                            .clamp(cx.theme().metrics.diff_split_min, cx.theme().metrics.diff_split_max);
                         if pm.diff_split != frac {
                             pm.diff_split = frac;
                             cx.notify();

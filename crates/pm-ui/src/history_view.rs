@@ -5,15 +5,15 @@
 use gpui::{
     fill, font, point, px, rgb, rgba, size, App, Bounds, ContentMask, DispatchPhase, Element,
     ElementId, Entity, GlobalElementId, HitboxBehavior, HitboxId, InspectorElementId, IntoElement,
-    LayoutId, MouseButton, MouseDownEvent, MouseMoveEvent, MouseUpEvent, Pixels, ScrollWheelEvent,
-    SharedString, ShapedLine, Style, TextAlign, TextRun, Window,
+    LayoutId, MouseButton, MouseDownEvent, MouseMoveEvent, MouseUpEvent, Hsla, Pixels,
+    ScrollWheelEvent, SharedString, ShapedLine, Style, TextAlign, TextRun, Window,
 };
 
 use pm_core::DiffTarget;
 
 use crate::app::Pm;
 use fremantle::scroll::{Axis, BarInfo, ScrollDrag};
-use crate::theme::{BAR, BORDER, DIM, LIST_ROW_H, PANEL, SELECT, TEXT, UI_FONT};
+use crate::theme::ActiveTheme;
 
 pub struct HistoryView {
     pm: Entity<Pm>,
@@ -112,17 +112,18 @@ impl Element for HistoryView {
         let w = f32::from(bounds.size.width).max(0.0);
         let h = f32::from(bounds.size.height).max(0.0);
 
-        let s = crate::theme::scale_of(window);
-        let row_h = (LIST_ROW_H * s).round(); // whole px — see PM-54 / diff_view
-        let bar_w = BAR * s;
-        let ui = font(UI_FONT);
+        let theme = cx.theme().clone();
+        let s = theme.scale_of(window);
+        let row_h = (theme.metrics.list_row_h * s).round(); // whole px — see PM-54 / diff_view
+        let bar_w = theme.metrics.bar * s;
+        let ui = font(theme.metrics.ui_font);
         let text_size = px(12.5 * s);
         let small = px(11.0 * s);
 
-        let run = |text: &str, color: u32| TextRun {
+        let run = |text: &str, color: Hsla| TextRun {
             len: text.len(),
             font: ui.clone(),
-            color: rgb(color).into(),
+            color,
             background_color: None,
             underline: None,
             strikethrough: None,
@@ -144,7 +145,7 @@ impl Element for HistoryView {
             for i in first..last {
                 if i == 0 {
                     let s: SharedString = "\u{25cf}  Working Tree".into();
-                    let label = ts.shape_line(s.clone(), text_size, &[run(&s, TEXT)], None);
+                    let label = ts.shape_line(s.clone(), text_size, &[run(&s, theme.colors.text)], None);
                     rows.push(CommitRow {
                         selected: pm.state.target == DiffTarget::WorkingTree,
                         label,
@@ -160,12 +161,12 @@ impl Element for HistoryView {
                 let label = ts.shape_line(
                     text.clone().into(),
                     text_size,
-                    &[run(&sha, DIM), run(&c.summary, TEXT)],
+                    &[run(&sha, theme.colors.dim), run(&c.summary, theme.colors.text)],
                     None,
                 );
 
                 let t: SharedString = rel_time(c.time).into();
-                let time = ts.shape_line(t.clone(), small, &[run(&t, DIM)], None);
+                let time = ts.shape_line(t.clone(), small, &[run(&t, theme.colors.dim)], None);
 
                 rows.push(CommitRow {
                     selected,
@@ -221,20 +222,21 @@ impl Element for HistoryView {
         window: &mut Window,
         cx: &mut App,
     ) {
+        let theme = cx.theme().clone();
         let (left, top, w) = (p.left, p.top, p.width);
         let (row_h, bar_w) = (p.row_h, p.bar_w);
 
         window.with_content_mask(Some(ContentMask { bounds }), |window| {
-            window.paint_quad(fill(bounds, rgb(PANEL)));
+            window.paint_quad(fill(bounds, theme.colors.panel));
 
             for (k, row) in p.rows.iter().enumerate() {
                 let i = p.first + k;
                 let y = top + i as f32 * row_h - p.off_y;
                 let rb = Bounds::new(point(px(left), px(y)), size(px(w), px(row_h)));
                 if row.selected {
-                    window.paint_quad(fill(rb, rgb(SELECT)));
+                    window.paint_quad(fill(rb, theme.colors.select));
                 } else if p.hover == Some(i) {
-                    window.paint_quad(fill(rb, rgb(BORDER)));
+                    window.paint_quad(fill(rb, theme.colors.border));
                 }
 
                 // Right-aligned relative time first, so the label can be clipped
@@ -270,7 +272,7 @@ impl Element for HistoryView {
 
             if let Some(bar) = p.bar {
                 let hovered = p.bar_id.is_some_and(|id| id.is_hovered(window));
-                let thickness = (bar_w - 4.0 * (bar_w / BAR)).max(2.0);
+                let thickness = (bar_w - 4.0 * (bar_w / theme.metrics.bar)).max(2.0);
                 window.paint_quad(fill(
                     Bounds::new(
                         point(px(left + w - bar_w), px(top)),

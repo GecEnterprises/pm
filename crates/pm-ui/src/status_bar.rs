@@ -24,14 +24,14 @@ impl Pm {
             .justify_between()
             .w_full()
             .flex_none()
-            .h(rm(STATUS_BAR_H))
+            .h(cx.theme().rm(cx.theme().metrics.status_bar_h))
             .px_2()
             .gap_3()
-            .bg(rgb(PANEL))
+            .bg(cx.theme().colors.panel)
             .border_t_1()
-            .border_color(rgb(BORDER))
-            .text_color(rgb(DIM))
-            .text_size(rm(11.0))
+            .border_color(cx.theme().colors.border)
+            .text_color(cx.theme().colors.dim)
+            .text_size(cx.theme().rm(11.0))
             .child(self.status_left(cx))
             .child(self.status_right(cx))
             // Click-away closer for the "Acting as" popover — mirrors the
@@ -51,7 +51,7 @@ impl Pm {
                     ),
                 ))
             });
-        round_bottom(bar, decorations)
+        round_bottom(bar, decorations, cx.theme().metrics.client_decoration_rounding)
     }
 
     fn status_left(&self, cx: &mut Context<Self>) -> impl IntoElement {
@@ -73,8 +73,8 @@ impl Pm {
                     .id("diffing")
                     .px_1()
                     .rounded_sm()
-                    .bg(rgb(SELECT))
-                    .text_color(rgb(TEXT))
+                    .bg(cx.theme().colors.select)
+                    .text_color(cx.theme().colors.text)
                     .cursor_pointer()
                     .on_mouse_down(
                         MouseButton::Left,
@@ -108,7 +108,7 @@ impl Pm {
         if self.state.rows.len() > pm_core::MAX_ROWS {
             row = row.child(
                 div()
-                    .text_color(rgb(BORDER))
+                    .text_color(cx.theme().colors.border)
                     .child(SharedString::from(format!(
                         "(showing first {} rows)",
                         pm_core::MAX_ROWS
@@ -128,7 +128,7 @@ impl Pm {
         // Watchjump toggle (PM-30) — only meaningful with a change list.
         if self.state.is_git() {
             let on = ConfigStore::get(cx).watchjump;
-            let fg = rgb(if on { TEXT } else { DIM });
+            let fg = if on { cx.theme().colors.text } else { cx.theme().colors.dim };
             let mut chip = div()
                 .id("watchjump")
                 .flex()
@@ -141,7 +141,7 @@ impl Pm {
                 .text_color(fg)
                 .child(
                     svg()
-                        .size(rm(12.0))
+                        .size(cx.theme().rm(12.0))
                         .flex_none()
                         .text_color(fg)
                         .data(crate::icons::svg_bytes("watchjump.svg")),
@@ -154,9 +154,9 @@ impl Pm {
                     }),
                 );
             chip = if on {
-                chip.bg(rgb(SELECT))
+                chip.bg(cx.theme().colors.select)
             } else {
-                chip.hover(|s| s.text_color(rgb(TEXT)))
+                chip.hover(|s| s.text_color(cx.theme().colors.text))
             };
             row = row.child(chip);
         }
@@ -168,8 +168,8 @@ impl Pm {
                     .id("update-available")
                     .px_1()
                     .rounded_sm()
-                    .bg(rgb(SELECT))
-                    .text_color(rgb(TEXT))
+                    .bg(cx.theme().colors.select)
+                    .text_color(cx.theme().colors.text)
                     .cursor_pointer()
                     .on_mouse_down(
                         MouseButton::Left,
@@ -212,7 +212,7 @@ impl Pm {
     /// `user.name`, else `"unknown"`).
     fn user_chip(&self, cx: &mut Context<Self>) -> impl IntoElement {
         let open = self.user_menu_open;
-        let fg = rgb(if open { TEXT } else { DIM });
+        let fg = if open { cx.theme().colors.text } else { cx.theme().colors.dim };
         let mut chip = div()
             .id("user")
             .flex()
@@ -225,7 +225,7 @@ impl Pm {
             .text_color(fg)
             .child(
                 svg()
-                    .size(rm(12.0))
+                    .size(cx.theme().rm(12.0))
                     .flex_none()
                     .text_color(fg)
                     .data(crate::icons::svg_bytes("user.svg")),
@@ -242,9 +242,9 @@ impl Pm {
                 }),
             );
         chip = if open {
-            chip.bg(rgb(SELECT))
+            chip.bg(cx.theme().colors.select)
         } else {
-            chip.hover(|s| s.text_color(rgb(TEXT)))
+            chip.hover(|s| s.text_color(cx.theme().colors.text))
         };
 
         div().relative().child(chip).when(open, |d| {
@@ -271,17 +271,17 @@ impl Pm {
             .gap_1()
             .w(px(220.0))
             .p_2()
-            .bg(rgb(PANEL))
+            .bg(cx.theme().colors.panel)
             .border_1()
-            .border_color(rgb(BORDER))
+            .border_color(cx.theme().colors.border)
             .rounded_md()
             .shadow_lg()
-            .text_color(rgb(TEXT))
+            .text_color(cx.theme().colors.text)
             .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
             .child(
                 div()
-                    .text_color(rgb(DIM))
-                    .text_size(rm(11.0))
+                    .text_color(cx.theme().colors.dim)
+                    .text_size(cx.theme().rm(11.0))
                     .child(SharedString::from("Acting as")),
             )
             .child(self.author_box.clone());
@@ -295,8 +295,8 @@ impl Pm {
                     .py_1()
                     .rounded_sm()
                     .cursor_pointer()
-                    .text_color(rgb(TEXT))
-                    .hover(|s| s.bg(rgb(SELECT)))
+                    .text_color(cx.theme().colors.text)
+                    .hover(|s| s.bg(cx.theme().colors.select))
                     .child(SharedString::from(label))
                     .on_mouse_down(
                         MouseButton::Left,
@@ -319,8 +319,8 @@ impl Pm {
                 .py_1()
                 .rounded_sm()
                 .cursor_pointer()
-                .text_color(rgb(DIM))
-                .hover(|s| s.bg(rgb(SELECT)).text_color(rgb(TEXT)))
+                .text_color(cx.theme().colors.dim)
+                .hover(|s| s.bg(cx.theme().colors.select).text_color(cx.theme().colors.text))
                 .child(SharedString::from("Reset to git default"))
                 .on_mouse_down(
                     MouseButton::Left,
@@ -336,15 +336,15 @@ impl Pm {
 }
 
 /// Round the bottom corners of a bottom-edge bar under client-side decorations.
-pub(crate) fn round_bottom<T: Styled + IntoElement>(el: T, decorations: Decorations) -> T {
+pub(crate) fn round_bottom<T: Styled + IntoElement>(
+    el: T,
+    decorations: Decorations,
+    rounding: f32,
+) -> T {
     match decorations {
         Decorations::Client { tiling } => el
-            .when(!tiling.bottom && !tiling.left, |b| {
-                b.rounded_bl(px(CLIENT_DECORATION_ROUNDING))
-            })
-            .when(!tiling.bottom && !tiling.right, |b| {
-                b.rounded_br(px(CLIENT_DECORATION_ROUNDING))
-            }),
+            .when(!tiling.bottom && !tiling.left, |b| b.rounded_bl(px(rounding)))
+            .when(!tiling.bottom && !tiling.right, |b| b.rounded_br(px(rounding))),
         Decorations::Server => el,
     }
 }

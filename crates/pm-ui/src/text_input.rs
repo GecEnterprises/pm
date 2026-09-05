@@ -15,14 +15,14 @@
 use std::ops::Range;
 
 use gpui::{
-    actions, div, fill, point, prelude::*, px, relative, rgb, rgba, size, App, Bounds, ClipboardItem,
+    actions, div, fill, point, prelude::*, px, relative, rgba, size, App, Bounds, ClipboardItem,
     CursorStyle, Element, ElementId, ElementInputHandler, Entity, EntityInputHandler, FocusHandle,
     Focusable, GlobalElementId, InspectorElementId, LayoutId, MouseButton, MouseDownEvent,
     MouseMoveEvent, MouseUpEvent, PaintQuad, Pixels, Point, SharedString, Style, TextRun,
     UTF16Selection, UnderlineStyle, Window, WrappedLine,
 };
 
-use crate::theme::{BG, BORDER, DIM, SELECT, TEXT};
+use crate::theme::ActiveTheme;
 
 actions!(
     pm_text_input,
@@ -677,12 +677,12 @@ impl Render for TextInput {
             .w_full()
             .px_2()
             .py_1()
-            .bg(rgb(BG))
+            .bg(cx.theme().colors.bg)
             .border_1()
-            .border_color(rgb(if focused { SELECT } else { BORDER }))
+            .border_color(if focused { cx.theme().colors.select } else { cx.theme().colors.border })
             .rounded_sm()
             .overflow_hidden()
-            .when(self.multiline, |d| d.min_h(crate::theme::rm(64.0)))
+            .when(self.multiline, |d| d.min_h(cx.theme().rm(64.0)))
             .on_action(cx.listener(Self::backspace))
             .on_action(cx.listener(Self::delete))
             .on_action(cx.listener(Self::delete_word_left))
@@ -793,7 +793,7 @@ impl Element for TextElement {
         } else {
             input.content.clone().into()
         };
-        let color = if empty { rgb(DIM).into() } else { style.color };
+        let color = if empty { cx.theme().colors.dim } else { style.color };
         let sel = input.selected_range.clone();
         let cursor = input.cursor();
         let marked = input.marked_range.clone();
@@ -878,7 +878,7 @@ impl Element for TextElement {
                     point(x0 + p.x, top + tops[li] + p.y + px(1.0)),
                     size(px(1.5), line_height - px(2.0)),
                 ),
-                rgb(TEXT),
+                cx.theme().colors.text,
             ))
         };
 

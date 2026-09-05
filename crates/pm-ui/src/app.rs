@@ -5,7 +5,7 @@ use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 use gpui::{
-    canvas, deferred, div, prelude::*, px, rgb, rgba, svg, App, Bounds, ClipboardItem, Context,
+    canvas, deferred, div, prelude::*, px, rgba, svg, App, Bounds, ClipboardItem, Context,
     DragMoveEvent, Empty, Entity, FocusHandle, KeyDownEvent, MouseButton, PathPromptOptions,
     SharedString, Window,
 };
@@ -199,6 +199,8 @@ pub struct Pm {
 
 impl Pm {
     pub fn new(repo: Repo, cx: &mut Context<Self>) -> Self {
+        fremantle::theme::set_theme(cx, crate::theme::build());
+
         let (store_dir, extra_watch) = Self::resolve_store(repo.root(), cx);
         let sentinel = Sentinel::start(repo.root().to_path_buf(), extra_watch)
             .map_err(|e| eprintln!("pm: filesystem watch unavailable ({e})"))
@@ -538,8 +540,8 @@ impl Pm {
     /// Diff row height at the current zoom (the custom diff element scales its
     /// own metrics; this is for the scroll math that lives here). Rounded to a
     /// whole pixel to match `diff_view`'s paint (PM-54).
-    fn diff_row_h(&self) -> f32 {
-        (ROW_H * self.scale).round()
+    fn diff_row_h(&self, cx: &App) -> f32 {
+        (cx.theme().metrics.row_h * self.scale).round()
     }
 
     pub fn refresh(&mut self) {
@@ -628,7 +630,7 @@ impl Pm {
             eprintln!("pm: watchjump \u{2192} {}", rel.display());
             self.state.tree_selected = Some(rel.clone());
             self.open_path(rel);
-            self.scroll_to_first_change();
+            self.scroll_to_first_change(cx);
         } else if let Some(rel) = reload {
             self.reload_open_keep_scroll(rel);
         }
@@ -637,12 +639,12 @@ impl Pm {
 
     /// Scroll the diff so the first changed row sits near the top and drop a
     /// caret on it — the "jump to the changed line" half of watchjump (PM-30).
-    fn scroll_to_first_change(&mut self) {
+    fn scroll_to_first_change(&mut self, cx: &App) {
         let Some(i) = self.state.rows.iter().position(|r| r.kind != RowKind::Equal) else {
             return;
         };
         // A few rows of lead-in for context; the next paint clamps the rest.
-        let rh = self.diff_row_h();
+        let rh = self.diff_row_h(cx);
         self.diff.y.offset.y = px((i.saturating_sub(3) as f32 * rh).max(0.0));
         self.diff.y.clamp();
 
@@ -657,18 +659,19 @@ impl Pm {
         }
     }
 
-    fn clamp_layout(&mut self, root: Bounds<gpui::Pixels>) {
+    fn clamp_layout(&mut self, root: Bounds<gpui::Pixels>, cx: &App) {
         let rw = f32::from(root.size.width);
         let rh = f32::from(root.size.height);
         let sc = self.scale;
-        let max_sb = (rw - SIDEBAR_MAX_MARGIN * sc).max(SIDEBAR_MIN * sc);
-        self.sidebar_w = self.sidebar_w.clamp(SIDEBAR_MIN * sc, max_sb);
+        let m = cx.theme().metrics;
+        let max_sb = (rw - m.sidebar_max_margin * sc).max(m.sidebar_min * sc);
+        self.sidebar_w = self.sidebar_w.clamp(m.sidebar_min * sc, max_sb);
         // Room the three section headers + the one split handle always take.
-        let avail = (rh - (3.0 * SECTION_HEADER_H + SECTION_SPLIT_H) * sc).max(0.0);
+        let avail = (rh - (3.0 * m.section_header_h + m.section_split_h) * sc).max(0.0);
         self.history_h = self.history_h.clamp(0.0, avail);
         let history_used = if self.history_collapsed { 0.0 } else { self.history_h };
         self.changes_h = self.changes_h.clamp(0.0, (avail - history_used).max(0.0));
-        self.diff_split = self.diff_split.clamp(DIFF_SPLIT_MIN, DIFF_SPLIT_MAX);
+        self.diff_split = self.diff_split.clamp(m.diff_split_min, m.diff_split_max);
     }
 
     /// Byte offset nearest `x_local` px within `(col, file_row)`'s shaped line.
@@ -729,19 +732,19 @@ impl Pm {
         cur.head = BufferPos { file_row: row, byte: self.byte_at_x(cur.col, row, x_local) };
         cur.goal_x = None;
         self.state.caret = Some(cur);
-        self.scroll_caret_into_view();
+        self.scroll_caret_into_view(cx);
         cx.notify();
     }
 
 
-    fn scroll_caret_into_view(&mut self) {
+    fn scroll_caret_into_view(&mut self, cx: &App) {
         let Some(cur) = self.state.caret else { return };
         let vh = self.diff_viewport_h;
         if vh <= 0.0 {
             return;
         }
         let Some(disp) = self.state.disp_row(cur.col, cur.head.file_row) else { return };
-        let rh = self.diff_row_h();
+        let rh = self.diff_row_h(cx);
         let caret_top = disp as f32 * rh;
         let off = f32::from(self.diff.y.offset.y);
         let new = if caret_top < off {
@@ -829,7 +832,7 @@ impl Pm {
                         x
                     }
                 };
-                let page = ((self.diff_viewport_h / self.diff_row_h()).floor() as isize - 1).max(1);
+                let page = ((self.diff_viewport_h / self.diff_row_h(cx)).floor() as isize - 1).max(1);
                 let step: isize = match key {
                     "up" => -1,
                     "down" => 1,
@@ -847,7 +850,7 @@ impl Pm {
             cur.anchor = cur.head;
         }
         self.state.caret = Some(cur);
-        self.scroll_caret_into_view();
+        self.scroll_caret_into_view(cx);
         cx.notify();
         cx.stop_propagation();
     }
@@ -888,7 +891,7 @@ impl Render for Pm {
         // read-only or failed to load. `take_alert` self-clears.
         crate::config::present_config_alert(window, cx);
         self.sync_scale(cx);
-        window.set_rem_size(px(BASE_REM * self.scale));
+        window.set_rem_size(px(cx.theme().base_rem * self.scale));
 
         let title = self.window_title();
         if title != self.title {
@@ -906,7 +909,7 @@ impl Render for Pm {
         } else {
             match self.view {
                 View::Files => self.files_body(cx).into_any_element(),
-                View::Summary => self.summary_body().into_any_element(),
+                View::Summary => self.summary_body(cx).into_any_element(),
                 View::Tickets => self.tickets_body(cx).into_any_element(),
             }
         };
@@ -917,10 +920,10 @@ impl Render for Pm {
             .flex()
             .flex_col()
             .size_full()
-            .bg(rgb(BG))
-            .text_color(rgb(TEXT))
-            .font_family(UI_FONT)
-            .text_size(rm(13.))
+            .bg(cx.theme().colors.bg)
+            .text_color(cx.theme().colors.text)
+            .font_family(cx.theme().metrics.ui_font)
+            .text_size(cx.theme().rm(13.))
             .on_action(cx.listener(|pm, _: &Refresh, _, cx| {
                 pm.refresh();
                 cx.notify();
@@ -993,15 +996,16 @@ impl Render for Pm {
             })
             .child(self.status_bar(window, cx));
 
+        let theme = cx.theme().clone();
         client_side_decorations(
             root,
             window,
             cx,
             DecorationStyle {
-                rounding: CLIENT_DECORATION_ROUNDING,
-                shadow: CLIENT_DECORATION_SHADOW,
-                bg: rgb(BG).into(),
-                border: rgb(BORDER).into(),
+                rounding: theme.metrics.client_decoration_rounding,
+                shadow: theme.metrics.client_decoration_shadow,
+                bg: theme.colors.bg,
+                border: theme.colors.border,
             },
         )
     }
@@ -1027,11 +1031,14 @@ impl Pm {
             .flex_none()
             .items_center()
             .justify_between()
-            .h(rm(SECTION_HEADER_H))
+            .h({
+                let theme = cx.theme();
+                theme.rm(theme.metrics.section_header_h)
+            })
             .px_2()
             .cursor_pointer()
-            .text_color(rgb(DIM))
-            .hover(|s| s.bg(rgb(BORDER)))
+            .text_color(cx.theme().colors.dim)
+            .hover(|s| s.bg(cx.theme().colors.border))
             .on_mouse_down(
                 MouseButton::Left,
                 cx.listener(move |pm, _, _, cx| {
@@ -1047,7 +1054,7 @@ impl Pm {
                     .id("refresh")
                     .px_1()
                     .rounded_sm()
-                    .hover(|s| s.bg(rgb(BORDER)))
+                    .hover(|s| s.bg(cx.theme().colors.border))
                     .child("⟳")
                     .on_mouse_down(
                         MouseButton::Left,
@@ -1084,9 +1091,9 @@ impl Pm {
             .flex_none()
             .w(px(self.sidebar_w))
             .h_full()
-            .bg(rgb(PANEL))
+            .bg(cx.theme().colors.panel)
             .border_r_1()
-            .border_color(rgb(BORDER))
+            .border_color(cx.theme().colors.border)
             .child(self.section_header(
                 cx,
                 "Changes",
@@ -1112,7 +1119,10 @@ impl Pm {
             col = col.child(
                 div()
                     .id("section-split")
-                    .h(rm(SECTION_SPLIT_H))
+                    .h({
+                        let theme = cx.theme();
+                        theme.rm(theme.metrics.section_split_h)
+                    })
                     .w_full()
                     .flex_none()
                     .cursor_row_resize()
@@ -1162,22 +1172,23 @@ impl Pm {
             );
         }
 
-        col.child(self.sidebar_resize_handle())
+        col.child(self.sidebar_resize_handle(cx))
     }
 
     /// The drag strip on the right edge of the sidebar. Shared by File-to-File
     /// (`left_column`) and Tickets so both panes resize the same `sidebar_w`.
     /// The parent needs `.relative()` and an `on_drag_move` handling
     /// `ResizeHandle::Sidebar`.
-    pub(crate) fn sidebar_resize_handle(&self) -> impl IntoElement {
+    pub(crate) fn sidebar_resize_handle(&self, cx: &Context<Self>) -> impl IntoElement {
+        let theme = cx.theme().clone();
         deferred(
             div()
                 .id("sidebar-resize")
                 .occlude()
                 .absolute()
                 .top_0()
-                .right(rm(-RESIZE_HANDLE_W / 2.0))
-                .w(rm(RESIZE_HANDLE_W))
+                .right(theme.rm(-theme.metrics.resize_handle_w / 2.0))
+                .w(theme.rm(theme.metrics.resize_handle_w))
                 .h_full()
                 .cursor_col_resize()
                 .on_drag(ResizeHandle::Sidebar, |_, _, _, cx| {
@@ -1195,9 +1206,9 @@ impl Pm {
         let entity = cx.entity();
         canvas(
             move |b, _w, cx| {
-                entity.update(cx, |pm, _| {
+                entity.update(cx, |pm, cx| {
                     pm.root_bounds = b;
-                    pm.clamp_layout(b);
+                    pm.clamp_layout(b, cx);
                 })
             },
             |_, _, _, _| {},
@@ -1216,7 +1227,7 @@ impl Pm {
         if let ResizeHandle::Sidebar = ev.drag(cx) {
             let root = pm.root_bounds;
             pm.sidebar_w = f32::from(ev.event.position.x) - f32::from(root.left());
-            pm.clamp_layout(root);
+            pm.clamp_layout(root, cx);
             cx.notify();
         }
     }
@@ -1238,9 +1249,9 @@ impl Pm {
                     {
                         let entity = entity.clone();
                         move |b, _w, cx| {
-                            entity.update(cx, |pm, _| {
+                            entity.update(cx, |pm, cx| {
                                 pm.root_bounds = b;
-                                pm.clamp_layout(b);
+                                pm.clamp_layout(b, cx);
                             })
                         }
                     },
@@ -1257,7 +1268,7 @@ impl Pm {
                     match ev.drag(cx) {
                         ResizeHandle::Sidebar => pm.sidebar_w = x,
                         ResizeHandle::SectionSplit => {
-                            pm.changes_h = y - SECTION_HEADER_H * pm.scale
+                            pm.changes_h = y - cx.theme().metrics.section_header_h * pm.scale
                         }
                         ResizeHandle::DiffSplit => {
                             let pane_w = f32::from(root.size.width) - pm.sidebar_w;
@@ -1266,7 +1277,7 @@ impl Pm {
                             }
                         }
                     }
-                    pm.clamp_layout(root);
+                    pm.clamp_layout(root, cx);
                     cx.notify();
                 },
             ))
@@ -1286,12 +1297,12 @@ impl Pm {
                 .items_stretch()
                 .gap_1()
                 .mt_4()
-                .min_w(rm(280.0))
-                .max_w(rm(560.0))
+                .min_w(cx.theme().rm(280.0))
+                .max_w(cx.theme().rm(560.0))
                 .child(
                     div()
-                        .text_size(rm(11.0))
-                        .text_color(rgb(DIM))
+                        .text_size(cx.theme().rm(11.0))
+                        .text_color(cx.theme().colors.dim)
                         .child(SharedString::from("RECENT")),
                 );
             for (i, path) in recent.into_iter().enumerate() {
@@ -1304,10 +1315,10 @@ impl Pm {
                         .rounded_md()
                         .overflow_hidden()
                         .text_ellipsis()
-                        .text_size(rm(12.0))
-                        .text_color(rgb(DIM))
+                        .text_size(cx.theme().rm(12.0))
+                        .text_color(cx.theme().colors.dim)
                         .cursor_pointer()
-                        .hover(|s| s.bg(rgb(PANEL)).text_color(rgb(TEXT)))
+                        .hover(|s| s.bg(cx.theme().colors.panel).text_color(cx.theme().colors.text))
                         .child(label)
                         .on_mouse_down(
                             MouseButton::Left,
@@ -1326,13 +1337,13 @@ impl Pm {
             .items_center()
             .justify_center()
             .gap_4()
-            .bg(rgb(BG))
-            .text_color(rgb(DIM))
+            .bg(cx.theme().colors.bg)
+            .text_color(cx.theme().colors.dim)
             .child(
                 svg()
-                    .size(rm(56.0))
+                    .size(cx.theme().rm(56.0))
                     .flex_none()
-                    .text_color(rgb(BORDER))
+                    .text_color(cx.theme().colors.border)
                     .data(crate::icons::svg_bytes("diff.svg")),
             )
             .child(SharedString::from("Nothing opened"))
@@ -1344,11 +1355,11 @@ impl Pm {
                     .py_2()
                     .rounded_md()
                     .border_1()
-                    .border_color(rgb(BORDER))
-                    .bg(rgb(PANEL))
-                    .text_color(rgb(TEXT))
+                    .border_color(cx.theme().colors.border)
+                    .bg(cx.theme().colors.panel)
+                    .text_color(cx.theme().colors.text)
                     .cursor_pointer()
-                    .hover(|s| s.bg(rgb(SELECT)))
+                    .hover(|s| s.bg(cx.theme().colors.select))
                     .child(SharedString::from("Open a project\u{2026}"))
                     .on_mouse_down(
                         MouseButton::Left,
@@ -1359,7 +1370,7 @@ impl Pm {
     }
 
     /// The Summary view — a placeholder until summary diffing lands.
-    fn summary_body(&self) -> impl IntoElement {
+    fn summary_body(&self, cx: &Context<Self>) -> impl IntoElement {
         div()
             .flex_1()
             .min_h_0()
@@ -1368,12 +1379,12 @@ impl Pm {
             .items_center()
             .justify_center()
             .gap_1()
-            .bg(rgb(BG))
-            .text_color(rgb(DIM))
+            .bg(cx.theme().colors.bg)
+            .text_color(cx.theme().colors.dim)
             .child(SharedString::from("Summary"))
             .child(
                 div()
-                    .text_size(rm(11.0))
+                    .text_size(cx.theme().rm(11.0))
                     .child(SharedString::from("a whole-diff overview is coming soon")),
             )
     }
@@ -1393,11 +1404,11 @@ impl Pm {
         match self.state.content {
             Content::Text => pane.child(diff_view(cx.entity())).into_any_element(),
             Content::Image { .. } => pane.child(self.image_diff_pane(cx)).into_any_element(),
-            Content::Binary => pane.child(self.unviewable_pane()).into_any_element(),
+            Content::Binary => pane.child(self.unviewable_pane(cx)).into_any_element(),
         }
     }
 
-    fn unviewable_pane(&self) -> impl IntoElement {
+    fn unviewable_pane(&self, cx: &Context<Self>) -> impl IntoElement {
         let name = self
             .state
             .open
@@ -1411,12 +1422,12 @@ impl Pm {
             .items_center()
             .justify_center()
             .gap_1()
-            .bg(rgb(BG))
-            .text_color(rgb(DIM))
+            .bg(cx.theme().colors.bg)
+            .text_color(cx.theme().colors.dim)
             .child(SharedString::from("Binary file — not shown"))
             .child(
                 div()
-                    .text_size(rm(11.0))
+                    .text_size(cx.theme().rm(11.0))
                     .child(SharedString::from(name)),
             )
     }
@@ -1436,15 +1447,15 @@ impl Pm {
                 .py_2()
                 .rounded_md()
                 .border_1()
-                .border_color(rgb(if primary { SELECT } else { BORDER }))
-                .when(primary, |d| d.bg(rgb(SELECT)))
+                .border_color(if primary { cx.theme().colors.select } else { cx.theme().colors.border })
+                .when(primary, |d| d.bg(cx.theme().colors.select))
                 .cursor_pointer()
-                .hover(|s| s.bg(rgb(SELECT)))
-                .child(div().text_color(rgb(TEXT)).child(SharedString::from(label)))
+                .hover(|s| s.bg(cx.theme().colors.select))
+                .child(div().text_color(cx.theme().colors.text).child(SharedString::from(label)))
                 .child(
                     div()
-                        .text_size(rm(11.0))
-                        .text_color(rgb(DIM))
+                        .text_size(cx.theme().rm(11.0))
+                        .text_color(cx.theme().colors.dim)
                         .child(SharedString::from(sub)),
                 )
         };
@@ -1466,19 +1477,19 @@ impl Pm {
                         .gap_3()
                         .w(px(380.0))
                         .p_4()
-                        .bg(rgb(PANEL))
+                        .bg(cx.theme().colors.panel)
                         .border_1()
-                        .border_color(rgb(BORDER))
+                        .border_color(cx.theme().colors.border)
                         .rounded_lg()
                         .shadow_lg()
                         .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
                         .child(
                             div()
-                                .text_size(rm(15.0))
-                                .text_color(rgb(TEXT))
+                                .text_size(cx.theme().rm(15.0))
+                                .text_color(cx.theme().colors.text)
                                 .child("Where should this project's tickets live?"),
                         )
-                        .child(div().text_color(rgb(DIM)).child(SharedString::from(
+                        .child(div().text_color(cx.theme().colors.dim).child(SharedString::from(
                             "This project has no .pm/ folder yet.",
                         )))
                         .child(
@@ -1543,30 +1554,30 @@ impl Pm {
                         .gap_2()
                         .w(px(360.0))
                         .p_4()
-                        .bg(rgb(PANEL))
+                        .bg(cx.theme().colors.panel)
                         .border_1()
-                        .border_color(rgb(BORDER))
+                        .border_color(cx.theme().colors.border)
                         .rounded_lg()
                         .shadow_lg()
                         .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
                         .child(
                             div()
-                                .text_size(rm(16.0))
-                                .text_color(rgb(TEXT))
+                                .text_size(cx.theme().rm(16.0))
+                                .text_color(cx.theme().colors.text)
                                 .child("pm \u{2014} Plus Minus"),
                         )
                         .child(
                             div()
-                                .text_color(rgb(DIM))
+                                .text_color(cx.theme().colors.dim)
                                 .child(SharedString::from(pm_core::buildinfo::long_version())),
                         )
-                        .child(div().text_color(rgb(DIM)).child(SharedString::from(
+                        .child(div().text_color(cx.theme().colors.dim).child(SharedString::from(
                             self.state.repo.root().display().to_string(),
                         )))
                         .when_some(UpdateStatus::available(cx), |d, rel| {
                             d.child(
                                 div()
-                                    .text_color(rgb(CHANGED))
+                                    .text_color(cx.theme().colors.changed)
                                     .child(SharedString::from(format!(
                                         "Update available: {}  \u{2014}  run  pm update",
                                         rel.tag
@@ -1579,8 +1590,8 @@ impl Pm {
                                 .mt_1()
                                 .max_h(px(180.0))
                                 .overflow_y_scroll()
-                                .text_size(rm(11.0))
-                                .text_color(rgb(DIM))
+                                .text_size(cx.theme().rm(11.0))
+                                .text_color(cx.theme().colors.dim)
                                 .children(
                                     pm_core::buildinfo::RELEASE_NOTES
                                         .lines()

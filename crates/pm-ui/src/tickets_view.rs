@@ -4,7 +4,7 @@
 
 use std::path::PathBuf;
 
-use gpui::{deferred, div, prelude::*, px, rgb, svg, Context, MouseButton, SharedString};
+use gpui::{deferred, div, prelude::*, px, rgb, svg, Context, Hsla, MouseButton, SharedString};
 
 use pm_core::{HistoryEntry, HistoryEvent, Status, Ticket};
 
@@ -19,22 +19,22 @@ type MenuAct = Box<dyn Fn(&mut Pm, &mut Context<Pm>)>;
 /// One dropdown row: label, status-dot colour, checked, action.
 type MenuRow = (SharedString, u32, bool, MenuAct);
 
-fn chip(text: impl Into<SharedString>, color: u32) -> impl IntoElement {
+fn chip(text: impl Into<SharedString>, color: Hsla, bg: Hsla) -> impl IntoElement {
     div()
         .px_1()
         .rounded_sm()
-        .bg(rgb(BORDER))
-        .text_color(rgb(color))
+        .bg(bg)
+        .text_color(color)
         .text_size(px(11.0))
         .child(text.into())
 }
 
 /// Split a plain-text block into one div per line (gpui doesn't break on `\n`).
-fn text_block(s: &str) -> impl IntoElement {
+fn text_block(s: &str, text_color: Hsla) -> impl IntoElement {
     div()
         .flex()
         .flex_col()
-        .text_color(rgb(TEXT))
+        .text_color(text_color)
         .children(
             s.split('\n')
                 .map(|l| div().child(SharedString::from(l.to_string()))),
@@ -77,7 +77,7 @@ impl Pm {
             .flex()
             .flex_row()
             .relative()
-            .bg(rgb(BG))
+            .bg(cx.theme().colors.bg)
             // Same resizable sidebar as File-to-File (PM-42): the canvas keeps
             // `root_bounds` current, the handler routes the drag to `sidebar_w`.
             .child(self.root_bounds_canvas(cx))
@@ -118,12 +118,12 @@ impl Pm {
             .flex_col()
             .min_w(px(160.0))
             .py_1()
-            .bg(rgb(PANEL))
+            .bg(cx.theme().colors.panel)
             .border_1()
-            .border_color(rgb(BORDER))
+            .border_color(cx.theme().colors.border)
             .rounded_md()
             .shadow_lg()
-            .text_color(rgb(TEXT))
+            .text_color(cx.theme().colors.text)
             .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation());
 
         for (i, (label, color, on, act)) in rows.into_iter().enumerate() {
@@ -137,12 +137,12 @@ impl Pm {
                     .px_2()
                     .py_1()
                     .cursor_pointer()
-                    .hover(|s| s.bg(rgb(SELECT)))
+                    .hover(|s| s.bg(cx.theme().colors.select))
                     .when(checks, |d| {
                         d.child(
                             div()
                                 .w(px(12.0))
-                                .text_color(rgb(CHANGED))
+                                .text_color(cx.theme().colors.changed)
                                 .child(if on { "\u{2713}" } else { "" }),
                         )
                     })
@@ -174,14 +174,14 @@ impl Pm {
             .px_1()
             .rounded_sm()
             .cursor_pointer()
-            .text_color(rgb(TEXT))
-            .when(open, |s| s.bg(rgb(BORDER)))
-            .hover(|s| s.bg(rgb(BORDER)))
+            .text_color(cx.theme().colors.text)
+            .when(open, |s| s.bg(cx.theme().colors.border))
+            .hover(|s| s.bg(cx.theme().colors.border))
             .child(
                 svg()
-                    .size(rm(13.0))
+                    .size(cx.theme().rm(13.0))
                     .flex_none()
-                    .text_color(rgb(TEXT))
+                    .text_color(cx.theme().colors.text)
                     .data(icons::svg_bytes("search.svg")),
             )
             .on_mouse_down(
@@ -224,9 +224,9 @@ impl Pm {
                     .px_1()
                     .rounded_sm()
                     .cursor_pointer()
-                    .text_color(rgb(TEXT))
-                    .when(open, |s| s.bg(rgb(BORDER)))
-                    .hover(|s| s.bg(rgb(BORDER)))
+                    .text_color(cx.theme().colors.text)
+                    .when(open, |s| s.bg(cx.theme().colors.border))
+                    .hover(|s| s.bg(cx.theme().colors.border))
                     .child(SharedString::from(format!(
                         "Filter ({}/5) \u{25be}",
                         self.ticket_filter.len()
@@ -308,9 +308,9 @@ impl Pm {
             .items_center()
             .justify_between()
             .flex_none()
-            .h(px(SECTION_HEADER_H))
+            .h(px(cx.theme().metrics.section_header_h))
             .px_2()
-            .text_color(rgb(DIM))
+            .text_color(cx.theme().colors.dim)
             .child(SharedString::from(count))
             .child(
                 div()
@@ -326,8 +326,8 @@ impl Pm {
                             .px_1()
                             .rounded_sm()
                             .cursor_pointer()
-                            .text_color(rgb(TEXT))
-                            .hover(|s| s.bg(rgb(BORDER)))
+                            .text_color(cx.theme().colors.text)
+                            .hover(|s| s.bg(cx.theme().colors.border))
                             .child("+ New")
                             .on_mouse_down(
                                 MouseButton::Left,
@@ -353,7 +353,7 @@ impl Pm {
             list = list.child(
                 div()
                     .p_2()
-                    .text_color(rgb(DIM))
+                    .text_color(cx.theme().colors.dim)
                     .child(SharedString::from("No tickets match.")),
             );
         }
@@ -370,10 +370,10 @@ impl Pm {
                     .px_2()
                     .py_1()
                     .border_b_1()
-                    .border_color(rgb(BORDER))
+                    .border_color(cx.theme().colors.border)
                     .cursor_pointer()
-                    .when(selected, |s| s.bg(rgb(SELECT)))
-                    .when(!selected, |s| s.hover(|s| s.bg(rgb(PANEL))))
+                    .when(selected, |s| s.bg(cx.theme().colors.select))
+                    .when(!selected, |s| s.hover(|s| s.bg(cx.theme().colors.panel)))
                     .child(
                         div()
                             .flex()
@@ -381,7 +381,7 @@ impl Pm {
                             .items_center()
                             .gap_2()
                             .text_size(px(11.0))
-                            .text_color(rgb(DIM))
+                            .text_color(cx.theme().colors.dim)
                             .child(
                                 div()
                                     .text_color(rgb(t.status.color()))
@@ -396,7 +396,7 @@ impl Pm {
                     )
                     .child(
                         div()
-                            .text_color(rgb(if closed { DIM } else { TEXT }))
+                            .text_color(if closed { cx.theme().colors.dim } else { cx.theme().colors.text })
                             .when(closed, |d| d.line_through())
                             .child(SharedString::from(t.title.clone())),
                     )
@@ -420,9 +420,9 @@ impl Pm {
             .h_full()
             .flex()
             .flex_col()
-            .bg(rgb(PANEL))
+            .bg(cx.theme().colors.panel)
             .border_r_1()
-            .border_color(rgb(BORDER))
+            .border_color(cx.theme().colors.border)
             .child(header)
             .when(self.ticket_search_open, |d| {
                 d.child(
@@ -434,7 +434,7 @@ impl Pm {
                 )
             })
             .child(list)
-            .child(self.sidebar_resize_handle())
+            .child(self.sidebar_resize_handle(cx))
     }
 
     fn ticket_detail(&self, cx: &mut Context<Self>) -> impl IntoElement {
@@ -454,8 +454,8 @@ impl Pm {
                 div()
                     .p_2()
                     .rounded_sm()
-                    .bg(rgb(DEL_BG))
-                    .text_color(rgb(TEXT))
+                    .bg(cx.theme().colors.del_bg)
+                    .text_color(cx.theme().colors.text)
                     .child(SharedString::from(format!("pm.json5: {err}"))),
             );
         }
@@ -469,7 +469,7 @@ impl Pm {
             None => col
                 .child(
                     div()
-                        .text_color(rgb(DIM))
+                        .text_color(cx.theme().colors.dim)
                         .child(SharedString::from("Select a ticket, or press + New.")),
                 )
                 .into_any_element(),
@@ -484,7 +484,7 @@ impl Pm {
             .child(
                 div()
                     .text_size(px(15.0))
-                    .text_color(rgb(TEXT))
+                    .text_color(cx.theme().colors.text)
                     .child(SharedString::from("New ticket")),
             )
             .child(self.new_ticket_title.clone())
@@ -500,8 +500,8 @@ impl Pm {
                             .px_2()
                             .py_1()
                             .rounded_sm()
-                            .bg(rgb(SELECT))
-                            .text_color(rgb(TEXT))
+                            .bg(cx.theme().colors.select)
+                            .text_color(cx.theme().colors.text)
                             .cursor_pointer()
                             .child("Create")
                             .on_mouse_down(
@@ -516,8 +516,8 @@ impl Pm {
                             .py_1()
                             .rounded_sm()
                             .border_1()
-                            .border_color(rgb(BORDER))
-                            .text_color(rgb(DIM))
+                            .border_color(cx.theme().colors.border)
+                            .text_color(cx.theme().colors.dim)
                             .cursor_pointer()
                             .child("Cancel")
                             .on_mouse_down(
@@ -557,11 +557,11 @@ impl Pm {
                     .gap_1()
                     .px_1()
                     .rounded_sm()
-                    .bg(rgb(BORDER))
+                    .bg(cx.theme().colors.border)
                     .text_color(rgb(current.color()))
                     .text_size(px(11.0))
                     .cursor_pointer()
-                    .hover(|s| s.bg(rgb(SELECT)))
+                    .hover(|s| s.bg(cx.theme().colors.select))
                     .child(SharedString::from(format!("{}  \u{25be}", current.label())))
                     .on_mouse_down(
                         MouseButton::Left,
@@ -598,32 +598,32 @@ impl Pm {
             .gap_2()
             .child(
                 div()
-                    .text_color(rgb(DIM))
+                    .text_color(cx.theme().colors.dim)
                     .child(SharedString::from(pm.display_id(t))),
             )
             .child(self.status_button(tid, t.status, cx))
-            .child(chip(t.priority.label(), t.priority.color()));
+            .child(chip(t.priority.label(), rgb(t.priority.color()).into(), cx.theme().colors.border));
         for label in &t.labels {
-            meta = meta.child(chip(label.clone(), CHANGED));
+            meta = meta.child(chip(label.clone(), cx.theme().colors.changed, cx.theme().colors.border));
         }
         if let Some(a) = &t.assignee {
             meta = meta.child(
                 div()
-                    .text_color(rgb(DIM))
+                    .text_color(cx.theme().colors.dim)
                     .child(SharedString::from(format!("@{a}"))),
             );
         }
         if !t.author.trim().is_empty() {
             meta = meta.child(
                 div()
-                    .text_color(rgb(DIM))
+                    .text_color(cx.theme().colors.dim)
                     .text_size(px(11.0))
                     .child(SharedString::from(format!("by {}", t.author))),
             );
         }
         meta = meta.child(
             div()
-                .text_color(rgb(DIM))
+                .text_color(cx.theme().colors.dim)
                 .text_size(px(11.0))
                 .child(SharedString::from(format!("updated {}", rel_time(t.updated)))),
         );
@@ -635,13 +635,13 @@ impl Pm {
             .child(
                 div()
                     .text_size(px(17.0))
-                    .text_color(rgb(TEXT))
+                    .text_color(cx.theme().colors.text)
                     .child(SharedString::from(t.title.clone())),
             )
             .child(meta);
 
         if !t.body.trim().is_empty() {
-            card = card.child(text_block(&t.body));
+            card = card.child(text_block(&t.body, cx.theme().colors.text));
         }
 
         // Code anchors — read-only for now; click opens the file in File-to-File.
@@ -650,9 +650,9 @@ impl Pm {
             card = card.child(
                 div()
                     .id(("anchor", i))
-                    .text_color(rgb(CHANGED))
+                    .text_color(cx.theme().colors.changed)
                     .cursor_pointer()
-                    .hover(|s| s.bg(rgb(PANEL)))
+                    .hover(|s| s.bg(cx.theme().colors.panel))
                     .child(SharedString::from(format!(
                         "\u{1f4ce} {}:{}\u{2013}{}",
                         a.file, a.start_line, a.end_line
@@ -674,7 +674,7 @@ impl Pm {
             card = card.child(
                 div()
                     .mt_2()
-                    .text_color(rgb(DIM))
+                    .text_color(cx.theme().colors.dim)
                     .text_size(px(11.0))
                     .child(SharedString::from(format!("History  ({})", t.history.len()))),
             );
@@ -685,7 +685,7 @@ impl Pm {
                         .flex_row()
                         .gap_2()
                         .text_size(px(11.0))
-                        .text_color(rgb(DIM))
+                        .text_color(cx.theme().colors.dim)
                         .child(SharedString::from(rel_time(h.at)))
                         .child(SharedString::from(history_line(h))),
                 );
@@ -696,7 +696,7 @@ impl Pm {
         card = card.child(
             div()
                 .mt_2()
-                .text_color(rgb(DIM))
+                .text_color(cx.theme().colors.dim)
                 .text_size(px(11.0))
                 .child(SharedString::from(format!("Comments  ({})", t.comments.len()))),
         );
@@ -708,10 +708,10 @@ impl Pm {
                     .gap_1()
                     .py_1()
                     .border_t_1()
-                    .border_color(rgb(BORDER))
+                    .border_color(cx.theme().colors.border)
                     .child(
                         div()
-                            .text_color(rgb(DIM))
+                            .text_color(cx.theme().colors.dim)
                             .text_size(px(11.0))
                             .child(SharedString::from(format!(
                                 "{}  \u{00b7}  {}",
@@ -719,7 +719,7 @@ impl Pm {
                                 rel_time(c.created)
                             ))),
                     )
-                    .child(text_block(&c.body)),
+                    .child(text_block(&c.body, cx.theme().colors.text)),
             );
         }
 
@@ -737,8 +737,8 @@ impl Pm {
                         .px_2()
                         .py_1()
                         .rounded_sm()
-                        .bg(rgb(SELECT))
-                        .text_color(rgb(TEXT))
+                        .bg(cx.theme().colors.select)
+                        .text_color(cx.theme().colors.text)
                         .cursor_pointer()
                         .child("Comment")
                         .on_mouse_down(

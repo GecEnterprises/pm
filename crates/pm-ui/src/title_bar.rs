@@ -2,7 +2,7 @@
 //! and drag-to-move — modelled on Zed's `platform_title_bar` / `title_bar`.
 
 use gpui::{
-    deferred, div, prelude::*, px, rgb, svg, ClickEvent, Context, Decorations, MouseButton,
+    deferred, div, prelude::*, px, svg, ClickEvent, Context, Decorations, MouseButton,
     SharedString, WindowControlArea,
 };
 
@@ -24,19 +24,19 @@ impl Pm {
             .items_center()
             .w_full()
             .flex_none()
-            .h(rm(TITLE_BAR_H))
-            .bg(rgb(PANEL))
+            .h(cx.theme().rm(cx.theme().metrics.title_bar_h))
+            .bg(cx.theme().colors.panel)
             .border_b_1()
-            .border_color(rgb(BORDER))
-            .text_color(rgb(TEXT))
+            .border_color(cx.theme().colors.border)
+            .text_color(cx.theme().colors.text)
             .window_control_area(WindowControlArea::Drag)
             .map(|bar| match decorations {
                 Decorations::Client { tiling } => bar
                     .when(!tiling.top && !tiling.left, |b| {
-                        b.rounded_tl(px(CLIENT_DECORATION_ROUNDING))
+                        b.rounded_tl(px(cx.theme().metrics.client_decoration_rounding))
                     })
                     .when(!tiling.top && !tiling.right, |b| {
-                        b.rounded_tr(px(CLIENT_DECORATION_ROUNDING))
+                        b.rounded_tr(px(cx.theme().metrics.client_decoration_rounding))
                     }),
                 Decorations::Server => bar,
             })
@@ -72,10 +72,10 @@ impl Pm {
                     .justify_center()
                     .child(
                         div()
-                            .max_w(rm(380.0))
+                            .max_w(cx.theme().rm(380.0))
                             .overflow_hidden()
                             .text_ellipsis()
-                            .text_color(rgb(DIM))
+                            .text_color(cx.theme().colors.dim)
                             .child(SharedString::from(title)),
                     ),
             )
@@ -103,14 +103,14 @@ impl Pm {
             .mx_2()
             .rounded_md()
             .border_1()
-            .border_color(rgb(BORDER))
-            .bg(rgb(PANEL))
+            .border_color(cx.theme().colors.border)
+            .bg(cx.theme().colors.panel)
             .overflow_hidden()
             .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation());
 
         for (label, icon, view) in segs {
             let active = !disabled && self.view == view;
-            let fg = rgb(if active { TEXT } else { DIM });
+            let fg = if active { cx.theme().colors.text } else { cx.theme().colors.dim };
             strip = strip.child(
                 div()
                     .id(label)
@@ -121,12 +121,12 @@ impl Pm {
                     .px_2()
                     .py(px(2.0))
                     .text_color(fg)
-                    .when(active, |s| s.bg(rgb(SELECT)))
+                    .when(active, |s| s.bg(cx.theme().colors.select))
                     .when(!disabled, |s| s.cursor_pointer())
-                    .when(!active && !disabled, |s| s.hover(|s| s.bg(rgb(BORDER))))
+                    .when(!active && !disabled, |s| s.hover(|s| s.bg(cx.theme().colors.border)))
                     .child(
                         svg()
-                            .size(rm(13.0))
+                            .size(cx.theme().rm(13.0))
                             .flex_none()
                             .text_color(fg)
                             .data(icons::svg_bytes(icon)),
@@ -166,8 +166,8 @@ impl Pm {
                 .h_full()
                 .px_2()
                 .cursor_pointer()
-                .hover(|s| s.bg(rgb(BORDER)))
-                .when(open, |b| b.bg(rgb(BORDER)))
+                .hover(|s| s.bg(cx.theme().colors.border))
+                .when(open, |b| b.bg(cx.theme().colors.border))
                 .child(SharedString::from(group.name))
                 .on_mouse_down(
                     MouseButton::Left,
@@ -209,27 +209,27 @@ impl Pm {
             .occlude()
             .flex()
             .flex_col()
-            .min_w(rm(210.0))
+            .min_w(cx.theme().rm(210.0))
             .py_1()
-            .bg(rgb(PANEL))
+            .bg(cx.theme().colors.panel)
             .border_1()
-            .border_color(rgb(BORDER))
+            .border_color(cx.theme().colors.border)
             .rounded_md()
             .shadow_lg()
-            .text_color(rgb(TEXT));
+            .text_color(cx.theme().colors.text);
 
         for (j, entry) in entries.into_iter().enumerate() {
             match entry {
                 Entry::Separator => {
-                    panel = panel.child(div().h(px(1.0)).my_1().bg(rgb(BORDER)));
+                    panel = panel.child(div().h(px(1.0)).my_1().bg(cx.theme().colors.border));
                 }
                 Entry::Header(label) => {
                     panel = panel.child(
                         div()
                             .px_3()
                             .py_1()
-                            .text_size(rm(11.0))
-                            .text_color(rgb(DIM))
+                            .text_size(cx.theme().rm(11.0))
+                            .text_color(cx.theme().colors.dim)
                             .child(label),
                     );
                 }
@@ -243,7 +243,7 @@ impl Pm {
                             .px_3()
                             .py_1()
                             .cursor_pointer()
-                            .hover(|s| s.bg(rgb(SELECT)))
+                            .hover(|s| s.bg(cx.theme().colors.select))
                             .child(label)
                             .on_mouse_down(
                                 MouseButton::Left,
@@ -272,7 +272,7 @@ impl Pm {
                         .px_3()
                         .py_1()
                         .cursor_pointer()
-                        .hover(|s| s.bg(rgb(SELECT)))
+                        .hover(|s| s.bg(cx.theme().colors.select))
                         .on_mouse_down(
                             MouseButton::Left,
                             cx.listener(move |pm, _, window, cx| {
@@ -290,14 +290,14 @@ impl Pm {
                                 .gap_2()
                                 .child(
                                     div()
-                                        .w(rm(12.0))
-                                        .text_color(rgb(CHANGED))
+                                        .w(cx.theme().rm(12.0))
+                                        .text_color(cx.theme().colors.changed)
                                         .child(if checked { "\u{2713}" } else { "" }),
                                 )
                                 .child(SharedString::from(label)),
                         )
                         .when_some(shortcut, |r, sc| {
-                            r.child(div().text_color(rgb(DIM)).child(SharedString::from(sc)))
+                            r.child(div().text_color(cx.theme().colors.dim).child(SharedString::from(sc)))
                         });
                     panel = panel.child(row);
                 }
@@ -328,17 +328,17 @@ impl Pm {
                 div()
                     .id(id)
                     .occlude()
-                    .w(rm(46.0))
+                    .w(cx.theme().rm(46.0))
                     .h_full()
                     .flex()
                     .items_center()
                     .justify_center()
                     .font_family("Segoe Fluent Icons")
-                    .text_size(rm(10.0))
+                    .text_size(cx.theme().rm(10.0))
                     .window_control_area(area)
                     .hover(|s| {
-                        s.bg(rgb(if close { CLOSE_HOVER } else { BORDER }))
-                            .text_color(rgb(TEXT))
+                        s.bg(if close { cx.theme().colors.close_hover } else { cx.theme().colors.border })
+                            .text_color(cx.theme().colors.text)
                     })
                     .child(glyph)
             };
@@ -358,13 +358,13 @@ impl Pm {
                 div()
                     .id(id)
                     .occlude()
-                    .w(rm(40.0))
+                    .w(cx.theme().rm(40.0))
                     .h_full()
                     .flex()
                     .items_center()
                     .justify_center()
                     .cursor_pointer()
-                    .hover(|s| s.bg(rgb(if close { CLOSE_HOVER } else { BORDER })))
+                    .hover(|s| s.bg(if close { cx.theme().colors.close_hover } else { cx.theme().colors.border }))
                     .child(glyph)
             };
             row.child(

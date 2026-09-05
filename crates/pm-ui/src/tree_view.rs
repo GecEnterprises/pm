@@ -13,9 +13,7 @@ use gpui::{
 use crate::icons;
 use fremantle::scroll::{Axis, BarInfo, ScrollDrag};
 use crate::app::Pm;
-use crate::theme::{
-    BAR, BORDER, CHANGED, DIM, ICON_SIZE, PANEL, SELECT, TEXT, TREE_INDENT, TREE_ROW_H, UI_FONT,
-};
+use crate::theme::ActiveTheme;
 
 pub struct TreeView {
     pm: Entity<Pm>,
@@ -99,12 +97,13 @@ impl Element for TreeView {
         let w = f32::from(bounds.size.width).max(0.0);
         let h = f32::from(bounds.size.height).max(0.0);
 
-        let s = crate::theme::scale_of(window);
-        let row_h = (TREE_ROW_H * s).round(); // whole px — see PM-54 / diff_view
-        let bar_w = BAR * s;
-        let icon_sz = ICON_SIZE * s;
-        let indent = TREE_INDENT * s;
-        let name_font = font(UI_FONT);
+        let theme = cx.theme().clone();
+        let s = theme.scale_of(window);
+        let row_h = (theme.metrics.tree_row_h * s).round(); // whole px — see PM-54 / diff_view
+        let bar_w = theme.metrics.bar * s;
+        let icon_sz = theme.metrics.icon_size * s;
+        let indent = theme.metrics.tree_indent * s;
+        let name_font = font(theme.metrics.ui_font);
         let font_size = px(13.0 * s);
 
         let (first, off_y, count, hover, rows) = self.pm.update(cx, |pm, _cx| {
@@ -135,7 +134,7 @@ impl Element for TreeView {
                 let run = TextRun {
                     len: s.len(),
                     font: name_font.clone(),
-                    color: if changed { rgb(CHANGED) } else { rgb(TEXT) }.into(),
+                    color: if changed { theme.colors.changed } else { theme.colors.text },
                     background_color: None,
                     underline: None,
                     strikethrough: None,
@@ -201,6 +200,7 @@ impl Element for TreeView {
         window: &mut Window,
         cx: &mut App,
     ) {
+        let theme = cx.theme().clone();
         let (left, top, w) = (p.left, p.top, p.width);
         let (row_h, bar_w, icon_sz, indent) = (p.row_h, p.bar_w, p.icon_sz, p.indent);
 
@@ -212,7 +212,7 @@ impl Element for TreeView {
         };
 
         window.with_content_mask(Some(ContentMask { bounds }), |window| {
-            window.paint_quad(fill(bounds, rgb(PANEL)));
+            window.paint_quad(fill(bounds, theme.colors.panel));
 
             for (k, row) in p.rows.iter().enumerate() {
                 let vi = p.first + k;
@@ -220,9 +220,9 @@ impl Element for TreeView {
                 let row_bounds =
                     Bounds::new(point(px(left), px(y)), size(px(w), px(row_h)));
                 if row.selected {
-                    window.paint_quad(fill(row_bounds, rgb(SELECT)));
+                    window.paint_quad(fill(row_bounds, theme.colors.select));
                 } else if p.hover == Some(vi) {
-                    window.paint_quad(fill(row_bounds, rgb(BORDER)));
+                    window.paint_quad(fill(row_bounds, theme.colors.border));
                 }
 
                 let x0 = left + 8.0 + row.depth as f32 * indent;
@@ -233,7 +233,7 @@ impl Element for TreeView {
                             key.into(),
                             Some(data),
                             TransformationMatrix::unit(),
-                            rgb(DIM).into(),
+                            theme.colors.dim,
                             cx,
                         )
                         .ok();
@@ -245,7 +245,7 @@ impl Element for TreeView {
                         ikey.into(),
                         Some(idata),
                         TransformationMatrix::unit(),
-                        if row.changed { rgb(CHANGED) } else { rgb(DIM) }.into(),
+                        if row.changed { theme.colors.changed } else { theme.colors.dim },
                         cx,
                     )
                     .ok();
@@ -264,7 +264,7 @@ impl Element for TreeView {
 
             if let Some(bar) = p.bar {
                 let hovered = p.bar_id.is_some_and(|id| id.is_hovered(window));
-                let thickness = (bar_w - 4.0 * (bar_w / BAR)).max(2.0);
+                let thickness = (bar_w - 4.0 * (bar_w / theme.metrics.bar)).max(2.0);
                 window.paint_quad(fill(
                     Bounds::new(
                         point(px(left + w - bar_w), px(top)),

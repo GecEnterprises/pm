@@ -5,14 +5,15 @@
 use gpui::{
     fill, font, point, px, rgb, rgba, size, App, Bounds, ContentMask, DispatchPhase, Element,
     ElementId, Entity, GlobalElementId, HitboxBehavior, HitboxId, InspectorElementId, IntoElement,
-    LayoutId, MouseButton, MouseDownEvent, MouseMoveEvent, MouseUpEvent, Pixels, ScrollWheelEvent,
-    SharedString, ShapedLine, Style, TextAlign, TextRun, TransformationMatrix, Window,
+    LayoutId, MouseButton, MouseDownEvent, MouseMoveEvent, MouseUpEvent, Hsla, Pixels,
+    ScrollWheelEvent, SharedString, ShapedLine, Style, TextAlign, TextRun, TransformationMatrix,
+    Window,
 };
 
 use crate::icons;
 use fremantle::scroll::{Axis, BarInfo, ScrollDrag};
 use crate::app::Pm;
-use crate::theme::{BAR, BORDER, DIM, ICON_SIZE, LIST_ROW_H, PANEL, SELECT, TEXT, UI_FONT};
+use crate::theme::ActiveTheme;
 
 const ADD_FG: u32 = 0x81b88b;
 const DEL_FG: u32 = 0xc74e39;
@@ -97,18 +98,19 @@ impl Element for ListView {
         let w = f32::from(bounds.size.width).max(0.0);
         let h = f32::from(bounds.size.height).max(0.0);
 
-        let s = crate::theme::scale_of(window);
-        let row_h = (LIST_ROW_H * s).round(); // whole px — see PM-54 / diff_view
-        let bar_w = BAR * s;
-        let icon_sz = ICON_SIZE * s;
-        let name_font = font(UI_FONT);
+        let theme = cx.theme().clone();
+        let s = theme.scale_of(window);
+        let row_h = (theme.metrics.list_row_h * s).round(); // whole px — see PM-54 / diff_view
+        let bar_w = theme.metrics.bar * s;
+        let icon_sz = theme.metrics.icon_size * s;
+        let name_font = font(theme.metrics.ui_font);
         let name_size = px(13.0 * s);
         let small = px(11.0 * s);
 
-        let run = |text: &SharedString, color: u32, font_ref: &gpui::Font| TextRun {
+        let run = |text: &SharedString, color: Hsla, font_ref: &gpui::Font| TextRun {
             len: text.len(),
             font: font_ref.clone(),
-            color: rgb(color).into(),
+            color,
             background_color: None,
             underline: None,
             strikethrough: None,
@@ -132,10 +134,16 @@ impl Element for ListView {
                 let selected = pm.state.open.as_deref() == Some(ch.rel.as_path());
 
                 let s: SharedString = ch.status.badge().into();
-                let status = ts.shape_line(s.clone(), small, &[run(&s, ch.status.color(), &name_font)], None);
+                let status = ts.shape_line(
+                    s.clone(),
+                    small,
+                    &[run(&s, rgb(ch.status.color()).into(), &name_font)],
+                    None,
+                );
 
                 let nm: SharedString = pm.state.change_names[i].clone().into();
-                let name = ts.shape_line(nm.clone(), name_size, &[run(&nm, TEXT, &name_font)], None);
+                let name =
+                    ts.shape_line(nm.clone(), name_size, &[run(&nm, theme.colors.text, &name_font)], None);
 
                 let badge = if ch.added > 0 || ch.removed > 0 {
                     let mut text = String::new();
@@ -230,6 +238,7 @@ impl Element for ListView {
         window: &mut Window,
         cx: &mut App,
     ) {
+        let theme = cx.theme().clone();
         let (left, top, w) = (p.left, p.top, p.width);
         let (row_h, bar_w, icon_sz) = (p.row_h, p.bar_w, p.icon_sz);
 
@@ -241,16 +250,16 @@ impl Element for ListView {
         };
 
         window.with_content_mask(Some(ContentMask { bounds }), |window| {
-            window.paint_quad(fill(bounds, rgb(PANEL)));
+            window.paint_quad(fill(bounds, theme.colors.panel));
 
             for (k, row) in p.rows.iter().enumerate() {
                 let i = p.first + k;
                 let y = top + i as f32 * row_h - p.off_y;
                 let rb = Bounds::new(point(px(left), px(y)), size(px(w), px(row_h)));
                 if row.selected {
-                    window.paint_quad(fill(rb, rgb(SELECT)));
+                    window.paint_quad(fill(rb, theme.colors.select));
                 } else if p.hover == Some(i) {
-                    window.paint_quad(fill(rb, rgb(BORDER)));
+                    window.paint_quad(fill(rb, theme.colors.border));
                 }
 
                 row.status
@@ -264,7 +273,7 @@ impl Element for ListView {
                         ikey.into(),
                         Some(idata),
                         TransformationMatrix::unit(),
-                        rgb(DIM).into(),
+                        theme.colors.dim,
                         cx,
                     )
                     .ok();
@@ -290,7 +299,7 @@ impl Element for ListView {
 
             if let Some(bar) = p.bar {
                 let hovered = p.bar_id.is_some_and(|id| id.is_hovered(window));
-                let thickness = (bar_w - 4.0 * (bar_w / BAR)).max(2.0);
+                let thickness = (bar_w - 4.0 * (bar_w / theme.metrics.bar)).max(2.0);
                 window.paint_quad(fill(
                     Bounds::new(
                         point(px(left + w - bar_w), px(top)),

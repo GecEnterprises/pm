@@ -3,3 +3,4 @@
 
 pub mod decorations;
 pub mod scroll;
+pub mod theme;
