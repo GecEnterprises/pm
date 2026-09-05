@@ -4,7 +4,7 @@
     "name": "pm",
     "key": "PM"
   },
-  "next_id": 67,
+  "next_id": 77,
   "tickets": [
     {
       "id": 5,
@@ -1103,28 +1103,7 @@
           "anchor": null
         }
       ],
-      "history": [
-        {
-          "at": 1788585291,
-          "author": "reaganiwadha",
-          "kind": "commented",
-          "comment_id": 2
-        },
-        {
-          "at": 1788585299,
-          "author": "reaganiwadha",
-          "kind": "status_changed",
-          "old": "open",
-          "new": "blocked"
-        },
-        {
-          "at": 1788585300,
-          "author": "reaganiwadha",
-          "kind": "status_changed",
-          "old": "blocked",
-          "new": "open"
-        }
-      ]
+      "history": []
     },
     {
       "id": 45,
@@ -1327,14 +1306,14 @@
     {
       "id": 55,
       "title": "Vendor a new package named fremantle which is just gpui components both primitives and scaffolding for it to be used in other applications. That way, pm-ui is a constrcution of the ui based off those primitives",
-      "body": "",
+      "body": "Goal: a new `crates/fremantle` workspace member holding generic, domain-agnostic gpui primitives + scaffolding, so pm-ui becomes a consumer built on top of it rather than defining everything inline.\n\n## Constraint\nfremantle is a **composable primitives library**, not shaped to pm-ui's or any specific app's domain. A second gpui app is planned (zagtag) but it currently has zero gpui code (Electron+React today) — do not design primitives around its domain shape either. Judge the API on its own merits.\n\n## Current state (why this is scoped the way it is)\n- pm-ui already depends on `gpui` directly (git dep on `zed-industries/zed`, branch `main`) — there's no existing internal UI crate to split from; fremantle is entirely new.\n- `scroll.rs` (pure math, zero gpui-domain coupling) and `decorations.rs` (window chrome, only touches theme constants) are already domain-free and can move near-verbatim.\n- `text_input.rs` (971 lines) is a full custom `Element` (IME, single/multiline, actions-based editing) that's domain-free but incomplete — its own doc comment says \"not handled: undo/redo\" — and PM-2 is blocked specifically on this widget not being production-ready.\n- `theme.rs` (81 lines) is flat `pub const` hex colors + metrics, no struct, no light/dark support — this is what PM-18 (\"Color Scheming System\") is asking for. Every one of pm-ui's 15+ view files does `use crate::theme::*`, so migrating this is the highest-touch step.\n- `list_view.rs` / `tree_view.rs` / `history_view.rs` share a generic virtualized-row/scrollbar rendering pattern but are entangled with `Entity<Pm>` (the app's domain entity) — extracting the pattern needs a delegate/trait abstraction.\n- `icons.rs` bundles SVGs via `include_dir!` pointed at pm-ui's own `assets/` dir — needs to accept an asset source from the consumer instead.\n\n## In scope\nNew `crates/fremantle` workspace member (`gpui = { workspace = true }`, same git pin as pm-ui, path-dep from pm-ui like pm-core today); extracting **and generalizing** (not just moving) scroll, decorations, theme, text-input, icons, and the list/row rendering pattern; migrating pm-ui to consume them.\n\nThis folds in PM-2 (text-input blocker) and PM-18 (color system gap) — both get resolved as fremantle's first primitives rather than tracked separately.\n\n## Out of scope\nPorting zagtag to gpui; publishing fremantle externally; `app.rs`/`config.rs`/`update.rs` (stay pm-specific); `menu.rs`/`status_bar.rs`/`title_bar.rs` (defer, not required for v1).\n\n## Phasing (tracked as sub-tickets)\n1. Scaffold `crates/fremantle` + move `scroll.rs`, `decorations.rs` near-verbatim — proves workspace wiring.\n2. Theme system (closes PM-18): `Theme` struct replacing flat consts, instantiable per-consumer; migrate all `use crate::theme::*` call sites.\n3. TextInput primitive (unblocks PM-2): move `text_input.rs`, add undo/redo, confirm/extend API against its usage in `diff_view.rs:698-970`.\n4. Icons: move `icons.rs`, parameterize asset source instead of baking in pm-ui's `assets/` dir.\n5. Generic list/row primitive: delegate-based `fremantle::list` extracted from `list_view.rs`/`tree_view.rs`/`history_view.rs`; rebuild the three call sites as thin delegates. Largest/riskiest, done last.\n\nVerify each phase with `cargo check`/`cargo build` across the workspace plus a visual smoke-test of pm-ui.",
       "status": "open",
       "priority": "normal",
       "labels": [],
       "assignee": null,
       "author": "unknown",
       "created": 1788494930,
-      "updated": 1788494930,
+      "updated": 1788590645,
       "anchors": [],
       "comments": [],
       "history": []
@@ -1387,7 +1366,7 @@
       "assignee": null,
       "author": "unknown",
       "created": 1788495204,
-      "updated": 1788585097,
+      "updated": 1788585339,
       "anchors": [],
       "comments": [
         {
@@ -1395,6 +1374,13 @@
           "author": "Claude",
           "created": 1788585096,
           "body": "Implemented: Ticket gains a `history: Vec<HistoryEntry>` field (pm-core/src/pm.rs), oldest-first. Each entry is `{ at, author, kind: ... }` via a typed `HistoryEvent` enum: TitleChanged/BodyChanged/StatusChanged/PriorityChanged/LabelsChanged/AssigneeChanged (old/new) and Commented { comment_id } (points at the comment rather than duplicating its text). Every mutating setter (set_title/set_body/set_status/set_priority/set_assignee/set_labels/add_comment) now takes an `author` and pushes an entry when something actually changes.\n\nAuthor threading: `AppState::set_ticket_status` and MCP's `edit_ticket` now resolve/accept `author` the same way create_ticket/add_comment already did (PM-15 convention) — edit_ticket gained an `author` param. GUI status changes pass `None` (falls back to the window's \"Acting as\" identity).\n\nUI: ticket_detail now renders a \"History\" section (tickets_view.rs) above Comments — one line per entry: relative time + a plain-English description (\"carol changed status: open → done\").\n\nOld tickets with no `history` field deserialize fine (`#[serde(default)]`, empty vec) — no migration needed. Added pm-mcp test `history_records_edits_and_comments` covering comment + title + status entries end-to-end. Full workspace test suite passes.",
+          "anchor": null
+        },
+        {
+          "id": 2,
+          "author": "Claude",
+          "created": 1788585339,
+          "body": "Verified live: the running GUI itself exercised this — a comment and two status flips on PM-44 recorded correctly in its history array (commented → status_changed open→blocked → status_changed blocked→open), and every pre-existing ticket backfilled with an empty history: [] on save. Committed and pushed (976ad61); no release cut for this one.",
           "anchor": null
         }
       ],
@@ -1516,6 +1502,200 @@
       "author": "reaganiwadha",
       "created": 1788584427,
       "updated": 1788584427,
+      "anchors": [],
+      "comments": [],
+      "history": []
+    },
+    {
+      "id": 67,
+      "title": "One window multi project / session workspace system",
+      "body": "",
+      "status": "open",
+      "priority": "normal",
+      "labels": [],
+      "assignee": null,
+      "author": "reaganiwadha",
+      "created": 1788590185,
+      "updated": 1788590239,
+      "anchors": [],
+      "comments": [
+        {
+          "id": 1,
+          "author": "reaganiwadha",
+          "created": 1788590239,
+          "body": "A nice thing is being able to merge different projects into one so we can see tickets of different projects merge into one workspace and one search view. Useful for working against a shared library or something.",
+          "anchor": null
+        }
+      ],
+      "history": []
+    },
+    {
+      "id": 68,
+      "title": "pm readme.md human rewrite",
+      "body": "",
+      "status": "open",
+      "priority": "normal",
+      "labels": [],
+      "assignee": null,
+      "author": "reaganiwadha",
+      "created": 1788590440,
+      "updated": 1788590462,
+      "anchors": [],
+      "comments": [
+        {
+          "id": 1,
+          "author": "reaganiwadha",
+          "created": 1788590462,
+          "body": "Rewrite the readme.md by reaganiwadha, do not vibe write the readme.md",
+          "anchor": null
+        }
+      ],
+      "history": []
+    },
+    {
+      "id": 69,
+      "title": "Nested comments",
+      "body": "",
+      "status": "open",
+      "priority": "normal",
+      "labels": [],
+      "assignee": null,
+      "author": "reaganiwadha",
+      "created": 1788590649,
+      "updated": 1788590649,
+      "anchors": [],
+      "comments": [],
+      "history": []
+    },
+    {
+      "id": 70,
+      "title": "fremantle: scaffold crate + move scroll.rs, decorations.rs",
+      "body": "Part of PM-55 (phase 1/5).\n\nAdd `crates/fremantle` as a new workspace member (`gpui = { workspace = true }`, same git pin as pm-ui: `zed-industries/zed` branch `main`). Move `scroll.rs` (pure math: `ScrollState`, `Axis`, `ScrollDrag`, thumb sizing — zero domain coupling) and `decorations.rs` (window chrome: rounded corners/shadow/resize grips) into it near-verbatim. pm-ui takes a path dep on fremantle, same convention as its existing dep on pm-core.\n\nLowest-risk phase — mainly proves out the workspace wiring before the harder migrations (theme, text-input, list primitive).\n\nVerify: `cargo check`/`cargo build` across the workspace; pm-ui still runs and scroll/window-decoration behavior is unchanged.",
+      "status": "open",
+      "priority": "normal",
+      "labels": [
+        "fremantle"
+      ],
+      "assignee": null,
+      "author": "reaganiwadha",
+      "created": 1788590656,
+      "updated": 1788590656,
+      "anchors": [],
+      "comments": [],
+      "history": []
+    },
+    {
+      "id": 71,
+      "title": "fremantle: Theme system (closes PM-18)",
+      "body": "Part of PM-55 (phase 2/5). Closes PM-18.\n\npm-ui's `theme.rs` today is just flat `pub const` hex colors (`BG`, `PANEL`, `BORDER`, `TEXT`, `DIM`, `SELECT`, `ADD_BG`, `DEL_BG`, `CHANGED`, `CLOSE_HOVER`) plus pixel-metric constants and a rem-scaling helper — no struct, no light/dark support. Every one of pm-ui's 15+ view files does `use crate::theme::*` or imports individual constants directly.\n\nDesign a `Theme` struct/trait in fremantle holding the same tokens (colors + metrics + rem-scaling), instantiable so each consuming app supplies its own palette (paves the way for light/dark or per-app themes). Migrate pm-ui's `theme.rs` to a concrete `Theme` instance passed via gpui context (e.g. a global or `Entity<Theme>`), and update all call sites off `use crate::theme::*`.\n\nThis is the highest-touch migration (touches nearly every pm-ui view file) — do it as its own phase, after PM-55 phase 1 has proven the workspace wiring.\n\nVerify: `cargo check`/`cargo build`; visual smoke-test of pm-ui confirming colors/metrics are pixel-identical to before the migration.",
+      "status": "open",
+      "priority": "normal",
+      "labels": [
+        "fremantle"
+      ],
+      "assignee": null,
+      "author": "reaganiwadha",
+      "created": 1788590660,
+      "updated": 1788590660,
+      "anchors": [],
+      "comments": [],
+      "history": []
+    },
+    {
+      "id": 72,
+      "title": "fremantle: TextInput primitive + undo/redo (unblocks PM-2)",
+      "body": "Part of PM-55 (phase 3/5). Unblocks PM-2.\n\nMove `text_input.rs` (971 lines) into fremantle as a `TextInput` primitive. It's already a full custom `Element` (IME support via `window.handle_input` + `EntityInputHandler`, single-line/multiline modes, actions-based editing: backspace, word/line motions, selection, copy/cut/paste, confirm/newline) and already domain-free, but its own doc comment states \"not handled: undo/redo\" — add that.\n\nPM-2 (\"wire line-anchored comments from the diff gutter\") is explicitly blocked on this: \"Blocked on a real text-input widget — the current one is a stopgap,\" anchored to `diff_view.rs:698-970`. Before closing this ticket, confirm/extend whatever API that usage actually needs (e.g. multi-field forms, submit-on-enter integration) so PM-2 can resume once this lands.\n\nVerify: `cargo check`/`cargo build`; exercise the text input in pm-ui (typing, IME, selection, undo/redo) via the `/run` skill.",
+      "status": "open",
+      "priority": "normal",
+      "labels": [
+        "fremantle"
+      ],
+      "assignee": null,
+      "author": "reaganiwadha",
+      "created": 1788590665,
+      "updated": 1788590665,
+      "anchors": [],
+      "comments": [],
+      "history": []
+    },
+    {
+      "id": 73,
+      "title": "fremantle: generalize icons.rs (asset source from consumer)",
+      "body": "Part of PM-55 (phase 4/5).\n\n`icons.rs` (330 lines) bundles SVGs via `include_dir!` pointed at pm-ui's own `assets/` dir, plus extension→icon-key tables. Move it into fremantle and parameterize the asset source (accept a byte-slice/`Dir` handle or an asset-provider trait from the consumer) instead of hardcoding pm-ui's asset path, so each app can supply its own SVG set.\n\nVerify: `cargo check`/`cargo build`; icons still render correctly in pm-ui after the asset source is passed in explicitly.",
+      "status": "open",
+      "priority": "normal",
+      "labels": [
+        "fremantle"
+      ],
+      "assignee": null,
+      "author": "reaganiwadha",
+      "created": 1788590668,
+      "updated": 1788590668,
+      "anchors": [],
+      "comments": [],
+      "history": []
+    },
+    {
+      "id": 74,
+      "title": "fremantle: generic list/row primitive (list_view, tree_view, history_view)",
+      "body": "Part of PM-55 (phase 5/5, largest/riskiest — do last).\n\n`list_view.rs`, `tree_view.rs`, and `history_view.rs` share a generic virtualized-row/scrollbar rendering pattern, but all three are entangled with `Entity<Pm>` (pm's domain/app entity) rather than generic data.\n\nExtract the shared pattern into a delegate-based `fremantle::list` primitive — something like a `ListDelegate` trait providing row count + a row-render closure, similar to gpui's own list patterns — then rebuild pm-ui's three call sites as thin delegates supplying `Pm`-specific data.\n\nDo this only after phases 1-3 (workspace scaffolding, Theme, TextInput) have proven the extraction pattern, since this is the highest-risk migration.\n\nVerify: `cargo check`/`cargo build`; visual smoke-test of pm-ui's ticket list, file tree, and commit history views (scrolling, selection, row rendering) via the `/run` skill.",
+      "status": "open",
+      "priority": "normal",
+      "labels": [
+        "fremantle"
+      ],
+      "assignee": null,
+      "author": "reaganiwadha",
+      "created": 1788590671,
+      "updated": 1788590671,
+      "anchors": [],
+      "comments": [],
+      "history": []
+    },
+    {
+      "id": 75,
+      "title": "Tickets: search bar to filter the ticket list",
+      "body": "Add a text search input to the tickets list view (not global/spotlight search — that's tracked separately in PM-20). Typing should filter the currently-listed tickets by title (and probably id/display_id, maybe body) as-you-type, combined with the existing status filter.\n\nContext: `crates/pm-ui/src/tickets_view.rs` already has a status-based filter — a `Filter (n/5) ▾` button (`filter_button`, tickets_view.rs:168) opening a checklist popover, applied via `.filter(|t| self.ticket_filter.contains(&t.status))` (tickets_view.rs:227). A text search should live alongside that in the list header and compose with it (AND, not replace).\n\nDepends on a real text-input widget to host the query — PM-2 notes the current text input is a stopgap; PM-55/PM-72 (fremantle's TextInput primitive) is the tracked fix for that, so this ticket may want to wait on PM-72 landing, or use the existing stopgap if that's acceptable short-term.\n\nOpen questions to settle before implementing:\n- Match scope: title only, or also id/body/labels?\n- Case-insensitive substring match seems like the obvious default — confirm.\n- Where the input sits in the header relative to the Filter button (PM-63 \"UI more obvious about what filters is being selected\" may want to unify both into one visible filter-state affordance).",
+      "status": "open",
+      "priority": "normal",
+      "labels": [
+        "tickets",
+        "ui"
+      ],
+      "assignee": null,
+      "author": "reaganiwadha",
+      "created": 1788590846,
+      "updated": 1788590999,
+      "anchors": [],
+      "comments": [
+        {
+          "id": 1,
+          "author": "reaganiwadha",
+          "created": 1788590999,
+          "body": "Let's have it scoped to title body and label, but weight them nicely, case insensitive, add a search icon button that reveals a search box and pushes the list layout below, animated if possible. and grabs focus of the cursor to there. No need pressing enter it should be fast. Use a fuzzy search library.",
+          "anchor": null
+        }
+      ],
+      "history": [
+        {
+          "at": 1788590999,
+          "author": "reaganiwadha",
+          "kind": "commented",
+          "comment_id": 1
+        }
+      ]
+    },
+    {
+      "id": 76,
+      "title": "MCP and Watermarking needs to be obvious to coding agents so that coding agents use it and warns the user and utilizes pm properly when it's a pm project",
+      "body": "Needs Claude Code input",
+      "status": "open",
+      "priority": "normal",
+      "labels": [],
+      "assignee": null,
+      "author": "reaganiwadha",
+      "created": 1788591064,
+      "updated": 1788591064,
       "anchors": [],
       "comments": [],
       "history": []

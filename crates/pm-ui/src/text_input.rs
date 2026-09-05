@@ -57,9 +57,11 @@ actions!(
     ]
 );
 
-/// Emitted by a single-line field when the user presses Enter.
 pub enum TextInputEvent {
+    /// A single-line field's user pressed Enter.
     Submit,
+    /// The content changed (typing, paste, IME, or a programmatic `set_text`).
+    Changed,
 }
 
 pub struct TextInput {
@@ -162,6 +164,7 @@ impl TextInput {
         self.selection_reversed = false;
         self.marked_range = None;
         self.scroll_x = px(0.0);
+        cx.emit(TextInputEvent::Changed);
         cx.notify();
     }
 
@@ -601,6 +604,7 @@ impl EntityInputHandler for TextInput {
         self.selected_range = caret..caret;
         self.selection_reversed = false;
         self.marked_range = None;
+        cx.emit(TextInputEvent::Changed);
         cx.notify();
     }
 
@@ -626,6 +630,7 @@ impl EntityInputHandler for TextInput {
                 c..c
             });
         self.selection_reversed = false;
+        cx.emit(TextInputEvent::Changed);
         cx.notify();
     }
 

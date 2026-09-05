@@ -4,13 +4,14 @@
 
 use std::path::PathBuf;
 
-use gpui::{deferred, div, prelude::*, px, rgb, Context, MouseButton, SharedString};
+use gpui::{deferred, div, prelude::*, px, rgb, svg, Context, MouseButton, SharedString};
 
 use pm_core::{HistoryEntry, HistoryEvent, Status, Ticket};
 
 use crate::app::{Compose, Pm, View};
 use crate::config::ConfigStore;
 use crate::history_view::rel_time;
+use crate::icons;
 use crate::theme::*;
 
 /// What a dropdown row does when clicked.
@@ -164,6 +165,40 @@ impl Pm {
         panel
     }
 
+    /// The list-header search icon (PM-75) — toggles the search box below the
+    /// header. Closing it clears the query so a hidden filter can't linger.
+    fn search_toggle_button(&self, cx: &mut Context<Self>) -> impl IntoElement {
+        let open = self.ticket_search_open;
+        div()
+            .id("ticket-search-toggle")
+            .px_1()
+            .rounded_sm()
+            .cursor_pointer()
+            .text_color(rgb(TEXT))
+            .when(open, |s| s.bg(rgb(BORDER)))
+            .hover(|s| s.bg(rgb(BORDER)))
+            .child(
+                svg()
+                    .size(rm(13.0))
+                    .flex_none()
+                    .text_color(rgb(TEXT))
+                    .data(icons::svg_bytes("search.svg")),
+            )
+            .on_mouse_down(
+                MouseButton::Left,
+                cx.listener(|pm, _, window, cx| {
+                    pm.ticket_search_open = !pm.ticket_search_open;
+                    if pm.ticket_search_open {
+                        pm.ticket_search.update(cx, |ti, cx| ti.focus(window, cx));
+                    } else {
+                        pm.ticket_search.update(cx, |ti, cx| ti.reset(cx));
+                        pm.ticket_list_shown_count = None;
+                    }
+                    cx.notify();
+                }),
+            )
+    }
+
     /// The list-header `Filter (n/5) ▾` button + its status-checklist popover.
     fn filter_button(&self, cx: &mut Context<Self>) -> impl IntoElement {
         let open = self.filter_menu_open;
@@ -219,13 +254,48 @@ impl Pm {
             })
     }
 
-    fn ticket_list(&self, cx: &mut Context<Self>) -> impl IntoElement {
+    /// Tickets visible after the status filter + search query (PM-75) — the
+    /// single source of truth for "what the list shows", shared by the
+    /// renderer and the auto-select logic below.
+    fn shown_tickets(&self, cx: &Context<Self>) -> Vec<&Ticket> {
         let pm = &self.state.pm;
-        let shown: Vec<&Ticket> = pm
-            .tickets
+        let query = self.ticket_search.read(cx).content().trim().to_lowercase();
+        pm.tickets
             .iter()
             .filter(|t| self.ticket_filter.contains(&t.status))
-            .collect();
+            .filter(|t| {
+                query.is_empty()
+                    || t.title.to_lowercase().contains(&query)
+                    || pm.display_id(t).to_lowercase().contains(&query)
+            })
+            .collect()
+    }
+
+    /// Called on every search-box keystroke (PM-75). Jumps the selection to
+    /// the new first result when the list just narrowed; a widening edit
+    /// (e.g. backspace) leaves whatever's selected alone.
+    pub(crate) fn autoselect_on_narrow(&mut self, cx: &mut Context<Self>) {
+        let shown_ids: Vec<u64> = self.shown_tickets(cx).iter().map(|t| t.id).collect();
+        let narrowed = self.ticket_list_shown_count.is_some_and(|prev| shown_ids.len() < prev);
+        self.ticket_list_shown_count = Some(shown_ids.len());
+        if narrowed {
+            self.selected_ticket = shown_ids.first().copied();
+            self.composing = None;
+            cx.notify();
+        }
+    }
+
+    /// Default to the first visible ticket when the Tickets pane is opened
+    /// with nothing selected yet.
+    pub(crate) fn autoselect_first_ticket(&mut self, cx: &mut Context<Self>) {
+        if self.selected_ticket.is_none() {
+            self.selected_ticket = self.shown_tickets(cx).first().map(|t| t.id);
+        }
+    }
+
+    fn ticket_list(&self, cx: &mut Context<Self>) -> impl IntoElement {
+        let pm = &self.state.pm;
+        let shown = self.shown_tickets(cx);
         let count = if shown.len() == pm.tickets.len() {
             format!("Tickets  ({})", shown.len())
         } else {
@@ -248,6 +318,7 @@ impl Pm {
                     .flex_row()
                     .items_center()
                     .gap_1()
+                    .child(self.search_toggle_button(cx))
                     .child(self.filter_button(cx))
                     .child(
                         div()
@@ -283,7 +354,7 @@ impl Pm {
                 div()
                     .p_2()
                     .text_color(rgb(DIM))
-                    .child(SharedString::from("No tickets match the filter.")),
+                    .child(SharedString::from("No tickets match.")),
             );
         }
         for (i, t) in shown.into_iter().enumerate() {
@@ -353,6 +424,15 @@ impl Pm {
             .border_r_1()
             .border_color(rgb(BORDER))
             .child(header)
+            .when(self.ticket_search_open, |d| {
+                d.child(
+                    div()
+                        .flex_none()
+                        .px_2()
+                        .pb_1()
+                        .child(self.ticket_search.clone()),
+                )
+            })
             .child(list)
             .child(self.sidebar_resize_handle())
     }

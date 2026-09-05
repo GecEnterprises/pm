@@ -164,6 +164,9 @@ pub struct Pm {
     pub new_ticket_title: Entity<TextInput>,
     pub new_ticket_body: Entity<TextInput>,
     pub comment_box: Entity<TextInput>,
+    /// The ticket-list search box (PM-75) — filters the list header, applied
+    /// on top of `ticket_filter`.
+    pub ticket_search: Entity<TextInput>,
     /// Identity field shown in the status-bar "Acting as" popover — the name
     /// written as the author of tickets / comments, persisted to `Config.author`
     /// (PM-15, PM-56).
@@ -175,6 +178,12 @@ pub struct Pm {
     pub scale: f32,
     /// Statuses shown in the ticket list (the header filter dropdown).
     pub ticket_filter: std::collections::HashSet<Status>,
+    /// Ticket count shown last time the search box changed (PM-75) — lets
+    /// `autoselect_on_narrow` tell a narrowing search from a widening one.
+    pub ticket_list_shown_count: Option<usize>,
+    /// The ticket-list search box is revealed (PM-75) — collapsed by default
+    /// to keep the list header compact.
+    pub ticket_search_open: bool,
     /// The list-header status-filter popover is open.
     pub filter_menu_open: bool,
     /// The selected ticket's status-picker popover is open.
@@ -197,11 +206,20 @@ impl Pm {
         let new_ticket_title = cx.new(|cx| TextInput::single(cx).placeholder("Title"));
         cx.subscribe(&new_ticket_title, |pm, _, ev, cx| match ev {
             TextInputEvent::Submit => pm.submit_new_ticket(cx),
+            TextInputEvent::Changed => {}
         })
         .detach();
         let new_ticket_body =
             cx.new(|cx| TextInput::multi(cx).placeholder("Description (optional)"));
         let comment_box = cx.new(|cx| TextInput::multi(cx).placeholder("Add a comment\u{2026}"));
+        let ticket_search = cx.new(|cx| TextInput::single(cx).placeholder("Search tickets\u{2026}"));
+        // PM-75: narrowing the search re-selects the first visible ticket;
+        // widening it back out leaves the current selection alone.
+        cx.subscribe(&ticket_search, |pm, _, ev, cx| match ev {
+            TextInputEvent::Changed => pm.autoselect_on_narrow(cx),
+            TextInputEvent::Submit => {}
+        })
+        .detach();
 
         let scale = ConfigStore::get(cx).ui_scale();
 
@@ -214,6 +232,7 @@ impl Pm {
                 pm.user_menu_open = false;
                 cx.notify();
             }
+            TextInputEvent::Changed => {}
         })
         .detach();
 
@@ -259,6 +278,7 @@ impl Pm {
             new_ticket_title,
             new_ticket_body,
             comment_box,
+            ticket_search,
             author_box,
             user_menu_open: false,
             ticket_hover: None,
@@ -267,6 +287,8 @@ impl Pm {
             ticket_filter: [Status::Open, Status::InProgress, Status::Blocked]
                 .into_iter()
                 .collect(),
+            ticket_list_shown_count: None,
+            ticket_search_open: false,
             filter_menu_open: false,
             status_menu_open: false,
             empty: false,
@@ -423,6 +445,7 @@ impl Pm {
             self.view = view;
             if view == View::Tickets {
                 self.maybe_prompt_store(cx);
+                self.autoselect_first_ticket(cx);
             }
             cx.notify();
         }
