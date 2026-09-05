@@ -4235,7 +4235,7 @@ dependencies = [
 
 [[package]]
 name = "pm"
-version = "0.0.4"
+version = "0.0.5"
 dependencies = [
  "anyhow",
  "gpui",
@@ -4250,7 +4250,7 @@ dependencies = [
 
 [[package]]
 name = "pm-core"
-version = "0.0.4"
+version = "0.0.5"
 dependencies = [
  "anyhow",
  "figlet-rs",
@@ -4268,7 +4268,7 @@ dependencies = [
 
 [[package]]
 name = "pm-mcp"
-version = "0.0.4"
+version = "0.0.5"
 dependencies = [
  "anyhow",
  "pm-core",
@@ -4283,7 +4283,7 @@ dependencies = [
 
 [[package]]
 name = "pm-ui"
-version = "0.0.4"
+version = "0.0.5"
 dependencies = [
  "fremantle",
  "gpui",
