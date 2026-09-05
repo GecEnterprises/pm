@@ -151,10 +151,10 @@ pub fn create_ticket(
     let now = pm::now_unix();
     let id = data.create_ticket(title, body.unwrap_or_default(), author.clone(), now);
     if let Some(p) = priority {
-        data.set_priority(id, parse_priority(p)?, now);
+        data.set_priority(id, parse_priority(p)?, author.clone(), now);
     }
     if let Some(l) = labels {
-        data.set_labels(id, l, now);
+        data.set_labels(id, l, author.clone(), now);
     }
     save(&data, root)?;
     let display = data.ticket(id).map(|t| data.display_id(t)).unwrap_or_default();
@@ -171,36 +171,38 @@ pub fn edit_ticket(
     priority: Option<&str>,
     labels: Option<Vec<String>>,
     assignee: Option<Value>,
+    author: Option<&str>,
 ) -> Result<Value> {
     let _guard = STORE_LOCK.lock().unwrap_or_else(|e| e.into_inner());
     let mut data = load(root)?;
     if data.ticket(id).is_none() {
         bail!("no ticket with id {id}");
     }
+    let author = resolve_author(author, &Repo::open(root));
     let now = pm::now_unix();
     let mut changed = Vec::new();
     if let Some(v) = title {
-        if data.set_title(id, v, now) {
+        if data.set_title(id, v, author.clone(), now) {
             changed.push("title");
         }
     }
     if let Some(v) = body {
-        if data.set_body(id, v, now) {
+        if data.set_body(id, v, author.clone(), now) {
             changed.push("body");
         }
     }
     if let Some(v) = status {
-        if data.set_status(id, parse_status(v)?, now) {
+        if data.set_status(id, parse_status(v)?, author.clone(), now) {
             changed.push("status");
         }
     }
     if let Some(v) = priority {
-        if data.set_priority(id, parse_priority(v)?, now) {
+        if data.set_priority(id, parse_priority(v)?, author.clone(), now) {
             changed.push("priority");
         }
     }
     if let Some(v) = labels {
-        if data.set_labels(id, v, now) {
+        if data.set_labels(id, v, author.clone(), now) {
             changed.push("labels");
         }
     }
@@ -211,7 +213,7 @@ pub fn edit_ticket(
             Value::String(s) => Some(s),
             other => bail!("assignee must be a string or null, got {other}"),
         };
-        if data.set_assignee(id, next, now) {
+        if data.set_assignee(id, next, author.clone(), now) {
             changed.push("assignee");
         }
     }
@@ -334,11 +336,37 @@ mod tests {
         assert_eq!(t["priority"], "high");
         assert_eq!(t["comments"][0]["author"], "bob");
 
-        edit_ticket(&d, id, None, None, Some("done"), None, None, None).unwrap();
+        edit_ticket(&d, id, None, None, Some("done"), None, None, None, Some("carol")).unwrap();
         let list = list_tickets(&d, Some("done"), None).unwrap();
         assert_eq!(list["count"], 1);
         let none = list_tickets(&d, Some("open"), None).unwrap();
         assert_eq!(none["count"], 0);
+
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
+    #[test]
+    fn history_records_edits_and_comments() {
+        let d = tmp_project();
+        let id = create_ticket(&d, "hello", None, Some("alice"), None, None).unwrap()["id"]
+            .as_u64()
+            .unwrap();
+        add_comment(&d, id, "a note", Some("bob")).unwrap();
+        edit_ticket(&d, id, Some("bye"), None, Some("done"), None, None, None, Some("carol"))
+            .unwrap();
+
+        let t = get_ticket(&d, id).unwrap();
+        let history = t["history"].as_array().unwrap();
+        assert_eq!(history.len(), 3);
+        assert_eq!(history[0]["kind"], "commented");
+        assert_eq!(history[0]["author"], "bob");
+        assert_eq!(history[1]["kind"], "title_changed");
+        assert_eq!(history[1]["old"], "hello");
+        assert_eq!(history[1]["new"], "bye");
+        assert_eq!(history[1]["author"], "carol");
+        assert_eq!(history[2]["kind"], "status_changed");
+        assert_eq!(history[2]["old"], "open");
+        assert_eq!(history[2]["new"], "done");
 
         let _ = std::fs::remove_dir_all(&d);
     }

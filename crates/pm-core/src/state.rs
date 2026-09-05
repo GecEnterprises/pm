@@ -247,9 +247,16 @@ impl AppState {
         }
     }
 
-    /// Change a ticket's status and persist.
-    pub fn set_ticket_status(&mut self, ticket_id: u64, status: crate::pm::Status) {
-        if self.pm.set_status(ticket_id, status, pm::now_unix()) {
+    /// Change a ticket's status and persist. `author` overrides this window's
+    /// default when non-empty (PM-15).
+    pub fn set_ticket_status(
+        &mut self,
+        ticket_id: u64,
+        status: crate::pm::Status,
+        author: Option<String>,
+    ) {
+        let author = self.author_or_default(author);
+        if self.pm.set_status(ticket_id, status, author, pm::now_unix()) {
             self.save_pm();
         }
     }

@@ -6,7 +6,7 @@ use std::path::PathBuf;
 
 use gpui::{deferred, div, prelude::*, px, rgb, Context, MouseButton, SharedString};
 
-use pm_core::{Status, Ticket};
+use pm_core::{HistoryEntry, HistoryEvent, Status, Ticket};
 
 use crate::app::{Compose, Pm, View};
 use crate::config::ConfigStore;
@@ -38,6 +38,34 @@ fn text_block(s: &str) -> impl IntoElement {
             s.split('\n')
                 .map(|l| div().child(SharedString::from(l.to_string()))),
         )
+}
+
+/// One human-readable line for a history entry (PM-58) — who did what.
+fn history_line(h: &HistoryEntry) -> String {
+    let who = if h.author.is_empty() { "someone" } else { h.author.as_str() };
+    match &h.event {
+        HistoryEvent::TitleChanged { old, new } => {
+            format!("{who} renamed \u{201c}{old}\u{201d} \u{2192} \u{201c}{new}\u{201d}")
+        }
+        HistoryEvent::BodyChanged { .. } => format!("{who} edited the description"),
+        HistoryEvent::StatusChanged { old, new } => {
+            format!("{who} changed status: {} \u{2192} {}", old.label(), new.label())
+        }
+        HistoryEvent::PriorityChanged { old, new } => {
+            format!("{who} changed priority: {} \u{2192} {}", old.label(), new.label())
+        }
+        HistoryEvent::LabelsChanged { old, new } => format!(
+            "{who} changed labels: [{}] \u{2192} [{}]",
+            old.join(", "),
+            new.join(", ")
+        ),
+        HistoryEvent::AssigneeChanged { old, new } => format!(
+            "{who} reassigned: {} \u{2192} {}",
+            old.as_deref().unwrap_or("nobody"),
+            new.as_deref().unwrap_or("nobody")
+        ),
+        HistoryEvent::Commented { .. } => format!("{who} commented"),
+    }
 }
 
 impl Pm {
@@ -430,7 +458,7 @@ impl Pm {
             .iter()
             .map(|&s| {
                 let act: MenuAct = Box::new(move |pm, cx| {
-                    pm.state.set_ticket_status(tid, s);
+                    pm.state.set_ticket_status(tid, s, None);
                     pm.status_menu_open = false;
                     cx.notify();
                 });
@@ -558,6 +586,30 @@ impl Pm {
                         }),
                     ),
             );
+        }
+
+        // History — field edits and a "commented" marker per comment, oldest
+        // first; the comment's own text is rendered below, not repeated here.
+        if !t.history.is_empty() {
+            card = card.child(
+                div()
+                    .mt_2()
+                    .text_color(rgb(DIM))
+                    .text_size(px(11.0))
+                    .child(SharedString::from(format!("History  ({})", t.history.len()))),
+            );
+            for h in &t.history {
+                card = card.child(
+                    div()
+                        .flex()
+                        .flex_row()
+                        .gap_2()
+                        .text_size(px(11.0))
+                        .text_color(rgb(DIM))
+                        .child(SharedString::from(rel_time(h.at)))
+                        .child(SharedString::from(history_line(h))),
+                );
+            }
         }
 
         // Comments.

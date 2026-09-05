@@ -132,6 +132,34 @@ pub struct Comment {
     pub anchor: Option<Anchor>,
 }
 
+/// One recorded change to a ticket, forming its audit trail (PM-58). Ticket
+/// creation and comment bodies already carry their own `created`/`author`, so
+/// this only covers field edits plus a pointer to each comment, letting the UI
+/// render one merged timeline without duplicating comment text here.
+#[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum HistoryEvent {
+    TitleChanged { old: String, new: String },
+    BodyChanged { old: String, new: String },
+    StatusChanged { old: Status, new: Status },
+    PriorityChanged { old: Priority, new: Priority },
+    LabelsChanged { old: Vec<String>, new: Vec<String> },
+    AssigneeChanged { old: Option<String>, new: Option<String> },
+    /// A comment was added; look it up by id in `Ticket::comments` for its body.
+    Commented { comment_id: u64 },
+}
+
+/// One entry in a ticket's history, oldest first.
+#[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
+pub struct HistoryEntry {
+    /// Unix seconds.
+    pub at: i64,
+    #[serde(default)]
+    pub author: String,
+    #[serde(flatten)]
+    pub event: HistoryEvent,
+}
+
 /// One ticket.
 #[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
 pub struct Ticket {
@@ -161,6 +189,11 @@ pub struct Ticket {
     pub anchors: Vec<Anchor>,
     #[serde(default)]
     pub comments: Vec<Comment>,
+    /// Audit trail of field edits and comments, oldest first (PM-58). Absent on
+    /// tickets written before this field existed — an empty history there just
+    /// means "no lineage recorded before now", not "nothing ever happened".
+    #[serde(default)]
+    pub history: Vec<HistoryEntry>,
 }
 
 /// Project-level metadata.
@@ -307,13 +340,25 @@ impl PmData {
         }
     }
 
-    /// Set a ticket's status, touching `updated`. Returns whether anything
-    /// changed (unknown ticket / same status → `false`).
-    pub fn set_status(&mut self, ticket_id: u64, status: Status, now: i64) -> bool {
+    /// Set a ticket's status, touching `updated` and recording a
+    /// [`HistoryEvent`]. Returns whether anything changed (unknown ticket /
+    /// same status → `false`).
+    pub fn set_status(
+        &mut self,
+        ticket_id: u64,
+        status: Status,
+        author: impl Into<String>,
+        now: i64,
+    ) -> bool {
         match self.ticket_mut(ticket_id) {
             Some(t) if t.status != status => {
-                t.status = status;
+                let old = std::mem::replace(&mut t.status, status);
                 t.updated = now;
+                t.history.push(HistoryEntry {
+                    at: now,
+                    author: author.into(),
+                    event: HistoryEvent::StatusChanged { old, new: status },
+                });
                 true
             }
             _ => false,
@@ -343,74 +388,135 @@ impl PmData {
             updated: now,
             anchors: Vec::new(),
             comments: Vec::new(),
+            history: Vec::new(),
         });
         id
     }
 
-    /// Set a ticket's title, touching `updated`. Returns whether anything changed.
-    pub fn set_title(&mut self, ticket_id: u64, title: impl Into<String>, now: i64) -> bool {
+    /// Set a ticket's title, touching `updated` and recording a [`HistoryEvent`].
+    /// Returns whether anything changed.
+    pub fn set_title(
+        &mut self,
+        ticket_id: u64,
+        title: impl Into<String>,
+        author: impl Into<String>,
+        now: i64,
+    ) -> bool {
         let title = title.into();
         match self.ticket_mut(ticket_id) {
             Some(t) if t.title != title => {
-                t.title = title;
+                let old = std::mem::replace(&mut t.title, title.clone());
                 t.updated = now;
+                t.history.push(HistoryEntry {
+                    at: now,
+                    author: author.into(),
+                    event: HistoryEvent::TitleChanged { old, new: title },
+                });
                 true
             }
             _ => false,
         }
     }
 
-    /// Set a ticket's body, touching `updated`. Returns whether anything changed.
-    pub fn set_body(&mut self, ticket_id: u64, body: impl Into<String>, now: i64) -> bool {
+    /// Set a ticket's body, touching `updated` and recording a [`HistoryEvent`].
+    /// Returns whether anything changed.
+    pub fn set_body(
+        &mut self,
+        ticket_id: u64,
+        body: impl Into<String>,
+        author: impl Into<String>,
+        now: i64,
+    ) -> bool {
         let body = body.into();
         match self.ticket_mut(ticket_id) {
             Some(t) if t.body != body => {
-                t.body = body;
+                let old = std::mem::replace(&mut t.body, body.clone());
                 t.updated = now;
+                t.history.push(HistoryEntry {
+                    at: now,
+                    author: author.into(),
+                    event: HistoryEvent::BodyChanged { old, new: body },
+                });
                 true
             }
             _ => false,
         }
     }
 
-    /// Set a ticket's priority, touching `updated`. Returns whether anything changed.
-    pub fn set_priority(&mut self, ticket_id: u64, priority: Priority, now: i64) -> bool {
+    /// Set a ticket's priority, touching `updated` and recording a
+    /// [`HistoryEvent`]. Returns whether anything changed.
+    pub fn set_priority(
+        &mut self,
+        ticket_id: u64,
+        priority: Priority,
+        author: impl Into<String>,
+        now: i64,
+    ) -> bool {
         match self.ticket_mut(ticket_id) {
             Some(t) if t.priority != priority => {
-                t.priority = priority;
+                let old = std::mem::replace(&mut t.priority, priority);
                 t.updated = now;
+                t.history.push(HistoryEntry {
+                    at: now,
+                    author: author.into(),
+                    event: HistoryEvent::PriorityChanged { old, new: priority },
+                });
                 true
             }
             _ => false,
         }
     }
 
-    /// Set a ticket's assignee, touching `updated`. Returns whether anything changed.
-    pub fn set_assignee(&mut self, ticket_id: u64, assignee: Option<String>, now: i64) -> bool {
+    /// Set a ticket's assignee, touching `updated` and recording a
+    /// [`HistoryEvent`]. Returns whether anything changed.
+    pub fn set_assignee(
+        &mut self,
+        ticket_id: u64,
+        assignee: Option<String>,
+        author: impl Into<String>,
+        now: i64,
+    ) -> bool {
         match self.ticket_mut(ticket_id) {
             Some(t) if t.assignee != assignee => {
-                t.assignee = assignee;
+                let old = std::mem::replace(&mut t.assignee, assignee.clone());
                 t.updated = now;
+                t.history.push(HistoryEntry {
+                    at: now,
+                    author: author.into(),
+                    event: HistoryEvent::AssigneeChanged { old, new: assignee },
+                });
                 true
             }
             _ => false,
         }
     }
 
-    /// Replace a ticket's labels, touching `updated`. Returns whether anything changed.
-    pub fn set_labels(&mut self, ticket_id: u64, labels: Vec<String>, now: i64) -> bool {
+    /// Replace a ticket's labels, touching `updated` and recording a
+    /// [`HistoryEvent`]. Returns whether anything changed.
+    pub fn set_labels(
+        &mut self,
+        ticket_id: u64,
+        labels: Vec<String>,
+        author: impl Into<String>,
+        now: i64,
+    ) -> bool {
         match self.ticket_mut(ticket_id) {
             Some(t) if t.labels != labels => {
-                t.labels = labels;
+                let old = std::mem::replace(&mut t.labels, labels.clone());
                 t.updated = now;
+                t.history.push(HistoryEntry {
+                    at: now,
+                    author: author.into(),
+                    event: HistoryEvent::LabelsChanged { old, new: labels },
+                });
                 true
             }
             _ => false,
         }
     }
 
-    /// Append a comment to a ticket and touch its `updated`. Returns `false` if
-    /// the ticket doesn't exist.
+    /// Append a comment to a ticket, touch its `updated`, and record a
+    /// [`HistoryEvent`]. Returns `false` if the ticket doesn't exist.
     pub fn add_comment(
         &mut self,
         ticket_id: u64,
@@ -421,15 +527,21 @@ impl PmData {
         let Some(t) = self.ticket_mut(ticket_id) else {
             return false;
         };
+        let author = author.into();
         let id = t.comments.iter().map(|c| c.id).max().unwrap_or(0) + 1;
         t.comments.push(Comment {
             id,
-            author: author.into(),
+            author: author.clone(),
             created: now,
             body: body.into(),
             anchor: None,
         });
         t.updated = now;
+        t.history.push(HistoryEntry {
+            at: now,
+            author,
+            event: HistoryEvent::Commented { comment_id: id },
+        });
         true
     }
 }

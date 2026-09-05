@@ -1296,15 +1296,23 @@
       "id": 58,
       "title": "Historical lineage of what happens to a ticket should be preserved, we need a richer struct/json format for this. Description changes, title changes, when did it gets done, everything",
       "body": "",
-      "status": "open",
+      "status": "done",
       "priority": "normal",
       "labels": [],
       "assignee": null,
       "author": "unknown",
       "created": 1788495204,
-      "updated": 1788495204,
+      "updated": 1788585097,
       "anchors": [],
-      "comments": []
+      "comments": [
+        {
+          "id": 1,
+          "author": "Claude",
+          "created": 1788585096,
+          "body": "Implemented: Ticket gains a `history: Vec<HistoryEntry>` field (pm-core/src/pm.rs), oldest-first. Each entry is `{ at, author, kind: ... }` via a typed `HistoryEvent` enum: TitleChanged/BodyChanged/StatusChanged/PriorityChanged/LabelsChanged/AssigneeChanged (old/new) and Commented { comment_id } (points at the comment rather than duplicating its text). Every mutating setter (set_title/set_body/set_status/set_priority/set_assignee/set_labels/add_comment) now takes an `author` and pushes an entry when something actually changes.\n\nAuthor threading: `AppState::set_ticket_status` and MCP's `edit_ticket` now resolve/accept `author` the same way create_ticket/add_comment already did (PM-15 convention) — edit_ticket gained an `author` param. GUI status changes pass `None` (falls back to the window's \"Acting as\" identity).\n\nUI: ticket_detail now renders a \"History\" section (tickets_view.rs) above Comments — one line per entry: relative time + a plain-English description (\"carol changed status: open → done\").\n\nOld tickets with no `history` field deserialize fine (`#[serde(default)]`, empty vec) — no migration needed. Added pm-mcp test `history_records_edits_and_comments` covering comment + title + status entries end-to-end. Full workspace test suite passes.",
+          "anchor": null
+        }
+      ]
     },
     {
       "id": 59,

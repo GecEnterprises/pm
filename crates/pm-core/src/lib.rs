@@ -16,5 +16,5 @@ pub use config::Config;
 pub use identity::resolve_author;
 pub use git::{CommitInfo, DiffTarget, Repo};
 pub use git2::Oid;
-pub use pm::{Anchor, Comment, PmData, Priority, Status, Ticket};
+pub use pm::{Anchor, Comment, HistoryEntry, HistoryEvent, PmData, Priority, Status, Ticket};
 pub use state::{AppState, MAX_ROWS};

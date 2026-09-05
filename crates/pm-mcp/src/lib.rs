@@ -92,6 +92,8 @@ struct EditTicket {
     labels: Option<Vec<String>>,
     #[schemars(description = "String to assign, or null to clear")]
     assignee: Option<Value>,
+    #[schemars(description = "Author to record against each edit — any name; unverified (PM-15)")]
+    author: Option<String>,
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
@@ -164,6 +166,7 @@ impl PmServer {
             a.priority.as_deref(),
             a.labels,
             a.assignee,
+            a.author.as_deref(),
         ))
     }
 
