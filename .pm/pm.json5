@@ -56,7 +56,8 @@
           "body": "Done. Recap of everything shipped for this ticket:\n\n- crates/pm-mcp — rmcp 3.2 stdio server; tools list_tickets / get_ticket / add_comment / create_ticket / edit_ticket / open_project / list_projects. Works directly on .pm/pm.json5 via pm-core.\n- CLI reshaped to flags (hard switch): `pm` = \"Nothing opened\" screen, `pm .` / `pm <path>` = GUI, `pm --mcp [--project p]`, `pm --setup [--yes]`, `pm --uninstall [--yes]`, `pm --update`.\n- `pm --setup` (crates/pm-core/src/setup.rs, Windows): figlet banner + plain y/n prompts; reg.exe writes App Paths + Uninstall keys (pm shows in \"Installed apps\" / BCUninstaller, UninstallString = \"<exe>\" --uninstall --yes); ensures install dir on PATH; optional Start Menu .lnk; MCP plugger targets Claude Code — `claude mcp add pm -s user -- pm --mcp` if the CLI is present, else edits ~/.claude.json mcpServers.pm.\n- `pm --uninstall` reverses all of it and self-deletes.\n- install.ps1 runs `pm --setup` after install; repo .mcp.json uses `cargo run -q -p pm -- --mcp`.\n\nFollow-ups worth their own tickets: MCP plugger support for Cursor / Windsurf; `pm --setup` on macOS/Linux (currently Windows-only, bails elsewhere).",
           "anchor": null
         }
-      ]
+      ],
+      "history": []
     },
     {
       "id": 2,
@@ -88,7 +89,8 @@
           "body": "Blocked on a real text-input widget — the current one is a stopgap.",
           "anchor": null
         }
-      ]
+      ],
+      "history": []
     },
     {
       "id": 11,
@@ -126,7 +128,8 @@
           "body": "Closing. Status is set from the detail-pane chip dropdown (persists + bumps updated); the list header 'Filter (n/5)' dropdown is a multi-check of the 5 statuses, closed hidden by default, shown-closed rows dim + struck through. Dropdown re-click now closes. Reopen if anything's off.",
           "anchor": null
         }
-      ]
+      ],
+      "history": []
     },
     {
       "id": 4,
@@ -150,7 +153,8 @@
           "body": "This needs to be more detailed, and we need a sorting system or categorization system in tickets",
           "anchor": null
         }
-      ]
+      ],
+      "history": []
     },
     {
       "id": 7,
@@ -216,7 +220,8 @@
           "body": "Closing. text_input is now a shaped-line editor entity (gpui/Zed pattern): shape_text per line, IME pipeline, click-to-place-caret + drag-select + shift-click, full Ctrl+A/C/X/V and word/line motions, and the empty-field crash is fixed. Reopen if the feel is still off.",
           "anchor": null
         }
-      ]
+      ],
+      "history": []
     },
     {
       "id": 6,
@@ -232,7 +237,8 @@
       "created": 1788448762,
       "updated": 1788449287,
       "anchors": [],
-      "comments": []
+      "comments": [],
+      "history": []
     },
     {
       "id": 1,
@@ -255,7 +261,8 @@
           "rev": "working"
         }
       ],
-      "comments": []
+      "comments": [],
+      "history": []
     },
     {
       "id": 10,
@@ -271,7 +278,8 @@
       "created": 1788448829,
       "updated": 1788448829,
       "anchors": [],
-      "comments": []
+      "comments": [],
+      "history": []
     },
     {
       "id": 8,
@@ -287,7 +295,8 @@
       "created": 1788448814,
       "updated": 1788448814,
       "anchors": [],
-      "comments": []
+      "comments": [],
+      "history": []
     },
     {
       "id": 9,
@@ -301,7 +310,8 @@
       "created": 1788448819,
       "updated": 1788448819,
       "anchors": [],
-      "comments": []
+      "comments": [],
+      "history": []
     },
     {
       "id": 15,
@@ -332,7 +342,8 @@
           "body": "Done via PM-56: the status-bar \"Acting as\" section is the first-class who-am-I control (git username by default, free-text override, persisted to Config.author). Also fixed the poisoning bug: an empty window no longer writes \"unknown\" back into the shared config — load_repo re-seeds the identity field from the freshly resolved git name instead of leaving it stale.",
           "anchor": null
         }
-      ]
+      ],
+      "history": []
     },
     {
       "id": 12,
@@ -348,7 +359,8 @@
       "created": 1788449064,
       "updated": 1788449287,
       "anchors": [],
-      "comments": []
+      "comments": [],
+      "history": []
     },
     {
       "id": 13,
@@ -364,7 +376,8 @@
       "created": 1788449071,
       "updated": 1788449287,
       "anchors": [],
-      "comments": []
+      "comments": [],
+      "history": []
     },
     {
       "id": 14,
@@ -400,7 +413,8 @@
           "body": "Done. install.ps1 (irm | iex → %LOCALAPPDATA%\\Programs\\pm, SHA256 verify, user PATH, then runs `pm --setup`) + `pm --update` self-updater (crates/pm-core/src/update.rs: checks GitHub releases/latest, downloads pm.exe, rename-swaps the running exe, relaunches). GitHub-pointed: REPO = GecEnterprises/pm throughout. Status-bar update chip + About-box line when a newer release exists. Releases v0.0.1–v0.0.3 all shipped through this. See also PM-27 (release CI) and PM-5 (pm --setup).",
           "anchor": null
         }
-      ]
+      ],
+      "history": []
     },
     {
       "id": 3,
@@ -414,7 +428,8 @@
       "created": 1756900300,
       "updated": 1756900300,
       "anchors": [],
-      "comments": []
+      "comments": [],
+      "history": []
     },
     {
       "id": 16,
@@ -428,7 +443,8 @@
       "created": 1788449479,
       "updated": 1788449479,
       "anchors": [],
-      "comments": []
+      "comments": [],
+      "history": []
     },
     {
       "id": 17,
@@ -442,7 +458,8 @@
       "created": 1788449498,
       "updated": 1788449498,
       "anchors": [],
-      "comments": []
+      "comments": [],
+      "history": []
     },
     {
       "id": 18,
@@ -456,7 +473,8 @@
       "created": 1788449551,
       "updated": 1788449551,
       "anchors": [],
-      "comments": []
+      "comments": [],
+      "history": []
     },
     {
       "id": 19,
@@ -478,7 +496,8 @@
           "body": "Done (commit 0da52c5). Ctrl+Tab / Ctrl+Shift+Tab cycle Summary → File-to-File → Tickets via new NextView / PrevView actions (Pm::cycle_view, switcher order); no-op while nothing is open.",
           "anchor": null
         }
-      ]
+      ],
+      "history": []
     },
     {
       "id": 20,
@@ -492,7 +511,8 @@
       "created": 1788449664,
       "updated": 1788449664,
       "anchors": [],
-      "comments": []
+      "comments": [],
+      "history": []
     },
     {
       "id": 21,
@@ -506,7 +526,8 @@
       "created": 1788450367,
       "updated": 1788450367,
       "anchors": [],
-      "comments": []
+      "comments": [],
+      "history": []
     },
     {
       "id": 22,
@@ -520,7 +541,8 @@
       "created": 1788450414,
       "updated": 1788450414,
       "anchors": [],
-      "comments": []
+      "comments": [],
+      "history": []
     },
     {
       "id": 23,
@@ -534,7 +556,8 @@
       "created": 1788473410,
       "updated": 1788473410,
       "anchors": [],
-      "comments": []
+      "comments": [],
+      "history": []
     },
     {
       "id": 24,
@@ -548,7 +571,8 @@
       "created": 1788473421,
       "updated": 1788473421,
       "anchors": [],
-      "comments": []
+      "comments": [],
+      "history": []
     },
     {
       "id": 25,
@@ -579,7 +603,8 @@
           "body": "Reverted — the switcher looks better on the left, next to the menu strip. Keeping it there. (PM-26 icons and PM-32 live title stay.)",
           "anchor": null
         }
-      ]
+      ],
+      "history": []
     },
     {
       "id": 26,
@@ -610,7 +635,8 @@
           "body": "Closing. Each switcher segment shows an icon (project / diff / hash svg).",
           "anchor": null
         }
-      ]
+      ],
+      "history": []
     },
     {
       "id": 27,
@@ -646,7 +672,8 @@
           "body": "Done. .github/workflows/release.yml: push tag v* → windows-latest → \"Resolve version\" guard (tag == root Cargo.toml version, release-notes/<v>.md must exist) → cargo build --release -p pm → certutil SHA256 → softprops/action-gh-release with target/release/pm.exe + pm.exe.sha256, body_path release-notes/<v>.md. Exercised by v0.0.1, v0.0.2, v0.0.3. The embedded RELEASE_NOTES (crates/pm-core/build.rs → buildinfo) render in the About box. Bump the 4 crate versions + add release-notes/<v>.md before tagging.",
           "anchor": null
         }
-      ]
+      ],
+      "history": []
     },
     {
       "id": 28,
@@ -660,7 +687,8 @@
       "created": 1788474164,
       "updated": 1788474164,
       "anchors": [],
-      "comments": []
+      "comments": [],
+      "history": []
     },
     {
       "id": 29,
@@ -674,7 +702,8 @@
       "created": 1788474195,
       "updated": 1788474195,
       "anchors": [],
-      "comments": []
+      "comments": [],
+      "history": []
     },
     {
       "id": 30,
@@ -696,7 +725,8 @@
           "body": "Done (c1290eb + 7a8d267). Footer \"Watchjump\" toggle (also View → Watchjump), persisted in ~/.pm/config.json as Config.watchjump. When on, a filesystem change to any file in the git change list opens that file in the diff pane and scrolls to the first changed line (drops a caret on it). AppState::changed_in_batch picks the last qualifying path in a watcher batch; vetoes the batch if it touched .git (checkout/commit/rebase), and matching the change list already excludes gitignored paths. No forced view switch — silent while on Summary/Tickets. Has its own assets/watchjump.svg icon.",
           "anchor": null
         }
-      ]
+      ],
+      "history": []
     },
     {
       "id": 31,
@@ -741,7 +771,8 @@
           "body": "Closing. Multiline fields soft-wrap to width and grow with content (shape_text + measured height), caret/selection/mouse are wrap-row aware; single-line fields keep horizontal scroll.",
           "anchor": null
         }
-      ]
+      ],
+      "history": []
     },
     {
       "id": 32,
@@ -772,7 +803,8 @@
           "body": "Closing. window_title() tracks the active view: open file in File-to-File, 'New ticket' / 'PM-N <title>' / 'Tickets' in Tickets, 'Summary' in Summary.",
           "anchor": null
         }
-      ]
+      ],
+      "history": []
     },
     {
       "id": 33,
@@ -786,7 +818,8 @@
       "created": 1788475086,
       "updated": 1788477733,
       "anchors": [],
-      "comments": []
+      "comments": [],
+      "history": []
     },
     {
       "id": 34,
@@ -822,7 +855,8 @@
           "body": "Done. ~/.pm/config.json gains a `stores` registry (project root -> in_repo | home + resolved dir); pm_core::Config::resolve_store_dir/set_store/project_slug are the single choke point pm::load_in/save_in, AppState, the watcher, and pm-mcp all route through. The Tickets view (not the diff view — diffing never prompts) shows a modal the first time it's opened for a project with no .pm/ and no saved choice: \"In this repository\" (preselected, Esc accepts it) vs \"In ~/.pm (outside the repo)\", landing at ~/.pm/projects/<slug>/pm.json5. Sentinel::start takes an optional extra watch path so an external store still triggers a live reload. pm-mcp's resolve_root / list_projects consult the same registry so externally-stored projects stay visible to the MCP tools. Follow-ups (separate tickets): moving an existing project's store after the fact, a File-menu control for it, seeding project.name from the folder.",
           "anchor": null
         }
-      ]
+      ],
+      "history": []
     },
     {
       "id": 35,
@@ -836,7 +870,8 @@
       "created": 1788475270,
       "updated": 1788475270,
       "anchors": [],
-      "comments": []
+      "comments": [],
+      "history": []
     },
     {
       "id": 36,
@@ -867,7 +902,8 @@
           "body": "Done, whole-window (VS Code style). Ctrl+= / Ctrl+- / Ctrl+0 (and a View menu group) step ui_scale in 10% steps, 50-300%, persisted to ~/.pm/config.json via the PM-34 config store. render() sets window.set_rem_size(16 * scale) so the whole gpui div-tree scales; theme.rs rm() expresses fixed metrics in rems; the four custom scroll elements (diff/list/tree/history) scale their own row heights + gutters + fonts; text_input follows the inherited font. Status bar shows the % when != 100. Verified at 1.6x/2x - screenshot attached in chat.",
           "anchor": null
         }
-      ]
+      ],
+      "history": []
     },
     {
       "id": 37,
@@ -896,7 +932,8 @@
           "body": "Fixed: the \"+ New\" ticket button reset new_ticket_title/new_ticket_body but never comment_box, so a draft comment typed on the previous ticket survived and got submitted incorrectly. Now resets comment_box too, in crates/pm-ui/src/tickets_view.rs.",
           "anchor": null
         }
-      ]
+      ],
+      "history": []
     },
     {
       "id": 38,
@@ -910,7 +947,8 @@
       "created": 1788477949,
       "updated": 1788477949,
       "anchors": [],
-      "comments": []
+      "comments": [],
+      "history": []
     },
     {
       "id": 39,
@@ -924,7 +962,8 @@
       "created": 1788479108,
       "updated": 1788479108,
       "anchors": [],
-      "comments": []
+      "comments": [],
+      "history": []
     },
     {
       "id": 40,
@@ -946,7 +985,8 @@
           "body": "Fixed: history_collapsed defaulted to true at startup; flipped to false in crates/pm-ui/src/app.rs so the Commit History panel is open by default. (Not yet persisted across sessions — that's PM-39.)",
           "anchor": null
         }
-      ]
+      ],
+      "history": []
     },
     {
       "id": 41,
@@ -960,7 +1000,8 @@
       "created": 1788479155,
       "updated": 1788479155,
       "anchors": [],
-      "comments": []
+      "comments": [],
+      "history": []
     },
     {
       "id": 42,
@@ -999,7 +1040,8 @@
           "body": "Confirmed working by reaganiwadha in chat — closing.",
           "anchor": null
         }
-      ]
+      ],
+      "history": []
     },
     {
       "id": 43,
@@ -1030,7 +1072,8 @@
           "body": "Set CursorStyle::IBeam on the diff body hitbox in paint(). The divider hitbox is registered after body and keeps its ResizeColumn style, so the split handle is unaffected.",
           "anchor": null
         }
-      ]
+      ],
+      "history": []
     },
     {
       "id": 44,
@@ -1042,7 +1085,7 @@
       "assignee": null,
       "author": "reaganiwadha",
       "created": 1788486037,
-      "updated": 1788496725,
+      "updated": 1788585300,
       "anchors": [],
       "comments": [
         {
@@ -1051,6 +1094,35 @@
           "created": 1788496725,
           "body": "Scoping notes after a first implementation pass (reverted — too big for one ticket).\n\nRoot cause: `AppState::new` runs everything synchronously on the main thread before the first frame — `repo.changes()` + `repo.changed_set()` (libgit2 status/diff with `recurse_untracked_dirs`), `repo.walk_tree()` (unbounded `ignore` walk into a Vec), `repo.log()`, `Highlighter::new()`, and `Sentinel::start()` (recursive `notify` watcher; on Linux inotify adds a watch per dir). `refresh()` / `apply_fs_change()` / `set_target()` repeat the git+walk calls, so even after load a save re-hangs.\n\nWhy the full fix is large: `git2::Repository` is `!Send`, so the background task can't hold the `Repo` — it has to re-open its own handle from the path and return a plain `Send` bundle. That means a new `Scan` type, `AppState::new` gutted to be cheap, a shared `apply_scan`, splitting `apply_fs_change` into cheap (pm.json5 reload) + background (git rescan), a scan-in-flight/pending state machine on `Pm`, moving the watcher spawn into the background task, a loading UI state, and rewiring Ctrl+R + the watch loop. ~5 files, touches the load path + watcher + diff-reload logic at once.\n\nSuggested split into smaller tickets:\n1. Bound the tree walk — `walk_tree` caps at N entries + a `truncated` flag. Tiny, self-contained, kills the worst non-git-folder case (`pm ~`, un-gitignored `node_modules`).\n2. Background only the initial scan — window opens on an empty \"Scanning…\" state; leave `refresh`/watch synchronous (they only bite once you're already loaded).\n3. Move `Sentinel::start` off the main thread — isolated, mainly helps Linux.\n4. (later) background `refresh` + the fs-watch rescan — needs #2's `Scan` type first.",
           "anchor": null
+        },
+        {
+          "id": 2,
+          "author": "reaganiwadha",
+          "created": 1788585291,
+          "body": "Test",
+          "anchor": null
+        }
+      ],
+      "history": [
+        {
+          "at": 1788585291,
+          "author": "reaganiwadha",
+          "kind": "commented",
+          "comment_id": 2
+        },
+        {
+          "at": 1788585299,
+          "author": "reaganiwadha",
+          "kind": "status_changed",
+          "old": "open",
+          "new": "blocked"
+        },
+        {
+          "at": 1788585300,
+          "author": "reaganiwadha",
+          "kind": "status_changed",
+          "old": "blocked",
+          "new": "open"
         }
       ]
     },
@@ -1066,7 +1138,8 @@
       "created": 1788486452,
       "updated": 1788486452,
       "anchors": [],
-      "comments": []
+      "comments": [],
+      "history": []
     },
     {
       "id": 46,
@@ -1088,7 +1161,8 @@
           "body": "Done (commit 0da52c5). Root on_key_down handler: Escape dismisses the topmost thing — the open title-bar menu first, then the About dialog.",
           "anchor": null
         }
-      ]
+      ],
+      "history": []
     },
     {
       "id": 47,
@@ -1110,7 +1184,8 @@
           "body": "Done (commit 53d7f02, shipped in v0.0.3). dialoguer (via the console crate) put Windows Terminal / PowerShell into raw mode and didn't restore it when `pm --setup` ran as a child process of `irm | iex`. Replaced the Confirm prompts with plain print! + read_line; kept the figlet \"pm\" banner. Dropped dialoguer / console / encode_unicode / shell-words deps.",
           "anchor": null
         }
-      ]
+      ],
+      "history": []
     },
     {
       "id": 48,
@@ -1132,7 +1207,8 @@
           "body": "Done (commit 0da52c5). Config.recent: Vec<PathBuf> — absolute (via std::path::absolute so `.` and a full path don't both land), deduped, most-recent-first, capped at 10. Recorded on every open (main.rs open_pm_window + Pm::load_repo). Surfaced in File → \"Open Recent Projects\" (with a \"Clear Recent\" row) and in the \"Nothing opened\" screen's RECENT list. Picking one loads it into the current window in place.",
           "anchor": null
         }
-      ]
+      ],
+      "history": []
     },
     {
       "id": 49,
@@ -1154,7 +1230,8 @@
           "body": "Done (commit 0da52c5). The title-bar centre title is wrapped in a max-width box with overflow-hidden + text-ellipsis, so a long \"ticket — repo — pm\" is truncated with … instead of running under the menu strip / window controls. (The OS taskbar tooltip still gets the full string via set_window_title.)",
           "anchor": null
         }
-      ]
+      ],
+      "history": []
     },
     {
       "id": 50,
@@ -1168,7 +1245,8 @@
       "created": 1788491393,
       "updated": 1788491393,
       "anchors": [],
-      "comments": []
+      "comments": [],
+      "history": []
     },
     {
       "id": 51,
@@ -1182,7 +1260,8 @@
       "created": 1788492438,
       "updated": 1788492438,
       "anchors": [],
-      "comments": []
+      "comments": [],
+      "history": []
     },
     {
       "id": 52,
@@ -1204,7 +1283,8 @@
           "body": "Fixed: filter_menu_open, status_menu_open, and user_menu_open (\"Acting as\" popover) were independent booleans that only partially closed each other (filter/status closed each other, but neither closed user_menu, and user_menu closed neither). Each toggle site now resets the other two flags, so opening any one dropdown dismisses the others. Changed crates/pm-ui/src/status_bar.rs and crates/pm-ui/src/tickets_view.rs.",
           "anchor": null
         }
-      ]
+      ],
+      "history": []
     },
     {
       "id": 53,
@@ -1218,7 +1298,8 @@
       "created": 1788492966,
       "updated": 1788492966,
       "anchors": [],
-      "comments": []
+      "comments": [],
+      "history": []
     },
     {
       "id": 54,
@@ -1240,7 +1321,8 @@
           "body": "Done (commit bd73414).\n\nRoot cause: the custom scrolling elements (diff_view, list_view, tree_view, history_view) computed row_h = CONST * zoom_ratio with no rounding, so at any non-100% zoom the row height is fractional — 18 * 1.1 = 19.8px at 110% (which is where you were). gpui's paint_glyph quantises each glyph baseline to 1/4 of a physical pixel, so with a fractional row height y = base + i*19.8 lands each line on a different quarter-pixel and the gap between consecutive lines wobbles ±1/4px as the scroll offset moves — the shake.\n\nWhy Zed doesn't have it: gpui's own TextStyle::line_height_in_pixels does .round(), so Zed's editor always gets a whole-pixel line height. pm's custom element bypassed that path.\n\nFix: row_h = (CONST * s).round() in the four elements + Pm::diff_row_h (the scroll math must match the paint). An integer logical row height is a clean multiple of 1/4 physical px at every common Windows display scale (100/125/150/175/200%). Sub-pixel-smooth scrolling is preserved (the scroll offset itself is not rounded).",
           "anchor": null
         }
-      ]
+      ],
+      "history": []
     },
     {
       "id": 55,
@@ -1254,7 +1336,8 @@
       "created": 1788494930,
       "updated": 1788494930,
       "anchors": [],
-      "comments": []
+      "comments": [],
+      "history": []
     },
     {
       "id": 56,
@@ -1276,7 +1359,8 @@
           "body": "Done. Status bar shows an \"Acting as <name>\" chip (git user.name by default via resolve_author) — click it for a popover with a free-text name field, \"Use git username\", and \"Reset to git default\" (clears Config.author). The choice persists to ~/.pm/config.json, syncing across windows. Removed the old inline \"as:\" fields from the new-ticket/comment forms — the status-bar section is now the single place to set the author. Also fixed a related bug: a window opened empty resolved to \"unknown\" and the popover field stayed stale after a folder was picked — load_repo now re-seeds it.",
           "anchor": null
         }
-      ]
+      ],
+      "history": []
     },
     {
       "id": 57,
@@ -1290,7 +1374,8 @@
       "created": 1788495141,
       "updated": 1788495141,
       "anchors": [],
-      "comments": []
+      "comments": [],
+      "history": []
     },
     {
       "id": 58,
@@ -1312,7 +1397,8 @@
           "body": "Implemented: Ticket gains a `history: Vec<HistoryEntry>` field (pm-core/src/pm.rs), oldest-first. Each entry is `{ at, author, kind: ... }` via a typed `HistoryEvent` enum: TitleChanged/BodyChanged/StatusChanged/PriorityChanged/LabelsChanged/AssigneeChanged (old/new) and Commented { comment_id } (points at the comment rather than duplicating its text). Every mutating setter (set_title/set_body/set_status/set_priority/set_assignee/set_labels/add_comment) now takes an `author` and pushes an entry when something actually changes.\n\nAuthor threading: `AppState::set_ticket_status` and MCP's `edit_ticket` now resolve/accept `author` the same way create_ticket/add_comment already did (PM-15 convention) — edit_ticket gained an `author` param. GUI status changes pass `None` (falls back to the window's \"Acting as\" identity).\n\nUI: ticket_detail now renders a \"History\" section (tickets_view.rs) above Comments — one line per entry: relative time + a plain-English description (\"carol changed status: open → done\").\n\nOld tickets with no `history` field deserialize fine (`#[serde(default)]`, empty vec) — no migration needed. Added pm-mcp test `history_records_edits_and_comments` covering comment + title + status entries end-to-end. Full workspace test suite passes.",
           "anchor": null
         }
-      ]
+      ],
+      "history": []
     },
     {
       "id": 59,
@@ -1326,7 +1412,8 @@
       "created": 1788539815,
       "updated": 1788539815,
       "anchors": [],
-      "comments": []
+      "comments": [],
+      "history": []
     },
     {
       "id": 60,
@@ -1340,7 +1427,8 @@
       "created": 1788584048,
       "updated": 1788584048,
       "anchors": [],
-      "comments": []
+      "comments": [],
+      "history": []
     },
     {
       "id": 61,
@@ -1354,7 +1442,8 @@
       "created": 1788584061,
       "updated": 1788584061,
       "anchors": [],
-      "comments": []
+      "comments": [],
+      "history": []
     },
     {
       "id": 62,
@@ -1368,7 +1457,8 @@
       "created": 1788584289,
       "updated": 1788584289,
       "anchors": [],
-      "comments": []
+      "comments": [],
+      "history": []
     },
     {
       "id": 63,
@@ -1382,7 +1472,8 @@
       "created": 1788584307,
       "updated": 1788584307,
       "anchors": [],
-      "comments": []
+      "comments": [],
+      "history": []
     },
     {
       "id": 64,
@@ -1396,7 +1487,8 @@
       "created": 1788584357,
       "updated": 1788584357,
       "anchors": [],
-      "comments": []
+      "comments": [],
+      "history": []
     },
     {
       "id": 65,
@@ -1410,7 +1502,8 @@
       "created": 1788584411,
       "updated": 1788584411,
       "anchors": [],
-      "comments": []
+      "comments": [],
+      "history": []
     },
     {
       "id": 66,
@@ -1424,7 +1517,8 @@
       "created": 1788584427,
       "updated": 1788584427,
       "anchors": [],
-      "comments": []
+      "comments": [],
+      "history": []
     }
   ]
 }
