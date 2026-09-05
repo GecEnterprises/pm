@@ -17,7 +17,9 @@ use pm_core::{AppState, Repo, Status};
 
 use pm_core::state::Content;
 
-use crate::decorations::client_side_decorations;
+use fremantle::decorations::{client_side_decorations, DecorationStyle};
+use fremantle::scroll::{ScrollDrag, ScrollState};
+
 use crate::diff_view::{diff_view, ShapeCache};
 use crate::history_view::history_view;
 use crate::image_view::ImageView;
@@ -27,7 +29,6 @@ use crate::menu::{
     About, Copy, NextView, PrevView, Refresh, SelectAll, ToggleChanges, ToggleExplorer,
     ToggleHistory, ToggleWatchJump, ViewFiles, ViewSummary, ViewTickets, ZoomIn, ZoomOut, ZoomReset,
 };
-use crate::scroll::{ScrollDrag, ScrollState};
 use crate::text_input::{TextInput, TextInputEvent};
 use crate::theme::*;
 use crate::tree_view::tree_view;
@@ -992,7 +993,17 @@ impl Render for Pm {
             })
             .child(self.status_bar(window, cx));
 
-        client_side_decorations(root, window, cx)
+        client_side_decorations(
+            root,
+            window,
+            cx,
+            DecorationStyle {
+                rounding: CLIENT_DECORATION_ROUNDING,
+                shadow: CLIENT_DECORATION_SHADOW,
+                bg: rgb(BG).into(),
+                border: rgb(BORDER).into(),
+            },
+        )
     }
 }
 

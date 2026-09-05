@@ -10,7 +10,7 @@ use gpui::{
 };
 
 use crate::icons;
-use crate::scroll::{Axis, BarInfo, ScrollDrag};
+use fremantle::scroll::{Axis, BarInfo, ScrollDrag};
 use crate::app::Pm;
 use crate::theme::{BAR, BORDER, DIM, ICON_SIZE, LIST_ROW_H, PANEL, SELECT, TEXT, UI_FONT};
 

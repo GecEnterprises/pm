@@ -1840,6 +1840,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "fremantle"
+version = "0.0.1"
+dependencies = [
+ "gpui",
+]
+
+[[package]]
 name = "fsevent-sys"
 version = "4.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4277,6 +4284,7 @@ dependencies = [
 name = "pm-ui"
 version = "0.0.4"
 dependencies = [
+ "fremantle",
  "gpui",
  "include_dir",
  "pm-core",

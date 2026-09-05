@@ -1,0 +1,9 @@
+[package]
+name = "fremantle"
+version = "0.0.1"
+edition = "2021"
+license = "BSD-3-Clause"
+description = "Composable gpui primitives (PM-55)"
+
+[dependencies]
+gpui = { workspace = true }

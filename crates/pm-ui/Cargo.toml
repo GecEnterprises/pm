@@ -6,5 +6,6 @@ license = "BSD-3-Clause"
 
 [dependencies]
 pm-core = { path = "../pm-core" }
+fremantle = { path = "../fremantle" }
 gpui = { workspace = true }
 include_dir = "0.7"

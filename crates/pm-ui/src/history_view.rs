@@ -12,7 +12,7 @@ use gpui::{
 use pm_core::DiffTarget;
 
 use crate::app::Pm;
-use crate::scroll::{Axis, BarInfo, ScrollDrag};
+use fremantle::scroll::{Axis, BarInfo, ScrollDrag};
 use crate::theme::{BAR, BORDER, DIM, LIST_ROW_H, PANEL, SELECT, TEXT, UI_FONT};
 
 pub struct HistoryView {

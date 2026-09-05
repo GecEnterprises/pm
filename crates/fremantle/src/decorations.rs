@@ -9,19 +9,22 @@ use gpui::{
     Window,
 };
 
-use crate::theme::{CLIENT_DECORATION_ROUNDING as ROUNDING, CLIENT_DECORATION_SHADOW as SHADOW};
-use crate::theme::{BG, BORDER};
-
-fn rgb(hex: u32) -> Hsla {
-    gpui::rgb(hex).into()
+/// Colors/metrics for [`client_side_decorations`] — the caller supplies these
+/// from its own theme rather than fremantle owning any color values.
+#[derive(Clone, Copy)]
+pub struct DecorationStyle {
+    pub rounding: f32,
+    pub shadow: f32,
+    pub bg: Hsla,
+    pub border: Hsla,
 }
 
 /// Round the corners that aren't tiled flush against a screen edge.
-fn round_corners<T: Styled + IntoElement>(el: T, tiling: Tiling) -> T {
-    el.when(!tiling.top && !tiling.left, |s| s.rounded_tl(px(ROUNDING)))
-        .when(!tiling.top && !tiling.right, |s| s.rounded_tr(px(ROUNDING)))
-        .when(!tiling.bottom && !tiling.left, |s| s.rounded_bl(px(ROUNDING)))
-        .when(!tiling.bottom && !tiling.right, |s| s.rounded_br(px(ROUNDING)))
+fn round_corners<T: Styled + IntoElement>(el: T, tiling: Tiling, rounding: f32) -> T {
+    el.when(!tiling.top && !tiling.left, |s| s.rounded_tl(px(rounding)))
+        .when(!tiling.top && !tiling.right, |s| s.rounded_tr(px(rounding)))
+        .when(!tiling.bottom && !tiling.left, |s| s.rounded_bl(px(rounding)))
+        .when(!tiling.bottom && !tiling.right, |s| s.rounded_br(px(rounding)))
 }
 
 /// Wrap the window's root element with client-side decorations when the platform
@@ -30,7 +33,9 @@ pub fn client_side_decorations(
     element: impl gpui::IntoElement,
     window: &mut Window,
     _cx: &mut App,
+    style: DecorationStyle,
 ) -> Stateful<Div> {
+    let DecorationStyle { rounding, shadow, bg, border } = style;
     const BORDER_SIZE: Pixels = px(1.0);
     let decorations = window.window_decorations();
     let is_resizable = window.is_resizable();
@@ -40,7 +45,7 @@ pub fn client_side_decorations(
     };
 
     match decorations {
-        Decorations::Client { .. } => window.set_client_inset(px(SHADOW)),
+        Decorations::Client { .. } => window.set_client_inset(px(shadow)),
         Decorations::Server => window.set_client_inset(px(0.0)),
     }
 
@@ -53,15 +58,15 @@ pub fn client_side_decorations(
         .map(|div| match decorations {
             Decorations::Server => div,
             Decorations::Client { .. } => div
-                .map(|d| round_corners(d, tiling))
-                .when(!tiling.top, |div| div.pt(px(SHADOW)))
-                .when(!tiling.bottom, |div| div.pb(px(SHADOW)))
-                .when(!tiling.left, |div| div.pl(px(SHADOW)))
-                .when(!tiling.right, |div| div.pr(px(SHADOW)))
+                .map(|d| round_corners(d, tiling, rounding))
+                .when(!tiling.top, |div| div.pt(px(shadow)))
+                .when(!tiling.bottom, |div| div.pb(px(shadow)))
+                .when(!tiling.left, |div| div.pl(px(shadow)))
+                .when(!tiling.right, |div| div.pr(px(shadow)))
                 .when(is_resizable, |div| {
                     div.on_mouse_move(move |e, window, cx| {
                         let size = window.window_bounds().get_bounds().size;
-                        let edge = resize_edge(e.position, px(SHADOW), size, tiling);
+                        let edge = resize_edge(e.position, px(shadow), size, tiling);
                         let prev = cx.try_global::<GlobalResizeEdge>().map(|g| g.0);
                         if edge != prev {
                             window.refresh();
@@ -69,7 +74,7 @@ pub fn client_side_decorations(
                     })
                     .on_mouse_down(MouseButton::Left, move |e, window, _| {
                         let size = window.window_bounds().get_bounds().size;
-                        if let Some(edge) = resize_edge(e.position, px(SHADOW), size, tiling) {
+                        if let Some(edge) = resize_edge(e.position, px(shadow), size, tiling) {
                             window.start_window_resize(edge);
                         }
                     })
@@ -82,8 +87,8 @@ pub fn client_side_decorations(
                 .map(|div| match decorations {
                     Decorations::Server => div,
                     Decorations::Client { .. } => div
-                        .border_color(rgb(BORDER))
-                        .map(|d| round_corners(d, tiling))
+                        .border_color(border)
+                        .map(|d| round_corners(d, tiling, rounding))
                         .when(!tiling.top, |div| div.border_t(BORDER_SIZE))
                         .when(!tiling.bottom, |div| div.border_b(BORDER_SIZE))
                         .when(!tiling.left, |div| div.border_l(BORDER_SIZE))
@@ -94,12 +99,12 @@ pub fn client_side_decorations(
                                 px(0.),
                                 Hsla { h: 0., s: 0., l: 0., a: 0.4 },
                             )
-                            .blur_radius(px(SHADOW / 2.))])
+                            .blur_radius(px(shadow / 2.))])
                         }),
                 })
                 .on_mouse_move(|_e, _, cx| cx.stop_propagation())
                 .size_full()
-                .bg(rgb(BG))
+                .bg(bg)
                 .child(element),
         )
         .map(|div| match decorations {
@@ -113,7 +118,7 @@ pub fn client_side_decorations(
                     },
                     move |_bounds, hitbox: Hitbox, window, cx| {
                         let size = window.window_bounds().get_bounds().size;
-                        let Some(edge) = resize_edge(window.mouse_position(), px(SHADOW), size, tiling)
+                        let Some(edge) = resize_edge(window.mouse_position(), px(shadow), size, tiling)
                         else {
                             return;
                         };

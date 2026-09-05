@@ -19,7 +19,7 @@ use pm_core::highlight::{Line, Rgba as CoreRgba};
 fn to_hsla(c: CoreRgba) -> gpui::Hsla {
     gpui::Rgba { r: c.r, g: c.g, b: c.b, a: c.a }.into()
 }
-use crate::scroll::{Axis, BarInfo, ScrollDrag};
+use fremantle::scroll::{Axis, BarInfo, ScrollDrag};
 use crate::app::Pm;
 use crate::theme::{
     ADD_BG, BAR, BASE_REM, BG, BODY_FONT, BODY_FONT_SIZE, BORDER, DEL_BG, DIFF_SPLIT_MAX,

@@ -1,13 +1,11 @@
 pub mod app;
 pub mod config;
-pub mod decorations;
 pub mod diff_view;
 pub mod history_view;
 pub mod icons;
 pub mod image_view;
 pub mod list_view;
 pub mod menu;
-pub mod scroll;
 pub mod status_bar;
 pub mod text_input;
 pub mod theme;

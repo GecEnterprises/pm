@@ -1571,7 +1571,7 @@
       "id": 70,
       "title": "fremantle: scaffold crate + move scroll.rs, decorations.rs",
       "body": "Part of PM-55 (phase 1/5).\n\nAdd `crates/fremantle` as a new workspace member (`gpui = { workspace = true }`, same git pin as pm-ui: `zed-industries/zed` branch `main`). Move `scroll.rs` (pure math: `ScrollState`, `Axis`, `ScrollDrag`, thumb sizing — zero domain coupling) and `decorations.rs` (window chrome: rounded corners/shadow/resize grips) into it near-verbatim. pm-ui takes a path dep on fremantle, same convention as its existing dep on pm-core.\n\nLowest-risk phase — mainly proves out the workspace wiring before the harder migrations (theme, text-input, list primitive).\n\nVerify: `cargo check`/`cargo build` across the workspace; pm-ui still runs and scroll/window-decoration behavior is unchanged.",
-      "status": "open",
+      "status": "done",
       "priority": "normal",
       "labels": [
         "fremantle"
@@ -1579,10 +1579,18 @@
       "assignee": null,
       "author": "reaganiwadha",
       "created": 1788590656,
-      "updated": 1788590656,
+      "updated": 1788592841,
       "anchors": [],
       "comments": [],
-      "history": []
+      "history": [
+        {
+          "at": 1788592841,
+          "author": "reaganiwadha",
+          "kind": "status_changed",
+          "old": "open",
+          "new": "done"
+        }
+      ]
     },
     {
       "id": 71,
