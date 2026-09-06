@@ -3,7 +3,7 @@
 //! via `cx.theme()` ([`ActiveTheme`], re-exported below so existing
 //! `use crate::theme::*;` call sites pick it up automatically).
 
-pub use fremantle::theme::{ActiveTheme, Appearance, Theme, ThemeColors, ThemeMetrics};
+pub use fremantle::theme::{init, ActiveTheme, Appearance, Theme, ThemeColors, ThemeMetrics};
 
 /// pm's dark theme: every literal value here is unchanged from the old flat
 /// consts this module used to define.
