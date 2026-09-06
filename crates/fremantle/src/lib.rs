@@ -12,6 +12,7 @@
 //! adopting gpui-component, which already ships them.
 
 pub mod decorations;
+pub mod markdown;
 pub mod scroll;
 pub mod text_input;
 pub mod theme;

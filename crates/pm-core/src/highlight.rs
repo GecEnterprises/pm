@@ -78,6 +78,44 @@ impl Highlighter {
         }
         lines
     }
+
+    /// Highlight `text` as `lang` (a syntect syntax name, alias, or file
+    /// extension — e.g. `"rust"`, `"rs"`, `"toml"`), returning colour runs as
+    /// absolute byte ranges into `text`.
+    ///
+    /// For embedded snippets with no file path to pick a grammar from — a
+    /// markdown fenced code block names its language directly rather than
+    /// having an extension. Byte-accurate (not per-line, unlike [`Self::highlight`])
+    /// because the consumer (`fremantle::markdown`) hands ranges straight to
+    /// gpui's `HighlightStyle`, which indexes into the block's raw text.
+    pub fn highlight_by_lang(&self, lang: Option<&str>, text: &str) -> Vec<(std::ops::Range<usize>, Rgba)> {
+        if text.len() > MAX_BYTES {
+            return Vec::new();
+        }
+
+        let syntax = lang
+            .and_then(|l| self.syntaxes.find_syntax_by_token(l))
+            .unwrap_or_else(|| self.syntaxes.find_syntax_plain_text());
+
+        let mut hl = HighlightLines::new(syntax, &self.theme);
+        let mut runs = Vec::new();
+        let mut offset = 0usize;
+        for raw in LinesWithEndings::from(text) {
+            match hl.highlight_line(raw, &self.syntaxes) {
+                Ok(pieces) => {
+                    for (style, piece) in pieces {
+                        let len = piece.len();
+                        if len > 0 {
+                            runs.push((offset..offset + len, to_rgba(style.foreground)));
+                        }
+                        offset += len;
+                    }
+                }
+                Err(_) => offset += raw.len(),
+            }
+        }
+        runs
+    }
 }
 
 fn plain_line(text: &str) -> Line {

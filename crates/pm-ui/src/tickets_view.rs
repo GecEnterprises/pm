@@ -31,18 +31,6 @@ fn chip(text: impl Into<SharedString>, color: Hsla, bg: Hsla) -> impl IntoElemen
         .child(text.into())
 }
 
-/// Split a plain-text block into one div per line (gpui doesn't break on `\n`).
-fn text_block(s: &str, text_color: Hsla) -> impl IntoElement {
-    div()
-        .flex()
-        .flex_col()
-        .text_color(text_color)
-        .children(
-            s.split('\n')
-                .map(|l| div().child(SharedString::from(l.to_string()))),
-        )
-}
-
 /// One human-readable line for a history entry (PM-58) — who did what.
 fn history_line(h: &HistoryEntry) -> String {
     let who = if h.author.is_empty() { "someone" } else { h.author.as_str() };
@@ -655,7 +643,7 @@ impl Pm {
             .child(meta);
 
         if !t.body.trim().is_empty() {
-            card = card.child(text_block(&t.body, cx.theme().colors.text));
+            card = card.child(crate::markdown::view(t.body.clone(), cx));
         }
 
         // Code anchors — read-only for now; click opens the file in File-to-File.
@@ -733,7 +721,7 @@ impl Pm {
                                 rel_time(c.created)
                             ))),
                     )
-                    .child(text_block(&c.body, cx.theme().colors.text)),
+                    .child(crate::markdown::view(c.body.clone(), cx)),
             );
         }
 

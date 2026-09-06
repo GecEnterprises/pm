@@ -8,3 +8,9 @@ description = "pm's customization layer over gpui-component (PM-55)"
 [dependencies]
 gpui = { workspace = true }
 gpui-component = { workspace = true }
+gpui-base = { workspace = true }
+# fremantle::markdown reuses pm's syntect highlighter for fenced code blocks,
+# so a Rust snippet in a ticket body and in the diff view never disagree about
+# its colours. This is the one place fremantle is allowed to know about pm's
+# data crate — the new charter (PM-55) is explicitly pm-shaped.
+pm-core = { path = "../pm-core" }

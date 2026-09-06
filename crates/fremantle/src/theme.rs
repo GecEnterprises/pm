@@ -186,6 +186,16 @@ fn project_onto_kit(cx: &mut App, theme: &Theme) {
     k.info = c.changed;
     k.button_danger_hover = c.close_hover;
     k.danger_hover = c.close_hover;
+
+    // `Theme::change` above already pushed a base-layer projection, but that
+    // snapshot predates every field we just overwrote through `global_mut` —
+    // its own doc comment is explicit that writing the public fields directly
+    // does *not* sync, only `Theme::change`/`Theme::sync_base` do. Skipping
+    // this leaves gpui-base's scrollbar/resize-handle colors and every
+    // TextView's derived style (headings, links, inline code, tables) frozen
+    // on the kit's un-tinted defaults — a divergence with no compiler warning,
+    // since both paths type-check fine.
+    gpui_component::Theme::sync_base(cx);
 }
 
 /// Read the active theme — panics if [`set_theme`] hasn't been called yet.

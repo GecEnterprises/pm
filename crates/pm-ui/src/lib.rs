@@ -10,6 +10,7 @@ pub mod status_bar;
 pub mod theme;
 
 pub use fremantle::text_input;
+pub use fremantle::markdown;
 pub mod tickets_view;
 pub mod title_bar;
 pub mod tree_view;

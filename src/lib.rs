@@ -127,6 +127,7 @@ pub fn run(variant: Variant) {
         // before any window opens — `Pm::new` calls `set_theme` per window and
         // that reads the kit theme this installs.
         pm_ui::theme::init(cx);
+        pm_ui::markdown::init(cx);
         bind_text_input_keys(cx);
         cx.on_action(|_: &Quit, cx| cx.quit());
         cx.on_action(move |_: &OpenFolder, cx| {

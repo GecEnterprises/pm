@@ -9,6 +9,11 @@ members = ["crates/fremantle", "crates/pm-core", "crates/pm-ui", "crates/pm-mcp"
 gpui = { package = "gpui-pre", version = "0.3.3" }
 gpui_platform = { package = "gpui-pre-platform", version = "0.3.3" }
 gpui-component = "0.6"
+# `code_block_highlighter` (a per-instance markdown TextView override) lives
+# on gpui-base's TextView; gpui-component's own TextView is a compat facade
+# over it that doesn't expose the builder. fremantle::markdown needs the base
+# type directly.
+gpui-base = "0.6"
 anyhow = "1"
 
 [package]

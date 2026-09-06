@@ -1609,11 +1609,7 @@ impl Pm {
                                 .overflow_y_scroll()
                                 .text_size(cx.theme().rm(11.0))
                                 .text_color(cx.theme().colors.dim)
-                                .children(
-                                    pm_core::buildinfo::RELEASE_NOTES
-                                        .lines()
-                                        .map(|l| div().child(SharedString::from(l.to_string()))),
-                                ),
+                                .child(crate::markdown::view(pm_core::buildinfo::RELEASE_NOTES, cx)),
                         ),
                 ),
         )
