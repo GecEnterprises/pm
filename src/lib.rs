@@ -8,6 +8,7 @@
 //! different [`Variant`] — see PM-88. Everything else lives here.
 
 pub mod cli;
+mod debug_probe;
 mod fonts;
 
 use std::path::{Path, PathBuf};
@@ -63,8 +64,8 @@ pub fn run(variant: Variant) {
     pm_core::update::cleanup_stale();
 
     // `None` → open the welcome window; `Some(path)` → open a repo window.
-    let start: Option<PathBuf> = match cli::parse() {
-        cli::Command::Gui { path } => path,
+    let (start, jump): (Option<PathBuf>, cli::Jump) = match cli::parse() {
+        cli::Command::Gui { path, jump } => (path, jump),
         cli::Command::Mcp { project } => {
             attach_console();
             let root = project
@@ -140,7 +141,7 @@ pub fn run(variant: Variant) {
             cx.spawn(async move |cx| {
                 if let Ok(Ok(Some(mut dirs))) = paths.await {
                     if let Some(dir) = dirs.pop() {
-                        cx.update(|cx| open_pm_window(cx, Some(&dir), variant));
+                        cx.update(|cx| open_pm_window(cx, Some(&dir), variant, cli::Jump::default()));
                     }
                 }
             })
@@ -148,7 +149,7 @@ pub fn run(variant: Variant) {
         });
 
         pm_ui::UpdateStatus::init(cx);
-        open_pm_window(cx, start.as_deref(), variant);
+        open_pm_window(cx, start.as_deref(), variant, jump);
         cx.activate(true);
     });
 }
@@ -215,7 +216,11 @@ fn bind_text_input_keys(cx: &mut gpui::App) {
 /// Open a pm window. `Some(path)` opens it as a git repo (or a plain folder if
 /// it isn't one); `None` opens the "Nothing opened" placeholder (`pm` with no
 /// argument — PM-5), from which the user picks a folder in place.
-fn open_pm_window(cx: &mut App, path: Option<&Path>, variant: Variant) {
+///
+/// `jump` (PM-99) lands the window on a specific view/ticket/file instead of
+/// the usual defaults — for manual and scripted verification, not a
+/// user-facing feature.
+fn open_pm_window(cx: &mut App, path: Option<&Path>, variant: Variant, jump: cli::Jump) {
     let repo = path.map(Repo::open);
     let tag = variant.label;
     match &repo {
@@ -235,6 +240,7 @@ fn open_pm_window(cx: &mut App, path: Option<&Path>, variant: Variant) {
 
     let bounds = Bounds::centered(None, size(px(1100.), px(720.)), cx);
     let icon = ICON.get().cloned().flatten();
+    let screenshot = jump.screenshot.clone();
     cx.open_window(
         WindowOptions {
             window_bounds: Some(WindowBounds::Windowed(bounds)),
@@ -250,19 +256,59 @@ fn open_pm_window(cx: &mut App, path: Option<&Path>, variant: Variant) {
             icon,
             ..Default::default()
         },
-        |window, cx| {
-            let view = cx.new(|cx| match repo {
-                Some(repo) => {
-                    let mut pm = Pm::new(repo, cx);
-                    pm.start_watch(cx);
-                    pm
-                }
-                None => Pm::new_empty(cx),
+        move |window, cx| {
+            let view = cx.new(|cx| {
+                let mut pm = match repo {
+                    Some(repo) => {
+                        let mut pm = Pm::new(repo, cx);
+                        pm.start_watch(cx);
+                        pm
+                    }
+                    None => Pm::new_empty(cx),
+                };
+                apply_jump(&mut pm, &jump, cx);
+                pm
             });
             let focus = view.read(cx).root_focus.clone();
             window.focus(&focus, cx);
+
+            if let Some(out) = screenshot {
+                debug_probe::schedule_screenshot(window, cx, out);
+            }
+
             view
         },
     )
     .unwrap();
+}
+
+/// Apply a `--view`/`--ticket`/`--path` launch arg (PM-99) to a freshly built
+/// `Pm`. `--view` wins when given explicitly; otherwise `--ticket` implies
+/// Tickets and `--path` implies Files. `--ticket` is applied after `set_view`
+/// so it overrides that view's own autoselect-first-ticket behavior.
+fn apply_jump(pm: &mut pm_ui::Pm, jump: &cli::Jump, cx: &mut gpui::Context<pm_ui::Pm>) {
+    if jump.is_empty() {
+        return;
+    }
+
+    if let Some(rel) = &jump.file {
+        pm.open_path(rel.clone());
+    }
+
+    let view = jump
+        .view
+        .map(|v| match v {
+            cli::JumpView::Summary => pm_ui::View::Summary,
+            cli::JumpView::Files => pm_ui::View::Files,
+            cli::JumpView::Tickets => pm_ui::View::Tickets,
+        })
+        .or_else(|| jump.ticket.is_some().then_some(pm_ui::View::Tickets))
+        .or_else(|| jump.file.is_some().then_some(pm_ui::View::Files));
+    if let Some(view) = view {
+        pm.set_view(view, cx);
+    }
+
+    if let Some(id) = jump.ticket {
+        pm.selected_ticket = Some(id);
+    }
 }

@@ -48,10 +48,24 @@ gpui_platform = { workspace = true, features = ["wayland", "x11"] }
 # window icon (x11 runtime path); must match gpui's image version so the
 # RgbaImage types unify
 image = { version = "0.25", default-features = false, features = ["png"] }
+# `--screenshot` (PM-100): extracts the native HWND from gpui's `Window` via
+# `HasWindowHandle`, so the app captures its own window rather than an
+# external tool hunting for it by title/handle.
+raw-window-handle = "0.6"
 
 [target.'cfg(windows)'.dependencies]
-# AttachConsole for CLI subcommands under `windows_subsystem = "windows"`
-windows-sys = { version = "0.59", features = ["Win32_System_Console"] }
+# AttachConsole for CLI subcommands under `windows_subsystem = "windows"`;
+# Gdi/WindowsAndMessaging/Storage_Xps for `--screenshot`'s PrintWindow capture
+# (PM-100) — PrintWindow's binding lives in windows-sys' generated
+# Storage::Xps module despite being a user32.dll/GDI function, a quirk of how
+# the underlying Win32 metadata categorizes it.
+windows-sys = { version = "0.59", features = [
+    "Win32_System_Console",
+    "Win32_Foundation",
+    "Win32_Graphics_Gdi",
+    "Win32_UI_WindowsAndMessaging",
+    "Win32_Storage_Xps",
+] }
 
 [build-dependencies]
 winresource = "0.1"

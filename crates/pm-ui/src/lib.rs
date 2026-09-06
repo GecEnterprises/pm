@@ -16,7 +16,7 @@ pub mod title_bar;
 pub mod tree_view;
 pub mod update;
 
-pub use app::{set_app_label, Pm};
+pub use app::{set_app_label, Pm, View};
 pub use config::ConfigStore;
 pub use update::UpdateStatus;
 pub use text_input::{TextInput, TextInputEvent};
