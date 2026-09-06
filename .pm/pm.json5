@@ -4,7 +4,7 @@
     "name": "pm",
     "key": "PM"
   },
-  "next_id": 99,
+  "next_id": 102,
   "tickets": [
     {
       "id": 5,
@@ -316,7 +316,7 @@
       "id": 8,
       "title": "Rich ticket formatting using Markdown",
       "body": "Wire the markdown engine from **PM-9** into the ticket pane. This ticket is the consumer; PM-9 is the engine.\n\n## What exists today\nTicket bodies and comment bodies both render through `text_block` (tickets_view.rs:35-44) — split on `\\n`, one `div` per line, single colour, no inline styling. Call sites: body at :657-659, comments at :710-738.\n\nThe irony is measurable: the bodies in this project's own pm.json5 are **already written in markdown** — headings, `**bold**`, backticked `file:line` references, bullet lists — and every one of them currently renders as literal asterisks and hashes.\n\n## In scope\n1. Swap `text_block` for the PM-9 renderer at both call sites.\n2. **Wrapping.** `text_block`'s one-div-per-line model means long lines don't wrap at all today. Ticket bodies in a resizable sidebar-width pane need real wrapping — this is arguably the bigger usability win over the styling.\n3. **Editing.** Bodies are read-only (there is no `AppState::set_body` wrapper — PM-85), so the editor is a plain-text `TextInput::multi` over the markdown source with a rendered read view, the standard split. Decide whether editing is in this ticket or follows PM-57's title-edit pattern separately; recommend keeping this ticket read-only and letting PM-57's approach settle first.\n\n## Depends on\n- **PM-9** (the engine) — hard blocker.\n- **PM-85** (AppState mutators) — only if editing lands here.\n\n## Related\n- **PM-57** (title edit) sets the click-to-edit pattern this should follow.\n- **PM-50 option (c)** — linkifying `PM-N` mentions rides on the same inline pass; the cross-references in these bodies are exactly what would benefit.\n- **PM-33** (image attachments) is the natural next consumer once inline images are wanted.\n\n## Open question\nDoes the comment composer get a preview, or is the rendered view after posting enough? Preview means a second rendering surface and a toggle; for comments that are usually two sentences, probably not worth it.\n\n## Verify\nOpen PM-55 or PM-85 in the GUI — both are long, heavily formatted, and full of backticked paths. Headings, bold, code spans and bullets should all render, long lines should wrap at the pane width, and nothing should be dropped. Cross-check against the raw text via `mcp__pm__get_ticket` to confirm the source is unchanged — this is a rendering change only, the stored body stays markdown.",
-      "status": "open",
+      "status": "done",
       "priority": "normal",
       "labels": [
         "tickets"
@@ -324,9 +324,17 @@
       "assignee": null,
       "author": "",
       "created": 1788448814,
-      "updated": 1788622621,
+      "updated": 1788664103,
       "anchors": [],
-      "comments": [],
+      "comments": [
+        {
+          "id": 1,
+          "author": "claude",
+          "created": 1788664103,
+          "body": "Done — commit 2f8c376, branch `spike/gpui-kit`, riding on PM-9's engine. Both call sites (ticket body `tickets_view.rs:658`, comment body `tickets_view.rs:736`) now render through `fremantle::markdown::view`; the old `text_block` one-div-per-line helper is deleted (no remaining callers).\n\nWrapping — the item this ticket called \"arguably the bigger usability win over the styling\" — is real now: `TextView` wraps at the pane width instead of `text_block`'s hard per-`\\n` splitting. Editing was scoped out per this ticket's own recommendation and remains untouched (still read-only, still waiting on PM-85's `AppState::set_body`).\n\nVerified visually against PM-50 and PM-85 — headings, bold, inline code (with pm's theme-colored background), bullet lists and a fenced Rust block all render correctly and the stored body is unchanged (render-only change, per this ticket's own verify note).",
+          "anchor": null
+        }
+      ],
       "history": [
         {
           "at": 1788622621,
@@ -334,6 +342,19 @@
           "kind": "body_changed",
           "old": "",
           "new": "Wire the markdown engine from **PM-9** into the ticket pane. This ticket is the consumer; PM-9 is the engine.\n\n## What exists today\nTicket bodies and comment bodies both render through `text_block` (tickets_view.rs:35-44) — split on `\\n`, one `div` per line, single colour, no inline styling. Call sites: body at :657-659, comments at :710-738.\n\nThe irony is measurable: the bodies in this project's own pm.json5 are **already written in markdown** — headings, `**bold**`, backticked `file:line` references, bullet lists — and every one of them currently renders as literal asterisks and hashes.\n\n## In scope\n1. Swap `text_block` for the PM-9 renderer at both call sites.\n2. **Wrapping.** `text_block`'s one-div-per-line model means long lines don't wrap at all today. Ticket bodies in a resizable sidebar-width pane need real wrapping — this is arguably the bigger usability win over the styling.\n3. **Editing.** Bodies are read-only (there is no `AppState::set_body` wrapper — PM-85), so the editor is a plain-text `TextInput::multi` over the markdown source with a rendered read view, the standard split. Decide whether editing is in this ticket or follows PM-57's title-edit pattern separately; recommend keeping this ticket read-only and letting PM-57's approach settle first.\n\n## Depends on\n- **PM-9** (the engine) — hard blocker.\n- **PM-85** (AppState mutators) — only if editing lands here.\n\n## Related\n- **PM-57** (title edit) sets the click-to-edit pattern this should follow.\n- **PM-50 option (c)** — linkifying `PM-N` mentions rides on the same inline pass; the cross-references in these bodies are exactly what would benefit.\n- **PM-33** (image attachments) is the natural next consumer once inline images are wanted.\n\n## Open question\nDoes the comment composer get a preview, or is the rendered view after posting enough? Preview means a second rendering surface and a toggle; for comments that are usually two sentences, probably not worth it.\n\n## Verify\nOpen PM-55 or PM-85 in the GUI — both are long, heavily formatted, and full of backticked paths. Headings, bold, code spans and bullets should all render, long lines should wrap at the pane width, and nothing should be dropped. Cross-check against the raw text via `mcp__pm__get_ticket` to confirm the source is unchanged — this is a rendering change only, the stored body stays markdown."
+        },
+        {
+          "at": 1788664084,
+          "author": "claude",
+          "kind": "status_changed",
+          "old": "open",
+          "new": "done"
+        },
+        {
+          "at": 1788664103,
+          "author": "claude",
+          "kind": "commented",
+          "comment_id": 1
         }
       ]
     },
@@ -341,13 +362,13 @@
       "id": 9,
       "title": "Markdown viewer engine",
       "body": "The enabler for PM-8 (markdown ticket bodies). Split out because the engine is reusable and the ticket-pane wiring is not.\n\n## What exists today\n**No markdown rendering anywhere in the codebase.** Grepping for `markdown` across `crates/` returns only a `.md → book.svg` file-icon mapping (pm-ui/src/icons.rs:94, 202, 314) and a doc comment noting that GitHub release bodies *are* markdown while being rendered as raw lines (pm-core/src/update.rs:20).\n\nEverything renders as plain text through `text_block` (tickets_view.rs:35-44), which splits on `\\n` and emits one `div` per line — that exists because gpui doesn't break on newlines on its own. No inline styling, one colour, no links, no code blocks.\n\n## What's already available to build on\nThe styled-run machinery is present and proven:\n- `runs_for_line` (diff_view.rs:113-132) already builds per-span `TextRun`s from `pm_core::highlight::Line`, with `to_hsla` (:19-21) for colour conversion. Two more sites do the same: list_view.rs:148-179 (two-colour badge in one shaped line) and tree_view.rs:134-142.\n- `TextRun` carries `font`, `color`, `background_color`, `underline`, `strikethrough` — **the bold/italic/underline fields are entirely unused today**. Bold and italic come from the `font` field, which means the fonts have to be registered (`src/fonts.rs`) before bold text can render; check what's loaded before assuming it works.\n- Syntax highlighting for fenced code blocks already exists — `pm-core/src/highlight.rs` (syntect) produces `Line = Vec<Span { text, color }>`, the same shape a code block would want.\n\n## Scope\nA parser + a renderer producing gpui elements. Two decisions to make first:\n\n**1. Parser: pull a crate or hand-roll?** `pulldown-cmark` is the obvious dependency and handles CommonMark properly. Against it: the workspace currently keeps its dependency list very short (fremantle depends on `gpui` alone). A hand-rolled subset covering bold/italic/inline code/links/headings/lists/fences is maybe 200 lines and covers everything ticket bodies actually use. Recommend the crate — markdown is a bad thing to half-implement, and the failure mode is silently mangling someone's ticket.\n\n**2. Where does it live?** If it renders gpui elements it belongs in `crates/fremantle` (it's domain-agnostic, and PM-79 wants a doc viewer built out of fremantle, which is the same machinery). If it's a pure text→spans pass with no gpui, `pm-core` alongside `highlight.rs` fits better. Recommend fremantle — the wrapping and layout are the hard parts and they're inherently gpui.\n\n## Known consumers\n1. **PM-8** — ticket bodies and comment bodies (tickets_view.rs:657-659, :710-738).\n2. **Release notes** — currently printed line-by-line unstyled in the About overlay (app.rs:1597-1601), and they are genuinely markdown (`release-notes/*.md`, embedded via pm-core/build.rs).\n3. **PM-50 option (c)** — linkifying `PM-N` mentions is the same inline-span pass.\n4. **PM-79** — a rustdoc viewer built out of fremantle needs exactly this.\n\nFour consumers is a good sign the split from PM-8 is right.\n\n## Scope boundary\nTicket bodies need: paragraphs, bold/italic, inline code, fenced code, links, bullet and numbered lists, headings. They do **not** need: tables, footnotes, HTML passthrough, images (that's PM-33). Start with the first set; a partial renderer that ignores what it doesn't know is fine as long as it degrades to plain text rather than dropping content.\n\n## Verify\nRender this project's own ticket bodies — PM-55, PM-85 and PM-86 all use headings, bold, inline code, bullet lists and `file:line` references — and confirm nothing is dropped or mangled. Unit-test the parser separately from the rendering. Then check the About overlay's release notes as the second consumer.",
-      "status": "open",
+      "status": "done",
       "priority": "normal",
       "labels": [],
       "assignee": null,
       "author": "",
       "created": 1788448819,
-      "updated": 1788662857,
+      "updated": 1788664093,
       "anchors": [],
       "comments": [
         {
@@ -355,6 +376,13 @@
           "author": "claude",
           "created": 1788662857,
           "body": "**Superseded as an implementation by gpui-component (PM-55, 2026-09-06) — the engine is now a dependency, not a build.**\n\nThis ticket's central question — *\"pull `pulldown-cmark` or hand-roll?\"* — is moot. `gpui-component` 0.6 ships markdown rendering (depends on `markdown ^1.0.0`) plus a `highlighter` module with tree-sitter, and a `text` module. Its own docs render through it.\n\nRe-scoped to: **wrap the kit's renderer as `fremantle::markdown`** (PM-55 pattern A — preset it with pm's theme), then wire the consumers. The dependency-vs-hand-roll tradeoff this ticket agonized over — \"the workspace keeps its dependency list very short (fremantle depends on `gpui` alone)\" — no longer applies; fremantle depends on gpui-component now, and markdown comes inside it at zero marginal dependency cost.\n\nTwo of this ticket's observations still matter and should carry into the wrapper:\n\n- **Bold/italic need registered fonts.** The ticket correctly notes `TextRun`'s bold/italic fields are unused today and come from the `font` field, so the faces must be registered in `src/fonts.rs` before bold renders. Verify what's loaded before assuming the kit's renderer has weights available — this is the most likely way markdown lands looking subtly wrong rather than broken.\n- **Fenced code blocks.** pm already has syntect via `pm-core/src/highlight.rs` producing `Line = Vec<Span { text, color }>`. The kit brings its own tree-sitter `highlighter`. **Decide which owns code blocks** rather than ending up with two highlighters disagreeing about the same Rust snippet — this is a real risk given the diff view will keep using syntect regardless.\n\nScope boundary from the original still stands (no tables/footnotes/HTML passthrough; images are PM-33), though the kit may simply give us tables for free — check rather than exclude them by default.\n\nConsumers unchanged: PM-8 (ticket bodies at tickets_view.rs:657-659 and :710-738, replacing `text_block` at :35-44), release notes in the About overlay (app.rs:1597-1601), PM-50's `PM-N` linkification, PM-79.\n\n**Sequencing:** this is pure addition with zero regression surface — verified there is still no markdown anywhere in the codebase (only a `.md → book.svg` icon mapping). Good candidate to land right after the theme port, since the wrapper needs `cx.theme()` to style headings and code blocks.",
+          "anchor": null
+        },
+        {
+          "id": 2,
+          "author": "claude",
+          "created": 1788664093,
+          "body": "Done — commit 2f8c376, branch `spike/gpui-kit`. `fremantle::markdown` wraps `gpui-base`'s `TextView`, with fenced code blocks routed through `pm_core::highlight::Highlighter` (a new `highlight_by_lang` method, byte-accurate ranges keyed by language token via syntect's `find_syntax_by_token`) instead of the kit's tree-sitter highlighter, per this ticket's own flag about two highlighters disagreeing.\n\nBold/italic font-registration risk didn't materialize — verified visually (headings, bold, inline code, wrapped paragraphs and a correctly colored Rust fence all rendered correctly on PM-50's body). No changes needed in `src/fonts.rs`.\n\nAlso surfaced and fixed a real bug in the PM-55 theme port (926ee00): `project_onto_kit` mutated the kit's theme fields without calling `Theme::sync_base`, so nothing downstream (TextView styling, scrollbar colors) was actually picking up pm's palette until this ticket's work exercised a TextView and exposed it.",
           "anchor": null
         }
       ],
@@ -371,6 +399,19 @@
           "author": "claude",
           "kind": "commented",
           "comment_id": 1
+        },
+        {
+          "at": 1788664081,
+          "author": "claude",
+          "kind": "status_changed",
+          "old": "open",
+          "new": "done"
+        },
+        {
+          "at": 1788664093,
+          "author": "claude",
+          "kind": "commented",
+          "comment_id": 2
         }
       ]
     },
@@ -2919,6 +2960,63 @@
           "kind": "priority_changed",
           "old": "normal",
           "new": "low"
+        }
+      ]
+    },
+    {
+      "id": 99,
+      "title": "CLI: launch arg to jump straight into a view (for manual/visual verification)",
+      "body": "Verifying a UI change today means either wiring up mouse-click automation (unreliable — window focus, native menu popups aren't captured by `PrintWindow`) or temporarily hand-editing `Pm::new`'s defaults (`view`, `selected_ticket`, `show_about`), rebuilding, screenshotting, then reverting the throwaway edit before committing. That round-trip is what actually happened verifying PM-8/PM-9's markdown rendering and the code-block styling follow-up.\n\n## Wanted\n\nA launch arg/flag that jumps straight to a given view on startup, e.g.:\n\n```\npm . --view tickets --ticket 96\npm . --view files --path src/lib.rs\npm . --view summary\n```\n\nMaps directly onto existing `Pm` state: `view: View` (app.rs:176, `View::{Summary,Files,Tickets}`) and `selected_ticket: Option<u64>` (app.rs:178), currently hardcoded in `Pm::new` (app.rs:294-295). CLI parsing already exists for subcommands (`--setup`, etc. — see `src/main.rs`); this is an additive flag on the normal launch path, not a subcommand.\n\n## Verify\n`pm . --view tickets --ticket 96` opens directly on PM-96's detail pane instead of the Files view.",
+      "status": "open",
+      "priority": "normal",
+      "labels": [],
+      "assignee": null,
+      "author": "claude",
+      "created": 1788665608,
+      "updated": 1788665608,
+      "anchors": [],
+      "comments": [],
+      "history": []
+    },
+    {
+      "id": 100,
+      "title": "Debug: a self-screenshot probe for visual verification without manual window automation",
+      "body": "Companion to **PM-99** (launch-arg view jump). Right now, visually verifying a rendering change from outside the app means: find the window handle, `GetWindowRect`, `PrintWindow` into a `Bitmap`, save — all external PowerShell, all fragile (window handle changes every launch; a native popup menu isn't captured by `PrintWindow` at all, since it's a separate top-level window — this bit us trying to screenshot the About dialog for PM-8/PM-9).\n\nA **self-probe** — the running app screenshotting its own window from the inside — sidesteps all of that: no handle-hunting, no external Win32 calls, and it can capture things external `PrintWindow` can't (native popovers, IME state, whatever's actually in the composited frame at that instant).\n\n## Wanted\n\nA debug-only affordance (behind `pm-debug`, or a `--screenshot <path>` launch arg alongside PM-99's `--view`) that:\n1. Opens on the requested view (PM-99).\n2. Waits for the first paint / a settle delay.\n3. Captures its own window content to a PNG at a given path.\n4. Exits (or stays open — exiting is more useful for scripted verification).\n\n## Prior art in the codebase\n- gpui's own window/platform layer already does compositing; the render target should be readable without needing PrintWindow, if gpui exposes any frame-capture hook. Check `gpui_platform`/`gpui-pre-windows` for anything like it before reaching for a screen-capture crate.\n- `pm-debug` (crates/pm-debug) already exists as the place for exactly this kind of tooling — see its own build.rs/PM-88 for the pattern of a distinct debug-only binary variant.\n\n## Why this matters beyond convenience\nThe manual PrintWindow approach also has a real safety edge: a naive \"just take a screenshot\" fallback can capture the wrong window or, worse, the whole screen (unrelated app content, other browser tabs) if window-targeting fails. A self-probe that only ever has access to its own window content structurally can't make that mistake.\n\n## Verify\n`pm . --view tickets --ticket 96 --screenshot out.png` produces a PNG showing PM-96's ticket detail, with no external tooling.",
+      "status": "open",
+      "priority": "normal",
+      "labels": [],
+      "assignee": null,
+      "author": "claude",
+      "created": 1788665624,
+      "updated": 1788665624,
+      "anchors": [],
+      "comments": [],
+      "history": []
+    },
+    {
+      "id": 101,
+      "title": "Markdown: inline code spans can't be monospaced — gpui-base's HighlightStyle has no font field",
+      "body": "Follow-up from PM-8/PM-9. Fenced (```) code blocks render in pm's monospace font correctly — `gpui_base::text::node.rs:1296` sets `.font_family(cx.theme().tokens.typography.mono.clone())` unconditionally on the block's container div, and that token is populated from pm's own `mono_font_family` via the PM-55 theme projection (`fremantle::theme::project_onto_kit`). **Single-backtick inline code spans do not get this and render in the paragraph's regular font.**\n\n## Root cause (verified against gpui-base 0.6.0 / gpui-pre 0.3.3 sources)\nInline marks (bold/italic/code/link/strikethrough) are applied via `gpui::HighlightStyle` (`gpui-pre-0.3.3/src/style.rs:580-601`), which carries `color`, `font_weight`, `font_style`, `background_color`, `underline`, `strikethrough`, `fade_out` — **no `font_family` field**. `TextStyle::highlight()` (style.rs:508-536) and `HighlightStyle::highlight()` (style.rs:924-949) confirm this: every other field gets merged, font family is untouched by either. `TextViewStyle` (gpui-base's text/style.rs) has no code-font hook either — only `with_code_block`/`with_code_background`/`with_inline_code`, none of which reach font selection. This is a real API ceiling, not a config gap on pm's side.\n\nBold and italic work today because `font_weight`/`font_style` *are* HighlightStyle fields — inline code just isn't in that set.\n\n## Options, roughly cheapest to most invasive\n1. **Accept it for now.** Inline code gets pm's recessed background (fixed in the same pass as this ticket) and reads as \"code\" via color/background alone, same convention as many web renderers when a mono fallback isn't available. Bold/links/strikethrough are unaffected.\n2. **Vendor-patch `gpui-base`.** Fork the crate, add a `font_family: Option<SharedString>` to the relevant highlight path, publish under pm's own name/registry. Real maintenance burden — this is the same class of risk as PM-98 (the `gpui-pre` snapshot dependency), now multiplied by needing to track a second diverging fork on every upstream bump.\n3. **Upstream it.** File against `longbridge/gpui-kit` — plausibly a small, welcome addition (`HighlightStyle.font_family: Option<SharedString>`, applied in `TextStyle::highlight`/`highlight()`). Costs nothing but time and isn't on pm's timeline.\n4. **Don't use the kit's inline-mark rendering for code spans.** Pre-process markdown so inline code becomes something rendered outside the built-in `Inline` flow (e.g. a custom small element). No extension point exists for this today — `MarkdownBlockParserFn`/`MarkdownBlockRenderFn`/`MarkdownPlugin` are block-level hooks; there's no inline-level plugin surface. Would mean forking the parse→render pipeline for one visual detail. Not recommended.\n\nRecommend (1) now, (3) opportunistically, revisit (2) only if this becomes a recurring complaint.\n\n## Verify\nOnce resolved: an inline `` `code` `` span in a ticket body renders in pm's monospace font, matching a fenced block's font exactly.",
+      "status": "open",
+      "priority": "normal",
+      "labels": [
+        "fremantle"
+      ],
+      "assignee": null,
+      "author": "claude",
+      "created": 1788665645,
+      "updated": 1788665645,
+      "anchors": [],
+      "comments": [],
+      "history": [
+        {
+          "at": 1788665645,
+          "author": "claude",
+          "kind": "labels_changed",
+          "old": [],
+          "new": [
+            "fremantle"
+          ]
         }
       ]
     }
