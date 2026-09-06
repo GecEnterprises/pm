@@ -2,8 +2,13 @@
 members = ["crates/fremantle", "crates/pm-core", "crates/pm-ui", "crates/pm-mcp", "crates/pm-debug"]
 
 [workspace.dependencies]
-gpui = { git = "https://github.com/zed-industries/zed", branch = "main" }
-gpui_platform = { git = "https://github.com/zed-industries/zed", branch = "main" }
+# `gpui-pre` is a published snapshot of zed's own gpui (repository field points
+# at zed-industries/zed), cut by the gpui-kit author so gpui-component has
+# something on crates.io to depend on. Pinned release rather than a floating
+# git branch; see the gpui-kit adoption plan.
+gpui = { package = "gpui-pre", version = "0.3.3" }
+gpui_platform = { package = "gpui-pre-platform", version = "0.3.3" }
+gpui-component = "0.6"
 anyhow = "1"
 
 [package]
