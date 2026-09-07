@@ -6,14 +6,17 @@
 //! back as pretty-printed JSON, which is a valid JSON5 subset; hand-written
 //! comments in the file are lost the first time `pm` saves it.
 
+use std::fs::{File, OpenOptions};
 use std::path::Path;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use anyhow::{Context, Result};
+use fs2::FileExt;
 use serde::{Deserialize, Serialize};
 
 /// File name under the `.pm/` directory.
 const FILE: &str = "pm.json5";
+const LOCK_ATTEMPTS: usize = 100;
 
 /// The `pm.json5` schema version this build understands. A file whose `version`
 /// exceeds this was written by a newer `pm`; we can still *read* it (unknown
@@ -147,14 +150,34 @@ pub struct Comment {
 #[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum HistoryEvent {
-    TitleChanged { old: String, new: String },
-    BodyChanged { old: String, new: String },
-    StatusChanged { old: Status, new: Status },
-    PriorityChanged { old: Priority, new: Priority },
-    LabelsChanged { old: Vec<String>, new: Vec<String> },
-    AssigneeChanged { old: Option<String>, new: Option<String> },
+    TitleChanged {
+        old: String,
+        new: String,
+    },
+    BodyChanged {
+        old: String,
+        new: String,
+    },
+    StatusChanged {
+        old: Status,
+        new: Status,
+    },
+    PriorityChanged {
+        old: Priority,
+        new: Priority,
+    },
+    LabelsChanged {
+        old: Vec<String>,
+        new: Vec<String>,
+    },
+    AssigneeChanged {
+        old: Option<String>,
+        new: Option<String>,
+    },
     /// A comment was added; look it up by id in `Ticket::comments` for its body.
-    Commented { comment_id: u64 },
+    Commented {
+        comment_id: u64,
+    },
 }
 
 /// One entry in a ticket's history, oldest first.
@@ -298,6 +321,89 @@ pub fn load_in(dir: &Path) -> std::result::Result<PmData, LoadError> {
     Err(err)
 }
 
+struct StoreLock(File);
+
+impl Drop for StoreLock {
+    fn drop(&mut self) {
+        let _ = self.0.unlock();
+    }
+}
+
+fn lock_store(dir: &Path) -> Result<StoreLock> {
+    std::fs::create_dir_all(dir).with_context(|| format!("creating {}", dir.display()))?;
+    let canonical = std::fs::canonicalize(dir).unwrap_or_else(|_| dir.to_path_buf());
+    let identity = if cfg!(windows) {
+        canonical.to_string_lossy().to_lowercase()
+    } else {
+        canonical.to_string_lossy().into_owned()
+    };
+    // A stable FNV-1a digest gives every store its own lock without leaving an
+    // untracked coordination file inside the repository.
+    let digest = identity.bytes().fold(0xcbf29ce484222325_u64, |hash, byte| {
+        (hash ^ u64::from(byte)).wrapping_mul(0x100000001b3)
+    });
+    let lock_dir = std::env::temp_dir().join("pm-store-locks");
+    std::fs::create_dir_all(&lock_dir)
+        .with_context(|| format!("creating {}", lock_dir.display()))?;
+    let path = lock_dir.join(format!("{digest:016x}.lock"));
+    let file = OpenOptions::new()
+        .read(true)
+        .write(true)
+        .create(true)
+        .open(&path)
+        .with_context(|| format!("opening ticket-store lock {}", path.display()))?;
+    for attempt in 0..LOCK_ATTEMPTS {
+        match file.try_lock_exclusive() {
+            Ok(()) => return Ok(StoreLock(file)),
+            Err(e) if attempt + 1 == LOCK_ATTEMPTS => {
+                return Err(e).with_context(|| {
+                    format!(
+                        "ticket store {} stayed locked for another process",
+                        dir.display()
+                    )
+                });
+            }
+            Err(_) => std::thread::sleep(std::time::Duration::from_millis(10)),
+        }
+    }
+    unreachable!()
+}
+
+fn store_bytes(dir: &Path) -> Result<Option<Vec<u8>>> {
+    match std::fs::read(dir.join(FILE)) {
+        Ok(bytes) => Ok(Some(bytes)),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(None),
+        Err(e) => Err(e).with_context(|| format!("reading {}", dir.join(FILE).display())),
+    }
+}
+
+/// Run one read-modify-write transaction against a ticket store.
+///
+/// The lock is advisory: pm GUI and MCP writers cooperate across processes.
+/// Before saving, the original bytes are compared again so an editor or other
+/// non-cooperating writer produces a recoverable conflict instead of being
+/// silently overwritten. The callback returns `(value, changed)`; unchanged
+/// transactions do not rewrite the store.
+pub fn transact_in<T>(
+    dir: &Path,
+    mutate: impl FnOnce(&mut PmData) -> Result<(T, bool)>,
+) -> Result<(PmData, T)> {
+    let _lock = lock_store(dir)?;
+    let before = store_bytes(dir)?;
+    let mut data = load_in(dir).map_err(|e| anyhow::anyhow!(e.to_string()))?;
+    let (value, changed) = mutate(&mut data)?;
+    if changed {
+        if store_bytes(dir)? != before {
+            anyhow::bail!(
+                "ticket store {} changed outside pm during the transaction; reload and retry",
+                dir.join(FILE).display()
+            );
+        }
+        data.save_in(dir)?;
+    }
+    Ok((data, value))
+}
+
 impl PmData {
     /// Pretty-printed JSON text (a valid JSON5 subset).
     pub fn to_pretty(&self) -> String {
@@ -323,20 +429,20 @@ impl PmData {
                 self.version
             );
         }
-        std::fs::create_dir_all(dir)
-            .with_context(|| format!("creating {}", dir.display()))?;
+        std::fs::create_dir_all(dir).with_context(|| format!("creating {}", dir.display()))?;
         let path = dir.join(FILE);
         let tmp = dir.join(format!(".{FILE}.{}.tmp", std::process::id()));
         std::fs::write(&tmp, self.to_pretty())
             .with_context(|| format!("writing {}", tmp.display()))?;
-        std::fs::rename(&tmp, &path).or_else(|_| {
-            // Rare on Windows if a reader holds the target; fall back to a
-            // direct write and drop the temp.
-            let r = std::fs::write(&path, self.to_pretty());
-            let _ = std::fs::remove_file(&tmp);
-            r
-        })
-        .with_context(|| format!("replacing {}", path.display()))
+        std::fs::rename(&tmp, &path)
+            .or_else(|_| {
+                // Rare on Windows if a reader holds the target; fall back to a
+                // direct write and drop the temp.
+                let r = std::fs::write(&path, self.to_pretty());
+                let _ = std::fs::remove_file(&tmp);
+                r
+            })
+            .with_context(|| format!("replacing {}", path.display()))
     }
 
     pub fn ticket(&self, id: u64) -> Option<&Ticket> {
@@ -677,6 +783,106 @@ mod tests {
         std::fs::create_dir_all(d.join(".pm")).unwrap();
         std::fs::write(d.join(".pm").join(FILE), "{ not valid").unwrap();
         assert!(matches!(load(&d), Err(LoadError::Parse(_))));
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
+    #[test]
+    fn concurrent_transactions_preserve_unique_tickets() {
+        let d = tmp();
+        let store = d.join(".pm");
+        std::thread::scope(|scope| {
+            for i in 0..12 {
+                let store = &store;
+                scope.spawn(move || {
+                    transact_in(store, |data| {
+                        let id = data.create_ticket(format!("ticket {i}"), "", "test", i);
+                        Ok((id, true))
+                    })
+                    .unwrap();
+                });
+            }
+        });
+
+        let data = load_in(&store).unwrap();
+        let mut ids: Vec<_> = data.tickets.iter().map(|ticket| ticket.id).collect();
+        ids.sort_unstable();
+        assert_eq!(ids, (1..=12).collect::<Vec<_>>());
+        assert_eq!(data.next_id, 13);
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
+    #[test]
+    fn transaction_child_writer() {
+        let Some(store) = std::env::var_os("PM_TRANSACTION_CHILD_STORE") else {
+            return;
+        };
+        let title = std::env::var("PM_TRANSACTION_CHILD_TITLE").unwrap();
+        transact_in(Path::new(&store), |data| {
+            let id = data.create_ticket(title, "", "child", now_unix());
+            Ok((id, true))
+        })
+        .unwrap();
+    }
+
+    #[test]
+    fn separate_process_transactions_preserve_both_writes() {
+        let d = tmp();
+        let store = d.join(".pm");
+        let exe = std::env::current_exe().unwrap();
+        let spawn = |title: &str| {
+            std::process::Command::new(&exe)
+                .args(["--exact", "pm::tests::transaction_child_writer"])
+                .env("PM_TRANSACTION_CHILD_STORE", &store)
+                .env("PM_TRANSACTION_CHILD_TITLE", title)
+                .spawn()
+                .unwrap()
+        };
+        let mut first = spawn("first");
+        let mut second = spawn("second");
+        assert!(first.wait().unwrap().success());
+        assert!(second.wait().unwrap().success());
+
+        let data = load_in(&store).unwrap();
+        assert_eq!(data.tickets.len(), 2);
+        assert_ne!(data.tickets[0].id, data.tickets[1].id);
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
+    #[test]
+    fn lock_timeout_is_reported() {
+        let d = tmp();
+        let store = d.join(".pm");
+        let held = lock_store(&store).unwrap();
+        let err = transact_in(&store, |_| Ok(((), false)))
+            .unwrap_err()
+            .to_string();
+        drop(held);
+        assert!(err.contains("stayed locked"), "unexpected: {err}");
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
+    #[test]
+    fn transaction_rejects_an_uncooperative_external_write() {
+        let d = tmp();
+        let store = d.join(".pm");
+        let mut initial = PmData::default();
+        initial.create_ticket("original", "", "test", 0);
+        initial.save_in(&store).unwrap();
+
+        let path = store.join(FILE);
+        let err = transact_in(&store, |data| {
+            data.set_status(1, Status::Done, "pm", 1);
+            let mut external = data.clone();
+            external.add_comment(1, "editor", "outside write", 2);
+            std::fs::write(&path, external.to_pretty()).unwrap();
+            Ok(((), true))
+        })
+        .unwrap_err()
+        .to_string();
+
+        assert!(err.contains("changed outside pm"), "unexpected: {err}");
+        let data = load_in(&store).unwrap();
+        assert_eq!(data.ticket(1).unwrap().comments.len(), 1);
         let _ = std::fs::remove_dir_all(&d);
     }
 }

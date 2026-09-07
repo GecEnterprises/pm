@@ -3804,16 +3804,45 @@
       "id": 105,
       "title": "Ticket store: prevent lost updates across GUI and MCP processes",
       "body": "Priority 1 of the stabilization pass.\n\nProblem: AppState saves an in-memory PmData snapshot; MCP holds only a process-local STORE_LOCK. Two GUI/MCP processes can load the same document and overwrite one another. Atomic rename and torn-read retries do not prevent lost updates; correct the misleading comment in pm-mcp/src/ops.rs.\n\nScope: one pm-core transaction API used by every GUI and MCP mutation. Acquire a per-store cross-process lock, load the latest document, apply the operation, and persist before releasing the lock. GUI mutations must operate on the freshly loaded data, not replace it with their cached snapshot. Detect conflicting external-editor changes and return a recoverable conflict rather than silently clobbering them; document the limits for writers that do not cooperate with locking. Do not change the storage backend in this slice.\n\nAcceptance: two separate processes creating/editing tickets preserve both operations and unique IDs; a stale GUI changing status preserves a newly added MCP comment; lock failure and external conflicts surface without overwriting data. Use temporary stores, not the live project backlog.\n\nRelated: PM-106 owns replacement failure and draft retention. PM-94 batch operations must use this same transaction API.",
-      "status": "open",
+      "status": "done",
       "priority": "urgent",
       "labels": [],
       "assignee": null,
       "author": "codex",
       "created": 1788748482,
-      "updated": 1788748482,
+      "updated": 1788794443,
       "anchors": [],
-      "comments": [],
-      "history": []
+      "comments": [
+        {
+          "id": 1,
+          "author": "codex",
+          "created": 1788794443,
+          "body": "Implemented a shared pm-core `transact_in` path backed by `fs2` advisory file locks. GUI and MCP mutations now lock, reload the latest store, mutate, and save before releasing; GUI state is replaced with the committed fresh snapshot. Lock files live in a stable per-store temp location so `.pm/` is not dirtied. A byte comparison before save rejects non-cooperating external-editor changes with a recoverable conflict; advisory locking cannot eliminate the narrow race from an external writer that ignores the lock after that check. Removed the misleading process-local MCP locking claim and routed MCP CRUD through the core transaction API. Added coverage for concurrent threads, two separate writer processes with unique IDs, lock timeout reporting, external-write conflict detection, and a stale GUI status edit preserving a newer comment. Verification: `cargo check --workspace --locked --offline` and `cargo test --workspace --locked --offline`; all 48 unit tests pass.",
+          "anchor": null
+        }
+      ],
+      "history": [
+        {
+          "at": 1788793546,
+          "author": "codex",
+          "kind": "status_changed",
+          "old": "open",
+          "new": "in_progress"
+        },
+        {
+          "at": 1788794443,
+          "author": "codex",
+          "kind": "commented",
+          "comment_id": 1
+        },
+        {
+          "at": 1788794443,
+          "author": "codex",
+          "kind": "status_changed",
+          "old": "in_progress",
+          "new": "done"
+        }
+      ]
     },
     {
       "id": 106,

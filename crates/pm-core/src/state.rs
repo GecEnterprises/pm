@@ -177,12 +177,11 @@ impl AppState {
         s.rebuild_visible();
         // Open the first changed file, or — with no git — the first file in the
         // tree, so the window isn't blank.
-        let first = s.changes.first().map(|c| c.rel.clone()).or_else(|| {
-            s.tree
-                .iter()
-                .find(|e| !e.is_dir)
-                .map(|e| e.rel.clone())
-        });
+        let first = s
+            .changes
+            .first()
+            .map(|c| c.rel.clone())
+            .or_else(|| s.tree.iter().find(|e| !e.is_dir).map(|e| e.rel.clone()));
         if let Some(rel) = first {
             s.tree_selected = Some(rel.clone());
             s.open_path(rel);
@@ -207,7 +206,9 @@ impl AppState {
         if p.file_name() != Some(OsStr::new("pm.json5")) {
             return false;
         }
-        let Some(parent) = p.parent() else { return false };
+        let Some(parent) = p.parent() else {
+            return false;
+        };
         parent == self.store_dir || parent.file_name() == self.store_dir.file_name()
     }
 
@@ -225,10 +226,20 @@ impl AppState {
         }
     }
 
-    fn save_pm(&mut self) {
-        match self.pm.save_in(&self.store_dir) {
-            Ok(()) => self.pm_error = None,
-            Err(e) => self.pm_error = Some(e.to_string()),
+    fn mutate_pm<T>(
+        &mut self,
+        mutate: impl FnOnce(&mut PmData) -> anyhow::Result<(T, bool)>,
+    ) -> Option<T> {
+        match pm::transact_in(&self.store_dir, mutate) {
+            Ok((data, value)) => {
+                self.pm = data;
+                self.pm_error = None;
+                Some(value)
+            }
+            Err(e) => {
+                self.pm_error = Some(e.to_string());
+                None
+            }
         }
     }
 
@@ -250,18 +261,24 @@ impl AppState {
         author: Option<String>,
     ) -> u64 {
         let author = self.author_or_default(author);
-        let id = self.pm.create_ticket(title, body, author, pm::now_unix());
-        self.save_pm();
-        id
+        let title = title.into();
+        let body = body.into();
+        self.mutate_pm(move |data| {
+            let id = data.create_ticket(title, body, author, pm::now_unix());
+            Ok((id, true))
+        })
+        .unwrap_or(0)
     }
 
     /// Add a comment to a ticket and persist. `author` overrides this window's
     /// default when non-empty (PM-15).
     pub fn add_comment(&mut self, ticket_id: u64, body: impl Into<String>, author: Option<String>) {
         let author = self.author_or_default(author);
-        if self.pm.add_comment(ticket_id, author, body, pm::now_unix()) {
-            self.save_pm();
-        }
+        let body = body.into();
+        self.mutate_pm(move |data| {
+            let changed = data.add_comment(ticket_id, author, body, pm::now_unix());
+            Ok(((), changed))
+        });
     }
 
     /// Change a ticket's status and persist. `author` overrides this window's
@@ -273,9 +290,10 @@ impl AppState {
         author: Option<String>,
     ) {
         let author = self.author_or_default(author);
-        if self.pm.set_status(ticket_id, status, author, pm::now_unix()) {
-            self.save_pm();
-        }
+        self.mutate_pm(move |data| {
+            let changed = data.set_status(ticket_id, status, author, pm::now_unix());
+            Ok(((), changed))
+        });
     }
 
     /// Set a ticket's title and persist. `author` overrides this window's
@@ -287,9 +305,11 @@ impl AppState {
         author: Option<String>,
     ) {
         let author = self.author_or_default(author);
-        if self.pm.set_title(ticket_id, title, author, pm::now_unix()) {
-            self.save_pm();
-        }
+        let title = title.into();
+        self.mutate_pm(move |data| {
+            let changed = data.set_title(ticket_id, title, author, pm::now_unix());
+            Ok(((), changed))
+        });
     }
 
     /// Set a ticket's body and persist. `author` overrides this window's
@@ -301,9 +321,11 @@ impl AppState {
         author: Option<String>,
     ) {
         let author = self.author_or_default(author);
-        if self.pm.set_body(ticket_id, body, author, pm::now_unix()) {
-            self.save_pm();
-        }
+        let body = body.into();
+        self.mutate_pm(move |data| {
+            let changed = data.set_body(ticket_id, body, author, pm::now_unix());
+            Ok(((), changed))
+        });
     }
 
     /// Set a ticket's priority and persist. `author` overrides this window's
@@ -315,9 +337,10 @@ impl AppState {
         author: Option<String>,
     ) {
         let author = self.author_or_default(author);
-        if self.pm.set_priority(ticket_id, priority, author, pm::now_unix()) {
-            self.save_pm();
-        }
+        self.mutate_pm(move |data| {
+            let changed = data.set_priority(ticket_id, priority, author, pm::now_unix());
+            Ok(((), changed))
+        });
     }
 
     /// Set a ticket's assignee and persist. `author` overrides this window's
@@ -329,9 +352,10 @@ impl AppState {
         author: Option<String>,
     ) {
         let author = self.author_or_default(author);
-        if self.pm.set_assignee(ticket_id, assignee, author, pm::now_unix()) {
-            self.save_pm();
-        }
+        self.mutate_pm(move |data| {
+            let changed = data.set_assignee(ticket_id, assignee, author, pm::now_unix());
+            Ok(((), changed))
+        });
     }
 
     /// Replace a ticket's labels and persist. `author` overrides this window's
@@ -343,12 +367,13 @@ impl AppState {
         author: Option<String>,
     ) {
         let author = self.author_or_default(author);
-        if self.pm.set_labels(ticket_id, labels, author, pm::now_unix()) {
-            self.save_pm();
-        }
+        self.mutate_pm(move |data| {
+            let changed = data.set_labels(ticket_id, labels, author, pm::now_unix());
+            Ok(((), changed))
+        });
     }
 
-        pub fn open_path(&mut self, rel: PathBuf) {
+    pub fn open_path(&mut self, rel: PathBuf) {
         self.open = Some(rel.clone());
         self.caret = None;
 
@@ -390,7 +415,7 @@ impl AppState {
         self.col_display = [Vec::new(), Vec::new()];
     }
 
-        /// Rebuild `col_display` from `rows` (call whenever `rows` changes).
+    /// Rebuild `col_display` from `rows` (call whenever `rows` changes).
     pub fn rebuild_col_display(&mut self) {
         let [l, r] = &mut self.col_display;
         l.clear();
@@ -405,7 +430,7 @@ impl AppState {
         }
     }
 
-        /// Recompute `visible` (indices into `tree`) from the expanded-dir set.
+    /// Recompute `visible` (indices into `tree`) from the expanded-dir set.
     pub fn rebuild_visible(&mut self) {
         self.visible.clear();
         for (i, e) in self.tree.iter().enumerate() {
@@ -606,7 +631,10 @@ impl AppState {
             while b > 0 && !s.is_char_boundary(b) {
                 b -= 1;
             }
-            BufferPos { file_row: p.file_row, byte: b }
+            BufferPos {
+                file_row: p.file_row,
+                byte: b,
+            }
         } else if p.file_row > 0 {
             BufferPos {
                 file_row: p.file_row - 1,
@@ -624,9 +652,15 @@ impl AppState {
             while b < s.len() && !s.is_char_boundary(b) {
                 b += 1;
             }
-            BufferPos { file_row: p.file_row, byte: b }
+            BufferPos {
+                file_row: p.file_row,
+                byte: b,
+            }
         } else if p.file_row + 1 < self.text.line_count(col) {
-            BufferPos { file_row: p.file_row + 1, byte: 0 }
+            BufferPos {
+                file_row: p.file_row + 1,
+                byte: 0,
+            }
         } else {
             p
         }
@@ -660,7 +694,10 @@ mod tests {
         // A `.git` path anywhere in the batch vetoes the whole batch.
         let real = st.changes.first().map(|c| root.join(&c.rel));
         if let Some(real) = &real {
-            assert_eq!(st.changed_in_batch(&[real.clone(), root.join(".git/x")]), None);
+            assert_eq!(
+                st.changed_in_batch(&[real.clone(), root.join(".git/x")]),
+                None
+            );
             // …but on its own it's the target.
             let want = st.changes.first().map(|c| c.rel.clone());
             assert_eq!(st.changed_in_batch(std::slice::from_ref(real)), want);
@@ -703,11 +740,21 @@ mod tests {
 
         use crate::pm::HistoryEvent;
         let kinds: Vec<&HistoryEvent> = t.history.iter().map(|h| &h.event).collect();
-        assert!(kinds.iter().any(|e| matches!(e, HistoryEvent::TitleChanged { .. })));
-        assert!(kinds.iter().any(|e| matches!(e, HistoryEvent::BodyChanged { .. })));
-        assert!(kinds.iter().any(|e| matches!(e, HistoryEvent::PriorityChanged { .. })));
-        assert!(kinds.iter().any(|e| matches!(e, HistoryEvent::AssigneeChanged { .. })));
-        assert!(kinds.iter().any(|e| matches!(e, HistoryEvent::LabelsChanged { .. })));
+        assert!(kinds
+            .iter()
+            .any(|e| matches!(e, HistoryEvent::TitleChanged { .. })));
+        assert!(kinds
+            .iter()
+            .any(|e| matches!(e, HistoryEvent::BodyChanged { .. })));
+        assert!(kinds
+            .iter()
+            .any(|e| matches!(e, HistoryEvent::PriorityChanged { .. })));
+        assert!(kinds
+            .iter()
+            .any(|e| matches!(e, HistoryEvent::AssigneeChanged { .. })));
+        assert!(kinds
+            .iter()
+            .any(|e| matches!(e, HistoryEvent::LabelsChanged { .. })));
         assert!(t.history.iter().all(|h| h.author == "tester"));
 
         // Persisted to disk.
@@ -721,6 +768,27 @@ mod tests {
         st.set_ticket_labels(id, vec!["bug".into()], Some("tester".into()));
         assert_eq!(st.pm.ticket(id).unwrap().history.len(), before);
 
+        let _ = std::fs::remove_dir_all(&store_dir);
+    }
+
+    #[test]
+    fn stale_gui_mutation_preserves_a_concurrent_comment() {
+        let repo = Repo::discover(Path::new(".")).unwrap();
+        let store_dir = tmp_store();
+        let mut first = AppState::new(repo, store_dir.clone());
+        let id = first.create_ticket("shared", "", Some("first".into()));
+
+        let repo = Repo::discover(Path::new(".")).unwrap();
+        let mut second = AppState::new(repo, store_dir.clone());
+        second.add_comment(id, "from mcp", Some("second".into()));
+        first.set_ticket_status(id, crate::pm::Status::Done, Some("first".into()));
+
+        let data = pm::load_in(&store_dir).unwrap();
+        let ticket = data.ticket(id).unwrap();
+        assert_eq!(ticket.status, crate::pm::Status::Done);
+        assert_eq!(ticket.comments.len(), 1);
+        assert_eq!(ticket.comments[0].body, "from mcp");
+        assert_eq!(first.pm, data);
         let _ = std::fs::remove_dir_all(&store_dir);
     }
 }

@@ -1,24 +1,16 @@
 //! The actual work behind each MCP tool — plain functions over `pm-core`, with
 //! no `rmcp` types in sight so they can be unit-tested directly.
 //!
-//! Every mutating op is load → mutate → atomic save (`PmData::save`); a running
+//! Every mutating op uses pm-core's cross-process transaction API; a running
 //! `pm` GUI notices the file change through its filesystem watch.
 
 use std::path::{Path, PathBuf};
-use std::sync::Mutex;
 
 use anyhow::{anyhow, bail, Context, Result};
 use serde_json::{json, Value};
 
 use pm_core::pm::{self, PmData, Priority, Status};
 use pm_core::{resolve_author, Config, Repo};
-
-/// Serializes every read-modify-write of a `pm.json5` in this process. `rmcp`
-/// runs tool calls concurrently, so two writes in one client batch would
-/// otherwise load the same base and the last save would clobber the first.
-/// (Cross-process races are still handled by `pm::load`'s torn-read retry +
-/// `PmData::save`'s atomic rename.)
-static STORE_LOCK: Mutex<()> = Mutex::new(());
 
 /// Resolve a project root from an optional path argument (falling back to
 /// `default`). If the chosen directory has no `.pm/pm.json5`, walk up until one
@@ -56,13 +48,10 @@ fn load(root: &Path) -> Result<PmData> {
     pm::load_in(&store_dir(root)).map_err(|e| anyhow!("{e}"))
 }
 
-fn save(data: &PmData, root: &Path) -> Result<()> {
-    data.save_in(&store_dir(root))
-}
-
 fn parse_status(s: &str) -> Result<Status> {
-    serde_json::from_value(Value::String(s.to_string()))
-        .with_context(|| format!("unknown status {s:?} (open, in_progress, blocked, done, wontfix)"))
+    serde_json::from_value(Value::String(s.to_string())).with_context(|| {
+        format!("unknown status {s:?} (open, in_progress, blocked, done, wontfix)")
+    })
 }
 
 fn parse_priority(s: &str) -> Result<Priority> {
@@ -118,13 +107,13 @@ pub fn add_comment(root: &Path, id: u64, body: &str, author: Option<&str>) -> Re
     if body.trim().is_empty() {
         bail!("comment body is empty");
     }
-    let _guard = STORE_LOCK.lock().unwrap_or_else(|e| e.into_inner());
-    let mut data = load(root)?;
     let author = resolve_author(author, &Repo::open(root));
-    if !data.add_comment(id, author.clone(), body, pm::now_unix()) {
-        bail!("no ticket with id {id}");
-    }
-    save(&data, root)?;
+    let (data, ()) = pm::transact_in(&store_dir(root), |data| {
+        if !data.add_comment(id, author.clone(), body, pm::now_unix()) {
+            bail!("no ticket with id {id}");
+        }
+        Ok(((), true))
+    })?;
     let comment_id = data
         .ticket(id)
         .and_then(|t| t.comments.last())
@@ -145,19 +134,23 @@ pub fn create_ticket(
     if title.trim().is_empty() {
         bail!("ticket title is empty");
     }
-    let _guard = STORE_LOCK.lock().unwrap_or_else(|e| e.into_inner());
-    let mut data = load(root)?;
     let author = resolve_author(author, &Repo::open(root));
     let now = pm::now_unix();
-    let id = data.create_ticket(title, body.unwrap_or_default(), author.clone(), now);
-    if let Some(p) = priority {
-        data.set_priority(id, parse_priority(p)?, author.clone(), now);
-    }
-    if let Some(l) = labels {
-        data.set_labels(id, l, author.clone(), now);
-    }
-    save(&data, root)?;
-    let display = data.ticket(id).map(|t| data.display_id(t)).unwrap_or_default();
+    let parsed_priority = priority.map(parse_priority).transpose()?;
+    let (data, id) = pm::transact_in(&store_dir(root), |data| {
+        let id = data.create_ticket(title, body.unwrap_or_default(), author.clone(), now);
+        if let Some(p) = parsed_priority {
+            data.set_priority(id, p, author.clone(), now);
+        }
+        if let Some(l) = labels {
+            data.set_labels(id, l, author.clone(), now);
+        }
+        Ok((id, true))
+    })?;
+    let display = data
+        .ticket(id)
+        .map(|t| data.display_id(t))
+        .unwrap_or_default();
     Ok(json!({ "ok": true, "id": id, "display_id": display, "author": author }))
 }
 
@@ -173,53 +166,56 @@ pub fn edit_ticket(
     assignee: Option<Value>,
     author: Option<&str>,
 ) -> Result<Value> {
-    let _guard = STORE_LOCK.lock().unwrap_or_else(|e| e.into_inner());
-    let mut data = load(root)?;
-    if data.ticket(id).is_none() {
-        bail!("no ticket with id {id}");
-    }
     let author = resolve_author(author, &Repo::open(root));
     let now = pm::now_unix();
-    let mut changed = Vec::new();
-    if let Some(v) = title {
-        if data.set_title(id, v, author.clone(), now) {
-            changed.push("title");
-        }
-    }
-    if let Some(v) = body {
-        if data.set_body(id, v, author.clone(), now) {
-            changed.push("body");
-        }
-    }
-    if let Some(v) = status {
-        if data.set_status(id, parse_status(v)?, author.clone(), now) {
-            changed.push("status");
-        }
-    }
-    if let Some(v) = priority {
-        if data.set_priority(id, parse_priority(v)?, author.clone(), now) {
-            changed.push("priority");
-        }
-    }
-    if let Some(v) = labels {
-        if data.set_labels(id, v, author.clone(), now) {
-            changed.push("labels");
-        }
-    }
+    let parsed_status = status.map(parse_status).transpose()?;
+    let parsed_priority = priority.map(parse_priority).transpose()?;
     // `assignee`: a string sets it, JSON null clears it, absent leaves it.
-    if let Some(a) = assignee {
-        let next = match a {
-            Value::Null => None,
-            Value::String(s) => Some(s),
+    let assignee = assignee
+        .map(|a| match a {
+            Value::Null => Ok(None),
+            Value::String(s) => Ok(Some(s)),
             other => bail!("assignee must be a string or null, got {other}"),
-        };
-        if data.set_assignee(id, next, author.clone(), now) {
-            changed.push("assignee");
+        })
+        .transpose()?;
+    let (_, changed) = pm::transact_in(&store_dir(root), |data| {
+        if data.ticket(id).is_none() {
+            bail!("no ticket with id {id}");
         }
-    }
-    if !changed.is_empty() {
-        save(&data, root)?;
-    }
+        let mut changed = Vec::new();
+        if let Some(v) = title {
+            if data.set_title(id, v, author.clone(), now) {
+                changed.push("title");
+            }
+        }
+        if let Some(v) = body {
+            if data.set_body(id, v, author.clone(), now) {
+                changed.push("body");
+            }
+        }
+        if let Some(v) = parsed_status {
+            if data.set_status(id, v, author.clone(), now) {
+                changed.push("status");
+            }
+        }
+        if let Some(v) = parsed_priority {
+            if data.set_priority(id, v, author.clone(), now) {
+                changed.push("priority");
+            }
+        }
+        if let Some(v) = labels {
+            if data.set_labels(id, v, author.clone(), now) {
+                changed.push("labels");
+            }
+        }
+        if let Some(next) = assignee {
+            if data.set_assignee(id, next, author.clone(), now) {
+                changed.push("assignee");
+            }
+        }
+        let dirty = !changed.is_empty();
+        Ok((changed, dirty))
+    })?;
     Ok(json!({ "ok": true, "id": id, "changed": changed }))
 }
 
@@ -231,7 +227,9 @@ pub fn open_project(root: &Path) -> Result<Value> {
         .arg(root)
         .spawn()
         .with_context(|| format!("launching {}", bin.display()))?;
-    Ok(json!({ "ok": true, "launched": bin.display().to_string(), "project": root.display().to_string() }))
+    Ok(
+        json!({ "ok": true, "launched": bin.display().to_string(), "project": root.display().to_string() }),
+    )
 }
 
 fn locate_gui() -> Option<PathBuf> {
@@ -333,7 +331,8 @@ mod tests {
     #[test]
     fn create_comment_edit_roundtrip() {
         let d = tmp_project();
-        let c = create_ticket(&d, "hello", Some("body"), Some("alice"), Some("high"), None).unwrap();
+        let c =
+            create_ticket(&d, "hello", Some("body"), Some("alice"), Some("high"), None).unwrap();
         let id = c["id"].as_u64().unwrap();
         assert_eq!(c["display_id"], "T-1");
 
@@ -343,7 +342,18 @@ mod tests {
         assert_eq!(t["priority"], "high");
         assert_eq!(t["comments"][0]["author"], "bob");
 
-        edit_ticket(&d, id, None, None, Some("done"), None, None, None, Some("carol")).unwrap();
+        edit_ticket(
+            &d,
+            id,
+            None,
+            None,
+            Some("done"),
+            None,
+            None,
+            None,
+            Some("carol"),
+        )
+        .unwrap();
         let list = list_tickets(&d, Some("done"), None).unwrap();
         assert_eq!(list["count"], 1);
         let none = list_tickets(&d, Some("open"), None).unwrap();
@@ -359,8 +369,18 @@ mod tests {
             .as_u64()
             .unwrap();
         add_comment(&d, id, "a note", Some("bob")).unwrap();
-        edit_ticket(&d, id, Some("bye"), None, Some("done"), None, None, None, Some("carol"))
-            .unwrap();
+        edit_ticket(
+            &d,
+            id,
+            Some("bye"),
+            None,
+            Some("done"),
+            None,
+            None,
+            None,
+            Some("carol"),
+        )
+        .unwrap();
 
         let t = get_ticket(&d, id).unwrap();
         let history = t["history"].as_array().unwrap();
