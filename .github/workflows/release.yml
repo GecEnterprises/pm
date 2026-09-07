@@ -15,6 +15,15 @@ jobs:
         with:
           fetch-depth: 0 # build.rs reads `git log` for the commit + date
 
+      - name: Require release commit on trunk
+        shell: bash
+        run: |
+          git fetch origin trunk
+          if ! git merge-base --is-ancestor "$GITHUB_SHA" origin/trunk; then
+            echo "::error::release tags must point to a commit already merged into trunk"
+            exit 1
+          fi
+
       - name: Resolve version
         id: ver
         shell: bash

@@ -3892,16 +3892,24 @@
       "id": 107,
       "title": "CI: run workspace checks and tests on pull requests and branch pushes",
       "body": "The only current workflow builds tagged Windows releases. The review passed all 46 unit tests with cargo test --workspace --locked --offline outside the sandbox; repository-dependent tests failed under sandbox path restrictions, not from product assertions. There are no doc-tests today.\n\nScope: add Windows CI on pull_request and push with a pinned/declared Rust toolchain policy, Cargo cache, cargo check --workspace --locked and cargo test --workspace --locked. Avoid duplicate PR/push runs where practical. Keep release packaging intact. Existing tests must run before expanding the matrix; do not claim Linux/macOS runtime coverage from a Windows build.\n\nAcceptance: a PR runs the suite, an intentional test failure fails the job, and tag release behavior is preserved. New persistence regressions from PM-105/106 join this suite. Interactive focus and responsiveness still require explicit smoke checks.",
-      "status": "open",
+      "status": "in_progress",
       "priority": "high",
       "labels": [],
       "assignee": null,
       "author": "codex",
       "created": 1788748482,
-      "updated": 1788748482,
+      "updated": 1788795791,
       "anchors": [],
       "comments": [],
-      "history": []
+      "history": [
+        {
+          "at": 1788795791,
+          "author": "codex",
+          "kind": "status_changed",
+          "old": "open",
+          "new": "in_progress"
+        }
+      ]
     },
     {
       "id": 108,
