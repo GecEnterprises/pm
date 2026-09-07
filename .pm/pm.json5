@@ -3848,16 +3848,45 @@
       "id": 106,
       "title": "Ticket saves: preserve the previous file and retain drafts on failure",
       "body": "Priority 1 of the stabilization pass; coordinate with PM-105.\n\nProblem: PmData::save_in falls back from rename failure to a direct write, which can truncate the live store. AppState::save_pm returns no Result, so GUI creation/comment flows can clear or close a draft despite failed persistence.\n\nScope: make replacement failure leave the previous file intact; use unique temporary files and bounded retries for transient sharing failures, without a direct-write fallback. Propagate Result through GUI mutation APIs. Commit in-memory success state and clear/close drafts only after persistence succeeds. On failure retain content, show an actionable error, and allow retry without duplicate creation. Keep schema-too-new stores read-only in the UI.\n\nAcceptance: injected replacement/write failures leave the old store byte-for-byte intact; a failed ticket/comment submission retains its draft; retry saves exactly once; unsupported schema cannot produce a misleading success state. Test isolated temporary stores.",
-      "status": "open",
+      "status": "done",
       "priority": "urgent",
       "labels": [],
       "assignee": null,
       "author": "codex",
       "created": 1788748482,
-      "updated": 1788748482,
+      "updated": 1788795235,
       "anchors": [],
-      "comments": [],
-      "history": []
+      "comments": [
+        {
+          "id": 1,
+          "author": "codex",
+          "created": 1788795235,
+          "body": "Implemented save-failure safety. `PmData::save_in` now writes to a unique create-new sibling temp file, flushes it, retries atomic replacement a bounded number of times, and deletes the temp on failure without ever directly writing/truncating the live store. Windows replacement uses `MoveFileExW(REPLACE_EXISTING | WRITE_THROUGH)`; other platforms use rename. AppState ticket mutations now return `Result` and only replace in-memory state after a committed transaction. Ticket and comment composers read drafts non-destructively and clear/close only after success, while existing `pm_error` UI surfaces failures. Added tests for preserved old bytes and temp cleanup on injected failure, distinct temp names, transient retry committing exactly once, and schema-too-new mutations leaving GUI state/disk unchanged. Verification: workspace check passed; full workspace suite passed (then the added focused retry test passed separately), for 49 unit tests total.",
+          "anchor": null
+        }
+      ],
+      "history": [
+        {
+          "at": 1788794548,
+          "author": "codex",
+          "kind": "status_changed",
+          "old": "open",
+          "new": "in_progress"
+        },
+        {
+          "at": 1788795235,
+          "author": "codex",
+          "kind": "commented",
+          "comment_id": 1
+        },
+        {
+          "at": 1788795235,
+          "author": "codex",
+          "kind": "status_changed",
+          "old": "in_progress",
+          "new": "done"
+        }
+      ]
     },
     {
       "id": 107,

@@ -7,7 +7,9 @@
 //! comments in the file are lost the first time `pm` saves it.
 
 use std::fs::{File, OpenOptions};
+use std::io::Write;
 use std::path::Path;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use anyhow::{Context, Result};
@@ -17,6 +19,8 @@ use serde::{Deserialize, Serialize};
 /// File name under the `.pm/` directory.
 const FILE: &str = "pm.json5";
 const LOCK_ATTEMPTS: usize = 100;
+const REPLACE_ATTEMPTS: usize = 5;
+static TEMP_ID: AtomicU64 = AtomicU64::new(0);
 
 /// The `pm.json5` schema version this build understands. A file whose `version`
 /// exceeds this was written by a newer `pm`; we can still *read* it (unknown
@@ -422,6 +426,14 @@ impl PmData {
     /// Like [`save`](Self::save), but `dir` directly contains `pm.json5`
     /// (`<root>/.pm`, or an out-of-repo store under `~/.pm/` — PM-34).
     pub fn save_in(&self, dir: &Path) -> Result<()> {
+        self.save_in_with(dir, replace_file)
+    }
+
+    fn save_in_with(
+        &self,
+        dir: &Path,
+        mut replace: impl FnMut(&Path, &Path) -> std::io::Result<()>,
+    ) -> Result<()> {
         if self.version > SCHEMA_VERSION {
             anyhow::bail!(
                 "{FILE} is schema v{} but this pm only understands v{SCHEMA_VERSION}; \
@@ -431,18 +443,38 @@ impl PmData {
         }
         std::fs::create_dir_all(dir).with_context(|| format!("creating {}", dir.display()))?;
         let path = dir.join(FILE);
-        let tmp = dir.join(format!(".{FILE}.{}.tmp", std::process::id()));
-        std::fs::write(&tmp, self.to_pretty())
-            .with_context(|| format!("writing {}", tmp.display()))?;
-        std::fs::rename(&tmp, &path)
-            .or_else(|_| {
-                // Rare on Windows if a reader holds the target; fall back to a
-                // direct write and drop the temp.
-                let r = std::fs::write(&path, self.to_pretty());
-                let _ = std::fs::remove_file(&tmp);
-                r
-            })
-            .with_context(|| format!("replacing {}", path.display()))
+        let (tmp, mut file) = loop {
+            let nonce = TEMP_ID.fetch_add(1, Ordering::Relaxed);
+            let candidate = dir.join(format!(".{FILE}.{}.{nonce}.tmp", std::process::id()));
+            match OpenOptions::new().write(true).create_new(true).open(&candidate) {
+                Ok(file) => break (candidate, file),
+                Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => continue,
+                Err(e) => {
+                    return Err(e).with_context(|| format!("creating {}", candidate.display()))
+                }
+            }
+        };
+        let write_result = file
+            .write_all(self.to_pretty().as_bytes())
+            .and_then(|()| file.sync_all());
+        drop(file);
+        if let Err(e) = write_result {
+            let _ = std::fs::remove_file(&tmp);
+            return Err(e).with_context(|| format!("writing {}", tmp.display()));
+        }
+
+        let mut last_error = None;
+        for attempt in 0..REPLACE_ATTEMPTS {
+            match replace(&tmp, &path) {
+                Ok(()) => return Ok(()),
+                Err(e) => last_error = Some(e),
+            }
+            if attempt + 1 < REPLACE_ATTEMPTS {
+                std::thread::sleep(std::time::Duration::from_millis(15));
+            }
+        }
+        let _ = std::fs::remove_file(&tmp);
+        Err(last_error.unwrap()).with_context(|| format!("replacing {}", path.display()))
     }
 
     pub fn ticket(&self, id: u64) -> Option<&Ticket> {
@@ -667,6 +699,34 @@ impl PmData {
     }
 }
 
+#[cfg(not(windows))]
+fn replace_file(from: &Path, to: &Path) -> std::io::Result<()> {
+    std::fs::rename(from, to)
+}
+
+#[cfg(windows)]
+fn replace_file(from: &Path, to: &Path) -> std::io::Result<()> {
+    use std::os::windows::ffi::OsStrExt;
+    use windows_sys::Win32::Storage::FileSystem::{
+        MoveFileExW, MOVEFILE_REPLACE_EXISTING, MOVEFILE_WRITE_THROUGH,
+    };
+
+    let from: Vec<u16> = from.as_os_str().encode_wide().chain(Some(0)).collect();
+    let to: Vec<u16> = to.as_os_str().encode_wide().chain(Some(0)).collect();
+    let ok = unsafe {
+        MoveFileExW(
+            from.as_ptr(),
+            to.as_ptr(),
+            MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH,
+        )
+    };
+    if ok == 0 {
+        Err(std::io::Error::last_os_error())
+    } else {
+        Ok(())
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -774,6 +834,98 @@ mod tests {
         data.create_ticket("ok", "", "", 0);
         assert_eq!(data.version, SCHEMA_VERSION);
         data.save(&d).unwrap();
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
+    #[test]
+    fn replacement_failure_preserves_previous_store_and_cleans_temp() {
+        let d = tmp();
+        let store = d.join(".pm");
+        let mut original = PmData::default();
+        original.create_ticket("original", "", "test", 0);
+        original.save_in(&store).unwrap();
+        let path = store.join(FILE);
+        let before = std::fs::read(&path).unwrap();
+
+        let mut changed = original.clone();
+        changed.create_ticket("must not land", "", "test", 1);
+        let err = changed
+            .save_in_with(&store, |_, _| {
+                Err(std::io::Error::new(
+                    std::io::ErrorKind::PermissionDenied,
+                    "injected replacement failure",
+                ))
+            })
+            .unwrap_err()
+            .to_string();
+
+        assert!(err.contains("replacing"), "unexpected: {err}");
+        assert_eq!(std::fs::read(&path).unwrap(), before);
+        let leftovers: Vec<_> = std::fs::read_dir(&store)
+            .unwrap()
+            .filter_map(Result::ok)
+            .filter(|entry| entry.file_name().to_string_lossy().ends_with(".tmp"))
+            .collect();
+        assert!(leftovers.is_empty(), "leftover temp files: {leftovers:?}");
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
+    #[test]
+    fn failed_saves_use_distinct_temporary_files() {
+        let d = tmp();
+        let store = d.join(".pm");
+        let data = PmData::default();
+        let mut seen = Vec::new();
+        for _ in 0..2 {
+            let mut first_attempt = true;
+            data.save_in_with(&store, |from, _| {
+                if first_attempt {
+                    seen.push(from.to_path_buf());
+                    first_attempt = false;
+                }
+                Err(std::io::Error::new(
+                    std::io::ErrorKind::PermissionDenied,
+                    "injected replacement failure",
+                ))
+            })
+            .unwrap_err();
+        }
+        assert_eq!(seen.len(), 2);
+        assert_ne!(seen[0], seen[1]);
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
+    #[test]
+    fn transient_replacement_failure_retries_then_commits_once() {
+        let d = tmp();
+        let store = d.join(".pm");
+        let mut original = PmData::default();
+        original.create_ticket("original", "", "test", 0);
+        original.save_in(&store).unwrap();
+        let before = std::fs::read(store.join(FILE)).unwrap();
+
+        let mut changed = original.clone();
+        changed.create_ticket("retry", "", "test", 1);
+        let mut attempts = 0;
+        changed
+            .save_in_with(&store, |from, to| {
+                attempts += 1;
+                if attempts == 1 {
+                    assert_eq!(std::fs::read(to).unwrap(), before);
+                    Err(std::io::Error::new(
+                        std::io::ErrorKind::PermissionDenied,
+                        "transient sharing violation",
+                    ))
+                } else {
+                    replace_file(from, to)
+                }
+            })
+            .unwrap();
+
+        assert_eq!(attempts, 2);
+        let saved = load_in(&store).unwrap();
+        assert_eq!(saved.tickets.len(), 2);
+        assert_eq!(saved.tickets.iter().filter(|t| t.title == "retry").count(), 1);
         let _ = std::fs::remove_dir_all(&d);
     }
 

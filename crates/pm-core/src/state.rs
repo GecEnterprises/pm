@@ -229,16 +229,16 @@ impl AppState {
     fn mutate_pm<T>(
         &mut self,
         mutate: impl FnOnce(&mut PmData) -> anyhow::Result<(T, bool)>,
-    ) -> Option<T> {
+    ) -> anyhow::Result<T> {
         match pm::transact_in(&self.store_dir, mutate) {
             Ok((data, value)) => {
                 self.pm = data;
                 self.pm_error = None;
-                Some(value)
+                Ok(value)
             }
             Err(e) => {
                 self.pm_error = Some(e.to_string());
-                None
+                Err(e)
             }
         }
     }
@@ -259,7 +259,7 @@ impl AppState {
         title: impl Into<String>,
         body: impl Into<String>,
         author: Option<String>,
-    ) -> u64 {
+    ) -> anyhow::Result<u64> {
         let author = self.author_or_default(author);
         let title = title.into();
         let body = body.into();
@@ -267,18 +267,22 @@ impl AppState {
             let id = data.create_ticket(title, body, author, pm::now_unix());
             Ok((id, true))
         })
-        .unwrap_or(0)
     }
 
     /// Add a comment to a ticket and persist. `author` overrides this window's
     /// default when non-empty (PM-15).
-    pub fn add_comment(&mut self, ticket_id: u64, body: impl Into<String>, author: Option<String>) {
+    pub fn add_comment(
+        &mut self,
+        ticket_id: u64,
+        body: impl Into<String>,
+        author: Option<String>,
+    ) -> anyhow::Result<()> {
         let author = self.author_or_default(author);
         let body = body.into();
         self.mutate_pm(move |data| {
             let changed = data.add_comment(ticket_id, author, body, pm::now_unix());
             Ok(((), changed))
-        });
+        })
     }
 
     /// Change a ticket's status and persist. `author` overrides this window's
@@ -288,12 +292,12 @@ impl AppState {
         ticket_id: u64,
         status: crate::pm::Status,
         author: Option<String>,
-    ) {
+    ) -> anyhow::Result<()> {
         let author = self.author_or_default(author);
         self.mutate_pm(move |data| {
             let changed = data.set_status(ticket_id, status, author, pm::now_unix());
             Ok(((), changed))
-        });
+        })
     }
 
     /// Set a ticket's title and persist. `author` overrides this window's
@@ -303,13 +307,13 @@ impl AppState {
         ticket_id: u64,
         title: impl Into<String>,
         author: Option<String>,
-    ) {
+    ) -> anyhow::Result<()> {
         let author = self.author_or_default(author);
         let title = title.into();
         self.mutate_pm(move |data| {
             let changed = data.set_title(ticket_id, title, author, pm::now_unix());
             Ok(((), changed))
-        });
+        })
     }
 
     /// Set a ticket's body and persist. `author` overrides this window's
@@ -319,13 +323,13 @@ impl AppState {
         ticket_id: u64,
         body: impl Into<String>,
         author: Option<String>,
-    ) {
+    ) -> anyhow::Result<()> {
         let author = self.author_or_default(author);
         let body = body.into();
         self.mutate_pm(move |data| {
             let changed = data.set_body(ticket_id, body, author, pm::now_unix());
             Ok(((), changed))
-        });
+        })
     }
 
     /// Set a ticket's priority and persist. `author` overrides this window's
@@ -335,12 +339,12 @@ impl AppState {
         ticket_id: u64,
         priority: crate::pm::Priority,
         author: Option<String>,
-    ) {
+    ) -> anyhow::Result<()> {
         let author = self.author_or_default(author);
         self.mutate_pm(move |data| {
             let changed = data.set_priority(ticket_id, priority, author, pm::now_unix());
             Ok(((), changed))
-        });
+        })
     }
 
     /// Set a ticket's assignee and persist. `author` overrides this window's
@@ -350,12 +354,12 @@ impl AppState {
         ticket_id: u64,
         assignee: Option<String>,
         author: Option<String>,
-    ) {
+    ) -> anyhow::Result<()> {
         let author = self.author_or_default(author);
         self.mutate_pm(move |data| {
             let changed = data.set_assignee(ticket_id, assignee, author, pm::now_unix());
             Ok(((), changed))
-        });
+        })
     }
 
     /// Replace a ticket's labels and persist. `author` overrides this window's
@@ -365,12 +369,12 @@ impl AppState {
         ticket_id: u64,
         labels: Vec<String>,
         author: Option<String>,
-    ) {
+    ) -> anyhow::Result<()> {
         let author = self.author_or_default(author);
         self.mutate_pm(move |data| {
             let changed = data.set_labels(ticket_id, labels, author, pm::now_unix());
             Ok(((), changed))
-        });
+        })
     }
 
     pub fn open_path(&mut self, rel: PathBuf) {
@@ -723,13 +727,15 @@ mod tests {
         let store_dir = tmp_store();
         let mut st = AppState::new(repo, store_dir.clone());
 
-        let id = st.create_ticket("original", "original body", Some("tester".into()));
+        let id = st
+            .create_ticket("original", "original body", Some("tester".into()))
+            .unwrap();
 
-        st.set_ticket_title(id, "renamed", Some("tester".into()));
-        st.set_ticket_body(id, "new body", Some("tester".into()));
-        st.set_ticket_priority(id, crate::pm::Priority::High, Some("tester".into()));
-        st.set_ticket_assignee(id, Some("bob".into()), Some("tester".into()));
-        st.set_ticket_labels(id, vec!["bug".into()], Some("tester".into()));
+        st.set_ticket_title(id, "renamed", Some("tester".into())).unwrap();
+        st.set_ticket_body(id, "new body", Some("tester".into())).unwrap();
+        st.set_ticket_priority(id, crate::pm::Priority::High, Some("tester".into())).unwrap();
+        st.set_ticket_assignee(id, Some("bob".into()), Some("tester".into())).unwrap();
+        st.set_ticket_labels(id, vec!["bug".into()], Some("tester".into())).unwrap();
 
         let t = st.pm.ticket(id).unwrap();
         assert_eq!(t.title, "renamed");
@@ -764,8 +770,8 @@ mod tests {
 
         // A no-op edit adds no history entry.
         let before = st.pm.ticket(id).unwrap().history.len();
-        st.set_ticket_title(id, "renamed", Some("tester".into()));
-        st.set_ticket_labels(id, vec!["bug".into()], Some("tester".into()));
+        st.set_ticket_title(id, "renamed", Some("tester".into())).unwrap();
+        st.set_ticket_labels(id, vec!["bug".into()], Some("tester".into())).unwrap();
         assert_eq!(st.pm.ticket(id).unwrap().history.len(), before);
 
         let _ = std::fs::remove_dir_all(&store_dir);
@@ -776,12 +782,12 @@ mod tests {
         let repo = Repo::discover(Path::new(".")).unwrap();
         let store_dir = tmp_store();
         let mut first = AppState::new(repo, store_dir.clone());
-        let id = first.create_ticket("shared", "", Some("first".into()));
+        let id = first.create_ticket("shared", "", Some("first".into())).unwrap();
 
         let repo = Repo::discover(Path::new(".")).unwrap();
         let mut second = AppState::new(repo, store_dir.clone());
-        second.add_comment(id, "from mcp", Some("second".into()));
-        first.set_ticket_status(id, crate::pm::Status::Done, Some("first".into()));
+        second.add_comment(id, "from mcp", Some("second".into())).unwrap();
+        first.set_ticket_status(id, crate::pm::Status::Done, Some("first".into())).unwrap();
 
         let data = pm::load_in(&store_dir).unwrap();
         let ticket = data.ticket(id).unwrap();
@@ -789,6 +795,33 @@ mod tests {
         assert_eq!(ticket.comments.len(), 1);
         assert_eq!(ticket.comments[0].body, "from mcp");
         assert_eq!(first.pm, data);
+        let _ = std::fs::remove_dir_all(&store_dir);
+    }
+
+    #[test]
+    fn unsupported_schema_mutation_fails_without_changing_gui_state() {
+        let repo = Repo::discover(Path::new(".")).unwrap();
+        let store_dir = tmp_store();
+        std::fs::write(
+            store_dir.join("pm.json5"),
+            r#"{ version: 2, next_id: 2, tickets: [
+                { id: 1, title: "future", unknown_field: "keep" },
+            ] }"#,
+        )
+        .unwrap();
+        let mut state = AppState::new(repo, store_dir.clone());
+        let before = state.pm.clone();
+
+        let err = state
+            .create_ticket("must fail", "draft", Some("test".into()))
+            .unwrap_err()
+            .to_string();
+
+        assert!(err.contains("schema v2"), "unexpected: {err}");
+        assert_eq!(state.pm, before);
+        assert!(state.pm_error.as_deref().unwrap_or_default().contains("schema v2"));
+        let raw = std::fs::read_to_string(store_dir.join("pm.json5")).unwrap();
+        assert!(raw.contains("unknown_field"));
         let _ = std::fs::remove_dir_all(&store_dir);
     }
 }

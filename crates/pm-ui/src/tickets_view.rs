@@ -540,7 +540,7 @@ impl Pm {
             .iter()
             .map(|&s| {
                 let act: MenuAct = Box::new(move |pm, cx| {
-                    pm.state.set_ticket_status(tid, s, None);
+                    let _ = pm.state.set_ticket_status(tid, s, None);
                     pm.status_menu_open = false;
                     cx.notify();
                 });
@@ -746,9 +746,13 @@ impl Pm {
                         .on_mouse_down(
                             MouseButton::Left,
                             cx.listener(move |pm, _, _, cx| {
-                                let body = pm.comment_box.update(cx, |ti, cx| ti.take(cx));
+                                let body = pm.comment_box.read(cx).content().to_string();
                                 if !body.is_empty() {
-                                    pm.state.add_comment(tid, body, None);
+                                    if pm.state.add_comment(tid, body, None).is_ok() {
+                                        pm.comment_box.update(cx, |ti, cx| {
+                                            ti.set_text(String::new(), cx)
+                                        });
+                                    }
                                     cx.notify();
                                 }
                             }),
@@ -780,14 +784,19 @@ impl Pm {
     }
 
     pub(crate) fn submit_new_ticket(&mut self, cx: &mut Context<Self>) {
-        let title = self.new_ticket_title.update(cx, |ti, cx| ti.take(cx));
+        let title = self.new_ticket_title.read(cx).content().to_string();
         if title.is_empty() {
             return;
         }
-        let body = self.new_ticket_body.update(cx, |ti, cx| ti.take(cx));
-        let id = self.state.create_ticket(title, body, None);
-        self.selected_ticket = Some(id);
-        self.composing = None;
+        let body = self.new_ticket_body.read(cx).content().to_string();
+        if let Ok(id) = self.state.create_ticket(title, body, None) {
+            self.new_ticket_title
+                .update(cx, |ti, cx| ti.set_text(String::new(), cx));
+            self.new_ticket_body
+                .update(cx, |ti, cx| ti.set_text(String::new(), cx));
+            self.selected_ticket = Some(id);
+            self.composing = None;
+        }
         cx.notify();
     }
 }
