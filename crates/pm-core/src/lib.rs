@@ -6,15 +6,17 @@ pub mod git;
 pub mod highlight;
 pub mod identity;
 pub mod pm;
+pub mod relations;
 pub mod setup;
 pub mod state;
 pub mod text;
+pub mod ticket_list;
 pub mod update;
 pub mod watch;
 
 pub use config::Config;
-pub use identity::resolve_author;
 pub use git::{CommitInfo, DiffTarget, Repo};
 pub use git2::Oid;
+pub use identity::resolve_author;
 pub use pm::{Anchor, Comment, HistoryEntry, HistoryEvent, PmData, Priority, Status, Ticket};
 pub use state::{AppState, MAX_ROWS};

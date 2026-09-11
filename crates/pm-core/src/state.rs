@@ -377,6 +377,62 @@ impl AppState {
         })
     }
 
+    /// Apply a single label edit to the latest store, preserving concurrent label additions.
+    pub fn change_ticket_label(
+        &mut self,
+        ticket_id: u64,
+        label: String,
+        add: bool,
+    ) -> anyhow::Result<()> {
+        let author = self.author_or_default(None);
+        self.mutate_pm(move |data| {
+            let label = if add { label.trim().to_string() } else { label };
+            if label.is_empty() {
+                return Ok(((), false));
+            }
+            let ticket = data
+                .ticket(ticket_id)
+                .ok_or_else(|| anyhow::anyhow!("ticket {ticket_id} no longer exists"))?;
+            let mut labels = ticket.labels.clone();
+            if add {
+                if labels
+                    .iter()
+                    .any(|s| s.trim().to_lowercase() == label.to_lowercase())
+                {
+                    return Ok(((), false));
+                }
+                labels.push(label);
+            } else {
+                labels.retain(|s| s != &label);
+            }
+            let changed = data.set_labels(ticket_id, labels, author, pm::now_unix());
+            Ok(((), changed))
+        })
+    }
+
+    pub fn change_ticket_link(
+        &mut self,
+        source: u64,
+        target: u64,
+        kind: crate::relations::LinkKind,
+        remove: bool,
+    ) -> anyhow::Result<()> {
+        let author = self.author_or_default(None);
+        self.mutate_pm(move |data| {
+            let changed =
+                data.change_link(source, target, kind, remove, &author, pm::now_unix())?;
+            Ok(((), changed))
+        })
+    }
+
+    pub fn set_ticket_parent(&mut self, child: u64, parent: Option<u64>) -> anyhow::Result<()> {
+        let author = self.author_or_default(None);
+        self.mutate_pm(move |data| {
+            let changed = data.set_parent(child, parent, &author, pm::now_unix())?;
+            Ok(((), changed))
+        })
+    }
+
     pub fn open_path(&mut self, rel: PathBuf) {
         self.open = Some(rel.clone());
         self.caret = None;
@@ -731,11 +787,16 @@ mod tests {
             .create_ticket("original", "original body", Some("tester".into()))
             .unwrap();
 
-        st.set_ticket_title(id, "renamed", Some("tester".into())).unwrap();
-        st.set_ticket_body(id, "new body", Some("tester".into())).unwrap();
-        st.set_ticket_priority(id, crate::pm::Priority::High, Some("tester".into())).unwrap();
-        st.set_ticket_assignee(id, Some("bob".into()), Some("tester".into())).unwrap();
-        st.set_ticket_labels(id, vec!["bug".into()], Some("tester".into())).unwrap();
+        st.set_ticket_title(id, "renamed", Some("tester".into()))
+            .unwrap();
+        st.set_ticket_body(id, "new body", Some("tester".into()))
+            .unwrap();
+        st.set_ticket_priority(id, crate::pm::Priority::High, Some("tester".into()))
+            .unwrap();
+        st.set_ticket_assignee(id, Some("bob".into()), Some("tester".into()))
+            .unwrap();
+        st.set_ticket_labels(id, vec!["bug".into()], Some("tester".into()))
+            .unwrap();
 
         let t = st.pm.ticket(id).unwrap();
         assert_eq!(t.title, "renamed");
@@ -770,10 +831,47 @@ mod tests {
 
         // A no-op edit adds no history entry.
         let before = st.pm.ticket(id).unwrap().history.len();
-        st.set_ticket_title(id, "renamed", Some("tester".into())).unwrap();
-        st.set_ticket_labels(id, vec!["bug".into()], Some("tester".into())).unwrap();
+        st.set_ticket_title(id, "renamed", Some("tester".into()))
+            .unwrap();
+        st.set_ticket_labels(id, vec!["bug".into()], Some("tester".into()))
+            .unwrap();
         assert_eq!(st.pm.ticket(id).unwrap().history.len(), before);
 
+        let _ = std::fs::remove_dir_all(&store_dir);
+    }
+
+    #[test]
+    fn label_edits_merge_latest_labels_and_preserve_history() {
+        let store_dir = tmp_store();
+        let mut first = AppState::new(Repo::discover(Path::new(".")).unwrap(), store_dir.clone());
+        let id = first
+            .create_ticket("phase", "", Some("tester".into()))
+            .unwrap();
+        let mut second = AppState::new(Repo::discover(Path::new(".")).unwrap(), store_dir.clone());
+        second
+            .change_ticket_label(id, "search".into(), true)
+            .unwrap();
+        first
+            .change_ticket_label(id, " exploration ".into(), true)
+            .unwrap();
+        first
+            .change_ticket_label(id, "EXPLORATION".into(), true)
+            .unwrap();
+        first.change_ticket_label(id, "  ".into(), true).unwrap();
+        second
+            .change_ticket_label(id, "search".into(), false)
+            .unwrap();
+        let data = pm::load_in(&store_dir).unwrap();
+        let ticket = data.ticket(id).unwrap();
+        assert_eq!(ticket.labels, vec!["exploration"]);
+        assert_eq!(ticket.history.len(), 3);
+        assert!(ticket
+            .history
+            .iter()
+            .all(|h| matches!(h.event, crate::pm::HistoryEvent::LabelsChanged { .. })));
+        assert!(first
+            .change_ticket_label(id + 999, "new".into(), true)
+            .is_err());
         let _ = std::fs::remove_dir_all(&store_dir);
     }
 
@@ -782,12 +880,18 @@ mod tests {
         let repo = Repo::discover(Path::new(".")).unwrap();
         let store_dir = tmp_store();
         let mut first = AppState::new(repo, store_dir.clone());
-        let id = first.create_ticket("shared", "", Some("first".into())).unwrap();
+        let id = first
+            .create_ticket("shared", "", Some("first".into()))
+            .unwrap();
 
         let repo = Repo::discover(Path::new(".")).unwrap();
         let mut second = AppState::new(repo, store_dir.clone());
-        second.add_comment(id, "from mcp", Some("second".into())).unwrap();
-        first.set_ticket_status(id, crate::pm::Status::Done, Some("first".into())).unwrap();
+        second
+            .add_comment(id, "from mcp", Some("second".into()))
+            .unwrap();
+        first
+            .set_ticket_status(id, crate::pm::Status::Done, Some("first".into()))
+            .unwrap();
 
         let data = pm::load_in(&store_dir).unwrap();
         let ticket = data.ticket(id).unwrap();
@@ -804,7 +908,7 @@ mod tests {
         let store_dir = tmp_store();
         std::fs::write(
             store_dir.join("pm.json5"),
-            r#"{ version: 2, next_id: 2, tickets: [
+            r#"{ version: 3, next_id: 2, tickets: [
                 { id: 1, title: "future", unknown_field: "keep" },
             ] }"#,
         )
@@ -817,9 +921,13 @@ mod tests {
             .unwrap_err()
             .to_string();
 
-        assert!(err.contains("schema v2"), "unexpected: {err}");
+        assert!(err.contains("schema v3"), "unexpected: {err}");
         assert_eq!(state.pm, before);
-        assert!(state.pm_error.as_deref().unwrap_or_default().contains("schema v2"));
+        assert!(state
+            .pm_error
+            .as_deref()
+            .unwrap_or_default()
+            .contains("schema v3"));
         let raw = std::fs::read_to_string(store_dir.join("pm.json5")).unwrap();
         assert!(raw.contains("unknown_field"));
         let _ = std::fs::remove_dir_all(&store_dir);

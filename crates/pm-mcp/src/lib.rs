@@ -37,7 +37,9 @@ fn reply(r: Result<Value>) -> Result<CallToolResult, McpError> {
         Ok(v) => Ok(CallToolResult::success(vec![ContentBlock::text(
             serde_json::to_string_pretty(&v).unwrap_or_else(|_| v.to_string()),
         )])),
-        Err(e) => Ok(CallToolResult::error(vec![ContentBlock::text(e.to_string())])),
+        Err(e) => Ok(CallToolResult::error(vec![ContentBlock::text(
+            e.to_string(),
+        )])),
     }
 }
 
@@ -103,6 +105,29 @@ struct OpenProject {
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
+struct TicketLink {
+    project: Option<String>,
+    source: u64,
+    target: u64,
+    #[schemars(
+        description = "parent_of | blocks | relates | closes | duplicate_of; direction is source -> target"
+    )]
+    kind: String,
+    #[serde(default)]
+    remove: bool,
+    author: Option<String>,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+struct TicketParent {
+    project: Option<String>,
+    child: u64,
+    #[schemars(description = "Parent ticket ID; omit or null to remove the parent")]
+    parent: Option<u64>,
+    author: Option<String>,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
 struct ListProjects {
     #[schemars(description = "Directory to scan (default: cwd)")]
     root: Option<String>,
@@ -124,25 +149,40 @@ impl PmServer {
     }
 
     #[tool(description = "List tickets in a pm project (id, title, status, priority, author).")]
-    fn list_tickets(&self, Parameters(a): Parameters<ListTickets>) -> Result<CallToolResult, McpError> {
+    fn list_tickets(
+        &self,
+        Parameters(a): Parameters<ListTickets>,
+    ) -> Result<CallToolResult, McpError> {
         let root = self.root(a.project.as_deref());
-        reply(ops::list_tickets(&root, a.status.as_deref(), a.label.as_deref()))
+        reply(ops::list_tickets(
+            &root,
+            a.status.as_deref(),
+            a.label.as_deref(),
+        ))
     }
 
-    #[tool(description = "Read one ticket in full: body, comments, and code anchors.")]
+    #[tool(
+        description = "Read a ticket with body, comments, anchors, outgoing/incoming links, parent, children and dependency state."
+    )]
     fn get_ticket(&self, Parameters(a): Parameters<TicketRef>) -> Result<CallToolResult, McpError> {
         let root = self.root(a.project.as_deref());
         reply(ops::get_ticket(&root, a.id))
     }
 
     #[tool(description = "Append a comment to a ticket. `author` may be any name (unverified).")]
-    fn add_comment(&self, Parameters(a): Parameters<AddComment>) -> Result<CallToolResult, McpError> {
+    fn add_comment(
+        &self,
+        Parameters(a): Parameters<AddComment>,
+    ) -> Result<CallToolResult, McpError> {
         let root = self.root(a.project.as_deref());
         reply(ops::add_comment(&root, a.id, &a.body, a.author.as_deref()))
     }
 
     #[tool(description = "Create a ticket. Returns its new PM-N id.")]
-    fn create_ticket(&self, Parameters(a): Parameters<CreateTicket>) -> Result<CallToolResult, McpError> {
+    fn create_ticket(
+        &self,
+        Parameters(a): Parameters<CreateTicket>,
+    ) -> Result<CallToolResult, McpError> {
         let root = self.root(a.project.as_deref());
         reply(ops::create_ticket(
             &root,
@@ -155,7 +195,10 @@ impl PmServer {
     }
 
     #[tool(description = "Edit a ticket's title/body/status/priority/labels/assignee.")]
-    fn edit_ticket(&self, Parameters(a): Parameters<EditTicket>) -> Result<CallToolResult, McpError> {
+    fn edit_ticket(
+        &self,
+        Parameters(a): Parameters<EditTicket>,
+    ) -> Result<CallToolResult, McpError> {
         let root = self.root(a.project.as_deref());
         reply(ops::edit_ticket(
             &root,
@@ -170,14 +213,52 @@ impl PmServer {
         ))
     }
 
+    #[tool(
+        description = "Add one typed relation (source -> target), or remove it with remove=true. Related links are symmetric. Parenting and blocker cycles are rejected. No status is changed automatically. Uses schema v2; older pm writers must update."
+    )]
+    fn link_tickets(
+        &self,
+        Parameters(a): Parameters<TicketLink>,
+    ) -> Result<CallToolResult, McpError> {
+        reply(ops::change_link(
+            &self.root(a.project.as_deref()),
+            a.source,
+            a.target,
+            &a.kind,
+            a.remove,
+            a.author.as_deref(),
+        ))
+    }
+
+    #[tool(
+        description = "Set or replace a ticket's single parent atomically. Omit parent or pass null to unparent. Invalid parents/cycles leave the old parent intact. Uses schema v2."
+    )]
+    fn set_ticket_parent(
+        &self,
+        Parameters(a): Parameters<TicketParent>,
+    ) -> Result<CallToolResult, McpError> {
+        reply(ops::set_parent(
+            &self.root(a.project.as_deref()),
+            a.child,
+            a.parent,
+            a.author.as_deref(),
+        ))
+    }
+
     #[tool(description = "Open a project in the pm GUI (launches the `pm` binary).")]
-    fn open_project(&self, Parameters(a): Parameters<OpenProject>) -> Result<CallToolResult, McpError> {
+    fn open_project(
+        &self,
+        Parameters(a): Parameters<OpenProject>,
+    ) -> Result<CallToolResult, McpError> {
         let root = self.root(Some(&a.project));
         reply(ops::open_project(&root))
     }
 
     #[tool(description = "Scan a directory tree for pm projects (.pm/pm.json5).")]
-    fn list_projects(&self, Parameters(a): Parameters<ListProjects>) -> Result<CallToolResult, McpError> {
+    fn list_projects(
+        &self,
+        Parameters(a): Parameters<ListProjects>,
+    ) -> Result<CallToolResult, McpError> {
         let root = a
             .root
             .map(PathBuf::from)
@@ -214,7 +295,7 @@ impl ServerHandler for PmServer {
              their git name). Authorship is a free, unverified string.\n\
              \n\
              Tools: list_tickets, get_ticket, create_ticket, edit_ticket, add_comment, \
-             open_project (launches the GUI), list_projects."
+             link_tickets, set_ticket_parent, open_project (launches the GUI), list_projects."
                 .to_string(),
         );
         info

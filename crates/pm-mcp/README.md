@@ -28,6 +28,8 @@ the nearest ancestor that does.
 | `add_comment` | append a comment (`author` optional) |
 | `create_ticket` | new ticket (`title`, optional `body`/`author`/`priority`/`labels`) → new `PM-N` |
 | `edit_ticket` | change `title`/`body`/`status`/`priority`/`labels`/`assignee` |
+| `link_tickets` | add/remove a typed directional relation: parent, blocker, related, closes, duplicate |
+| `set_ticket_parent` | atomically set, replace, or clear a ticket's single parent |
 | `open_project` | launch the `pm` GUI on a project (`$PM_BIN`, a sibling `pm`/`pm.exe`, or `pm` on `PATH`) |
 | `list_projects` | scan a directory tree for `.pm/pm.json5` (`root`, `depth`) |
 

@@ -4,7 +4,7 @@
     "name": "pm",
     "key": "PM"
   },
-  "next_id": 109,
+  "next_id": 113,
   "tickets": [
     {
       "id": 5,
@@ -1021,17 +1021,27 @@
     },
     {
       "id": 29,
-      "title": "Sort tickets by Priority, Latest Change, etc",
-      "body": "## What exists today\n**There is no sorting at all, anywhere.** `shown_tickets` (tickets_view.rs:274-286) iterates `self.state.pm.tickets` in raw order and only *filters* — by the status set (`ticket_filter`, app.rs:182) and by PM-75's search string. It never sorts.\n\nThat raw order is the pm.json5 array order, and `create_ticket` pushes to the end (pm-core/src/pm.rs:378), so the list is effectively **creation order, ascending, forever**. The oldest ticket is always on top. `t.created` and `t.updated` are both stored and `updated` is even rendered in the detail pane as `updated {rel_time}` (:638-643) — neither is ever used as a key.\n\nThere is also no `order`/`rank`/`position` field on `Ticket` (pm.rs:165-197), so manual drag-ordering isn't available without a schema change (and would fight the MCP writer, which mutates the same Vec — pm-mcp/src/ops.rs).\n\n## In scope\nA sort control in the list header (tickets_view.rs:319-363, which already holds the search toggle, `filter_button` and `+ New`), offering at least: Priority, Last updated, Created, and probably Status. Reuse `menu_panel` (:123-180) — it already renders a checkmark column, which suits a single-choice picker if only one row is ever checked. Follow the popover mutual-exclusion convention (:252-254).\n\nSorting happens in `shown_tickets` after filtering. Two things to get right there:\n- **A stable tiebreaker.** Sorting by priority alone leaves ~50 Normal tickets in arbitrary relative order; fall back to `updated` or `id` so the list doesn't reshuffle between frames.\n- **`Priority` needs an ordering.** It derives `PartialEq, Eq` but not `Ord` (pm.rs:75-79), and the variant declaration order is Low → Normal → High → Urgent, so a derived `Ord` would sort ascending-by-urgency — i.e. exactly backwards from what anyone wants by default. Decide deliberately rather than deriving and hoping.\n\n**Persist the choice.** `ConfigStore::update` (pm-ui/src/config.rs:113-137) already persists `ui_scale`, `watchjump`, `author` and `recent` to ~/.pm/config.json; add a sort key the same way. Note this is a *user* preference, so it belongs in `Config`, not in pm.json5 where it would be committed and shared.\n\n## Related\n- **PM-4** asked for this in its comment (\"we need a sorting system or categorization system\"). Sorting by priority is only useful once priority is visible in the row, which is PM-4's other half — worth doing them together.\n- **PM-63** (make active filter/sort obvious) — a sort that silently persists across restarts is confusing unless the header says what it is.\n- **PM-62** (kanban) needs grouping, which is the same machinery pointed sideways; whatever `shown_tickets` grows here should be reusable there.\n\n## Open question\nShould the default change? Oldest-first is a defensible default for a tracker you read top-to-bottom, but with 55 open tickets it buries everything recent. Recommend defaulting to `updated` descending and letting the config remember otherwise.\n\n## Verify\nSwitch sort modes with a mixed set of priorities and statuses, confirm the order is correct and stable (no reshuffling on repaint), that it composes with both the status filter and the search box rather than replacing them, and that the choice survives an app restart.",
-      "status": "open",
-      "priority": "normal",
-      "labels": [],
+      "title": "Tickets: sort by latest update, priority and creation time",
+      "body": "Groomed 2026-09-10 for PM-109 (Zagtag adoption), first implementation batch with PM-38/63.\n\nProblem: shown_tickets currently preserves store order, burying recently active phases. Sort the filtered view without reordering the stored tickets.\n\nScope: Latest updated (default, descending), Priority (urgent first, then updated descending), Created (newest first); final tie-breaker is numeric ID. Persist the user's sort preference in user config and show the selected sort in the header. Preserve selection by ticket ID across reorder/reload. Compose with status, labels and text search. PM-91 will define relevance ordering when a query is active; display it explicitly rather than silently ignoring the sort control.\n\nAcceptance: mixed priorities and equal timestamps sort deterministically; editing/commenting changes Latest updated order; filters remain effective; reopening retains the preference. Existing priority text is enough for this slice; PM-4's richer markers and PM-62 kanban do not block it.",
+      "status": "done",
+      "priority": "high",
+      "labels": [
+        "zagtag-adoption"
+      ],
       "assignee": null,
       "author": "",
       "created": 1788474195,
-      "updated": 1788622529,
+      "updated": 1789090450,
       "anchors": [],
-      "comments": [],
+      "comments": [
+        {
+          "id": 1,
+          "author": "codex",
+          "created": 1789090450,
+          "body": "Implemented in the current dev worktree: deterministic latest-updated, priority, and newest-created sorting; latest-updated is the default and the preference persists in user config. Sorting composes with ticket filters and preserves store order. Covered by shared pm-core tests.",
+          "anchor": null
+        }
+      ],
       "history": [
         {
           "at": 1788622529,
@@ -1039,6 +1049,56 @@
           "kind": "body_changed",
           "old": "",
           "new": "## What exists today\n**There is no sorting at all, anywhere.** `shown_tickets` (tickets_view.rs:274-286) iterates `self.state.pm.tickets` in raw order and only *filters* — by the status set (`ticket_filter`, app.rs:182) and by PM-75's search string. It never sorts.\n\nThat raw order is the pm.json5 array order, and `create_ticket` pushes to the end (pm-core/src/pm.rs:378), so the list is effectively **creation order, ascending, forever**. The oldest ticket is always on top. `t.created` and `t.updated` are both stored and `updated` is even rendered in the detail pane as `updated {rel_time}` (:638-643) — neither is ever used as a key.\n\nThere is also no `order`/`rank`/`position` field on `Ticket` (pm.rs:165-197), so manual drag-ordering isn't available without a schema change (and would fight the MCP writer, which mutates the same Vec — pm-mcp/src/ops.rs).\n\n## In scope\nA sort control in the list header (tickets_view.rs:319-363, which already holds the search toggle, `filter_button` and `+ New`), offering at least: Priority, Last updated, Created, and probably Status. Reuse `menu_panel` (:123-180) — it already renders a checkmark column, which suits a single-choice picker if only one row is ever checked. Follow the popover mutual-exclusion convention (:252-254).\n\nSorting happens in `shown_tickets` after filtering. Two things to get right there:\n- **A stable tiebreaker.** Sorting by priority alone leaves ~50 Normal tickets in arbitrary relative order; fall back to `updated` or `id` so the list doesn't reshuffle between frames.\n- **`Priority` needs an ordering.** It derives `PartialEq, Eq` but not `Ord` (pm.rs:75-79), and the variant declaration order is Low → Normal → High → Urgent, so a derived `Ord` would sort ascending-by-urgency — i.e. exactly backwards from what anyone wants by default. Decide deliberately rather than deriving and hoping.\n\n**Persist the choice.** `ConfigStore::update` (pm-ui/src/config.rs:113-137) already persists `ui_scale`, `watchjump`, `author` and `recent` to ~/.pm/config.json; add a sort key the same way. Note this is a *user* preference, so it belongs in `Config`, not in pm.json5 where it would be committed and shared.\n\n## Related\n- **PM-4** asked for this in its comment (\"we need a sorting system or categorization system\"). Sorting by priority is only useful once priority is visible in the row, which is PM-4's other half — worth doing them together.\n- **PM-63** (make active filter/sort obvious) — a sort that silently persists across restarts is confusing unless the header says what it is.\n- **PM-62** (kanban) needs grouping, which is the same machinery pointed sideways; whatever `shown_tickets` grows here should be reusable there.\n\n## Open question\nShould the default change? Oldest-first is a defensible default for a tracker you read top-to-bottom, but with 55 open tickets it buries everything recent. Recommend defaulting to `updated` descending and letting the config remember otherwise.\n\n## Verify\nSwitch sort modes with a mixed set of priorities and statuses, confirm the order is correct and stable (no reshuffling on repaint), that it composes with both the status filter and the search box rather than replacing them, and that the choice survives an app restart."
+        },
+        {
+          "at": 1789058102,
+          "author": "codex",
+          "kind": "title_changed",
+          "old": "Sort tickets by Priority, Latest Change, etc",
+          "new": "Tickets: sort by latest update, priority and creation time"
+        },
+        {
+          "at": 1789058102,
+          "author": "codex",
+          "kind": "body_changed",
+          "old": "## What exists today\n**There is no sorting at all, anywhere.** `shown_tickets` (tickets_view.rs:274-286) iterates `self.state.pm.tickets` in raw order and only *filters* — by the status set (`ticket_filter`, app.rs:182) and by PM-75's search string. It never sorts.\n\nThat raw order is the pm.json5 array order, and `create_ticket` pushes to the end (pm-core/src/pm.rs:378), so the list is effectively **creation order, ascending, forever**. The oldest ticket is always on top. `t.created` and `t.updated` are both stored and `updated` is even rendered in the detail pane as `updated {rel_time}` (:638-643) — neither is ever used as a key.\n\nThere is also no `order`/`rank`/`position` field on `Ticket` (pm.rs:165-197), so manual drag-ordering isn't available without a schema change (and would fight the MCP writer, which mutates the same Vec — pm-mcp/src/ops.rs).\n\n## In scope\nA sort control in the list header (tickets_view.rs:319-363, which already holds the search toggle, `filter_button` and `+ New`), offering at least: Priority, Last updated, Created, and probably Status. Reuse `menu_panel` (:123-180) — it already renders a checkmark column, which suits a single-choice picker if only one row is ever checked. Follow the popover mutual-exclusion convention (:252-254).\n\nSorting happens in `shown_tickets` after filtering. Two things to get right there:\n- **A stable tiebreaker.** Sorting by priority alone leaves ~50 Normal tickets in arbitrary relative order; fall back to `updated` or `id` so the list doesn't reshuffle between frames.\n- **`Priority` needs an ordering.** It derives `PartialEq, Eq` but not `Ord` (pm.rs:75-79), and the variant declaration order is Low → Normal → High → Urgent, so a derived `Ord` would sort ascending-by-urgency — i.e. exactly backwards from what anyone wants by default. Decide deliberately rather than deriving and hoping.\n\n**Persist the choice.** `ConfigStore::update` (pm-ui/src/config.rs:113-137) already persists `ui_scale`, `watchjump`, `author` and `recent` to ~/.pm/config.json; add a sort key the same way. Note this is a *user* preference, so it belongs in `Config`, not in pm.json5 where it would be committed and shared.\n\n## Related\n- **PM-4** asked for this in its comment (\"we need a sorting system or categorization system\"). Sorting by priority is only useful once priority is visible in the row, which is PM-4's other half — worth doing them together.\n- **PM-63** (make active filter/sort obvious) — a sort that silently persists across restarts is confusing unless the header says what it is.\n- **PM-62** (kanban) needs grouping, which is the same machinery pointed sideways; whatever `shown_tickets` grows here should be reusable there.\n\n## Open question\nShould the default change? Oldest-first is a defensible default for a tracker you read top-to-bottom, but with 55 open tickets it buries everything recent. Recommend defaulting to `updated` descending and letting the config remember otherwise.\n\n## Verify\nSwitch sort modes with a mixed set of priorities and statuses, confirm the order is correct and stable (no reshuffling on repaint), that it composes with both the status filter and the search box rather than replacing them, and that the choice survives an app restart.",
+          "new": "Groomed 2026-09-10 for PM-109 (Zagtag adoption), first implementation batch with PM-38/63.\n\nProblem: shown_tickets currently preserves store order, burying recently active phases. Sort the filtered view without reordering the stored tickets.\n\nScope: Latest updated (default, descending), Priority (urgent first, then updated descending), Created (newest first); final tie-breaker is numeric ID. Persist the user's sort preference in user config and show the selected sort in the header. Preserve selection by ticket ID across reorder/reload. Compose with status, labels and text search. PM-91 will define relevance ordering when a query is active; display it explicitly rather than silently ignoring the sort control.\n\nAcceptance: mixed priorities and equal timestamps sort deterministically; editing/commenting changes Latest updated order; filters remain effective; reopening retains the preference. Existing priority text is enough for this slice; PM-4's richer markers and PM-62 kanban do not block it."
+        },
+        {
+          "at": 1789058102,
+          "author": "codex",
+          "kind": "priority_changed",
+          "old": "normal",
+          "new": "high"
+        },
+        {
+          "at": 1789058102,
+          "author": "codex",
+          "kind": "labels_changed",
+          "old": [],
+          "new": [
+            "zagtag-adoption"
+          ]
+        },
+        {
+          "at": 1789058508,
+          "author": "codex",
+          "kind": "status_changed",
+          "old": "open",
+          "new": "in_progress"
+        },
+        {
+          "at": 1789090450,
+          "author": "codex",
+          "kind": "commented",
+          "comment_id": 1
+        },
+        {
+          "at": 1789090450,
+          "author": "codex",
+          "kind": "status_changed",
+          "old": "in_progress",
+          "new": "done"
         }
       ]
     },
@@ -1145,18 +1205,67 @@
     },
     {
       "id": 33,
-      "title": "Image attachments in tickets. pasting a path to image in description should kinda like automatically do an [Image Attachment] like in Claude Code",
-      "body": "",
+      "title": "Tickets: durable image attachments from clipboard and local paths",
+      "body": "Ticket bodies and comments need durable, project-owned image attachments. Pasting a screenshot, copied image file, or valid local image path into either composer should immediately capture the bytes so the attachment survives clipboard changes, source-file deletion, app restart, and sharing the repository.\n\n## Confirmed capabilities and current gaps\n\n- GPUI's `ClipboardItem` already exposes `ClipboardEntry::Image(Image)` with encoded bytes + `ImageFormat`, and `ClipboardEntry::ExternalPaths` for files copied in Explorer/Finder.\n- Fremantle `TextInput::paste` currently calls only `ClipboardItem::text()`, so image entries are silently ignored and copied files collapse to path text.\n- gpui-base parses Markdown images, including data URIs, but its `image_source` intentionally treats scheme-less/local paths as opaque URI resources; it has no public project-relative image resolver. A stored `![...](.pm/attachments/...)` reference therefore cannot be assumed to render today.\n- Ticket/comment data currently contains Markdown only; there is no attachment lifecycle model or ingest API.\n\n## Storage contract\n\nStore owned bytes under `.pm/attachments/<sha256>.<canonical-ext>`. Use content addressing to deduplicate identical images and make names collision-safe across GUI/MCP processes. Create via a unique sibling temp file and atomic rename, reusing the persistence guarantees from PM-105/106. Never retain an absolute source path in the ticket.\n\nSupported first slice: PNG, JPEG, WebP, GIF, BMP, TIFF, ICO, SVG and PNM—the formats represented by GPUI `ImageFormat`. Validate/decode content rather than trusting an extension. Reject empty, malformed, unsupported, and oversized input with an actionable error; start with a documented 25 MiB encoded-byte limit. SVG must be treated as untrusted document content and rendered through GPUI's SVG path, never executed or opened as HTML.\n\nThe stored Markdown remains portable and readable:\n`![attachment](.pm/attachments/<sha256>.<ext>)`\n\nBytes are captured at paste time, not ticket submission time. That is what “hold on to it” means: replacing the clipboard, deleting/moving the source file, or restarting pm cannot break a pasted attachment. An abandoned draft may leave an unreferenced content-addressed blob; automatic garbage collection is explicitly out of the first slice because deleting an apparently orphaned file can break hand-written Markdown or another branch.\n\n## Paste behavior\n\nIntercept Paste at the ticket/comment composer boundary (or add a Fremantle paste hook), without teaching the generic text input about pm storage.\n\nPrecedence:\n1. A clipboard image entry: ingest its encoded bytes and insert Markdown at the current selection.\n2. Copied external paths: ingest each supported image file and insert one Markdown line per image; unsupported files remain ordinary pasted path text.\n3. Plain text that is exactly one existing local image path (quotes/whitespace tolerated): resolve relative paths against the project root, ingest it, and insert Markdown.\n4. Otherwise preserve current text paste behavior exactly.\n\nMixed clipboard payloads must not insert both an image and its fallback text representation. Multiline arbitrary text containing a path is text, not an implicit attachment. Pasting into single-line fields such as a ticket title remains text-only.\n\nOn ingest failure, keep the composer text and selection unchanged and surface the error. Repeated paste of identical bytes should reuse the same blob but may insert another Markdown reference.\n\n## Rendering strategy to prove before implementation\n\nKeep relative attachment references in stored Markdown. At render time, resolve only normalized paths beneath the active project's `.pm/attachments`; reject traversal, absolute paths, and symlink escapes.\n\nThe smallest compatible approach appears to be a pm/Fremantle preprocessing layer that replaces approved local attachment URLs with cached `data:` URIs before handing Markdown to gpui-base. This avoids granting arbitrary filesystem access to document Markdown. Confirm runtime behavior and memory/cache costs with a spike before committing to it. If preprocessing breaks source ranges, selection, or copying, add a narrowly scoped image resolver upstream/in Fremantle instead.\n\nMissing/corrupt blobs render a visible placeholder containing the relative filename, not a blank gap or crash. Constrain images to the detail-pane width, preserve aspect ratio, and cap initial height; clicking may open a larger in-app preview.\n\n## Copy behavior\n\nA rendered attachment should support “Copy image” using `ClipboardItem::new_image`, preserving the stored encoded format where GPUI supports it. “Copy image path/reference” should copy the portable Markdown reference separately. This likely lands with PM-104 context menus; PM-102 text selection must continue to copy Markdown/readable text without embedding binary data.\n\n## Transaction and deletion semantics\n\nTicket/comment save failure must retain both draft Markdown and already-captured attachment bytes, allowing retry without creating another blob. Deleting Markdown does not immediately delete the blob. Explicit attachment deletion and safe garbage collection are follow-ups.\n\nThe ticket store transaction covers metadata/Markdown, while blob installation is content-addressed and atomic. A crash after blob installation but before ticket save can leave only an orphan, never a dangling committed reference.\n\n## Suggested slices\n\n1. Core attachment module: validation, SHA-256 naming, atomic ingest, safe lookup, dedupe, size limits, and temporary-store tests.\n2. Composer paste interception for clipboard images, copied image files, and single-path text; draft/error behavior.\n3. Safe rendering/placeholder/size behavior, after proving the local-reference resolver strategy.\n4. Copy Image and preview UX, coordinated with PM-102/104.\n5. Optional MCP attachment ingest with an explicit local-path API; do not make existing text-only MCP calls read arbitrary Markdown paths implicitly.\n\n## Acceptance\n\n- Paste a screenshot into a new-ticket body and a comment; each inserts Markdown and renders before and after submission.\n- Change clipboard contents, delete the original source, restart pm, and reopen the project: images still render.\n- Copy an image file and paste it; paste a relative/absolute textual image path; both become owned attachments.\n- Paste ordinary prose containing path-like text; it remains unchanged.\n- Paste identical image bytes twice/from two processes; one blob exists and both references work.\n- Simulate blob-write and ticket-save failures: no corrupt live file, draft remains, retry creates exactly one reference/blob.\n- Missing/corrupt/traversal references show safe placeholders and never read outside the attachment directory.\n- Copy Image places usable image data on the OS clipboard.\n- The repository can be cloned with `.pm/attachments` and all committed attachments still render offline.",
       "status": "open",
-      "priority": "normal",
-      "labels": [],
+      "priority": "high",
+      "labels": [
+        "tickets",
+        "attachments"
+      ],
       "assignee": null,
       "author": "",
       "created": 1788475086,
-      "updated": 1788477733,
+      "updated": 1788796535,
       "anchors": [],
-      "comments": [],
-      "history": []
+      "comments": [
+        {
+          "id": 1,
+          "author": "codex",
+          "created": 1788796535,
+          "body": "Groomed after inspecting the actual GPUI/gpui-base APIs. The durable ingest side is straightforward, but I stopped before implementation because local attachment rendering needs a deliberate resolver: gpui-base intentionally does not turn Markdown paths into filesystem-backed ImageSource values, and exposes no public image resolver. The ticket now specifies a safe data-URI preprocessing spike as the leading approach, plus clipboard Image/ExternalPaths precedence, content-addressed project storage, draft retention, Copy Image behavior, security boundaries, and staged acceptance tests. This avoids shipping storage that cannot reliably render or a renderer that grants arbitrary Markdown filesystem reads.",
+          "anchor": null
+        }
+      ],
+      "history": [
+        {
+          "at": 1788796515,
+          "author": "codex",
+          "kind": "title_changed",
+          "old": "Image attachments in tickets. pasting a path to image in description should kinda like automatically do an [Image Attachment] like in Claude Code",
+          "new": "Tickets: durable image attachments from clipboard and local paths"
+        },
+        {
+          "at": 1788796515,
+          "author": "codex",
+          "kind": "body_changed",
+          "old": "",
+          "new": "Ticket bodies and comments need durable, project-owned image attachments. Pasting a screenshot, copied image file, or valid local image path into either composer should immediately capture the bytes so the attachment survives clipboard changes, source-file deletion, app restart, and sharing the repository.\n\n## Confirmed capabilities and current gaps\n\n- GPUI's `ClipboardItem` already exposes `ClipboardEntry::Image(Image)` with encoded bytes + `ImageFormat`, and `ClipboardEntry::ExternalPaths` for files copied in Explorer/Finder.\n- Fremantle `TextInput::paste` currently calls only `ClipboardItem::text()`, so image entries are silently ignored and copied files collapse to path text.\n- gpui-base parses Markdown images, including data URIs, but its `image_source` intentionally treats scheme-less/local paths as opaque URI resources; it has no public project-relative image resolver. A stored `![...](.pm/attachments/...)` reference therefore cannot be assumed to render today.\n- Ticket/comment data currently contains Markdown only; there is no attachment lifecycle model or ingest API.\n\n## Storage contract\n\nStore owned bytes under `.pm/attachments/<sha256>.<canonical-ext>`. Use content addressing to deduplicate identical images and make names collision-safe across GUI/MCP processes. Create via a unique sibling temp file and atomic rename, reusing the persistence guarantees from PM-105/106. Never retain an absolute source path in the ticket.\n\nSupported first slice: PNG, JPEG, WebP, GIF, BMP, TIFF, ICO, SVG and PNM—the formats represented by GPUI `ImageFormat`. Validate/decode content rather than trusting an extension. Reject empty, malformed, unsupported, and oversized input with an actionable error; start with a documented 25 MiB encoded-byte limit. SVG must be treated as untrusted document content and rendered through GPUI's SVG path, never executed or opened as HTML.\n\nThe stored Markdown remains portable and readable:\n`![attachment](.pm/attachments/<sha256>.<ext>)`\n\nBytes are captured at paste time, not ticket submission time. That is what “hold on to it” means: replacing the clipboard, deleting/moving the source file, or restarting pm cannot break a pasted attachment. An abandoned draft may leave an unreferenced content-addressed blob; automatic garbage collection is explicitly out of the first slice because deleting an apparently orphaned file can break hand-written Markdown or another branch.\n\n## Paste behavior\n\nIntercept Paste at the ticket/comment composer boundary (or add a Fremantle paste hook), without teaching the generic text input about pm storage.\n\nPrecedence:\n1. A clipboard image entry: ingest its encoded bytes and insert Markdown at the current selection.\n2. Copied external paths: ingest each supported image file and insert one Markdown line per image; unsupported files remain ordinary pasted path text.\n3. Plain text that is exactly one existing local image path (quotes/whitespace tolerated): resolve relative paths against the project root, ingest it, and insert Markdown.\n4. Otherwise preserve current text paste behavior exactly.\n\nMixed clipboard payloads must not insert both an image and its fallback text representation. Multiline arbitrary text containing a path is text, not an implicit attachment. Pasting into single-line fields such as a ticket title remains text-only.\n\nOn ingest failure, keep the composer text and selection unchanged and surface the error. Repeated paste of identical bytes should reuse the same blob but may insert another Markdown reference.\n\n## Rendering strategy to prove before implementation\n\nKeep relative attachment references in stored Markdown. At render time, resolve only normalized paths beneath the active project's `.pm/attachments`; reject traversal, absolute paths, and symlink escapes.\n\nThe smallest compatible approach appears to be a pm/Fremantle preprocessing layer that replaces approved local attachment URLs with cached `data:` URIs before handing Markdown to gpui-base. This avoids granting arbitrary filesystem access to document Markdown. Confirm runtime behavior and memory/cache costs with a spike before committing to it. If preprocessing breaks source ranges, selection, or copying, add a narrowly scoped image resolver upstream/in Fremantle instead.\n\nMissing/corrupt blobs render a visible placeholder containing the relative filename, not a blank gap or crash. Constrain images to the detail-pane width, preserve aspect ratio, and cap initial height; clicking may open a larger in-app preview.\n\n## Copy behavior\n\nA rendered attachment should support “Copy image” using `ClipboardItem::new_image`, preserving the stored encoded format where GPUI supports it. “Copy image path/reference” should copy the portable Markdown reference separately. This likely lands with PM-104 context menus; PM-102 text selection must continue to copy Markdown/readable text without embedding binary data.\n\n## Transaction and deletion semantics\n\nTicket/comment save failure must retain both draft Markdown and already-captured attachment bytes, allowing retry without creating another blob. Deleting Markdown does not immediately delete the blob. Explicit attachment deletion and safe garbage collection are follow-ups.\n\nThe ticket store transaction covers metadata/Markdown, while blob installation is content-addressed and atomic. A crash after blob installation but before ticket save can leave only an orphan, never a dangling committed reference.\n\n## Suggested slices\n\n1. Core attachment module: validation, SHA-256 naming, atomic ingest, safe lookup, dedupe, size limits, and temporary-store tests.\n2. Composer paste interception for clipboard images, copied image files, and single-path text; draft/error behavior.\n3. Safe rendering/placeholder/size behavior, after proving the local-reference resolver strategy.\n4. Copy Image and preview UX, coordinated with PM-102/104.\n5. Optional MCP attachment ingest with an explicit local-path API; do not make existing text-only MCP calls read arbitrary Markdown paths implicitly.\n\n## Acceptance\n\n- Paste a screenshot into a new-ticket body and a comment; each inserts Markdown and renders before and after submission.\n- Change clipboard contents, delete the original source, restart pm, and reopen the project: images still render.\n- Copy an image file and paste it; paste a relative/absolute textual image path; both become owned attachments.\n- Paste ordinary prose containing path-like text; it remains unchanged.\n- Paste identical image bytes twice/from two processes; one blob exists and both references work.\n- Simulate blob-write and ticket-save failures: no corrupt live file, draft remains, retry creates exactly one reference/blob.\n- Missing/corrupt/traversal references show safe placeholders and never read outside the attachment directory.\n- Copy Image places usable image data on the OS clipboard.\n- The repository can be cloned with `.pm/attachments` and all committed attachments still render offline."
+        },
+        {
+          "at": 1788796515,
+          "author": "codex",
+          "kind": "priority_changed",
+          "old": "normal",
+          "new": "high"
+        },
+        {
+          "at": 1788796515,
+          "author": "codex",
+          "kind": "labels_changed",
+          "old": [],
+          "new": [
+            "tickets",
+            "attachments"
+          ]
+        },
+        {
+          "at": 1788796535,
+          "author": "codex",
+          "kind": "commented",
+          "comment_id": 1
+        }
+      ]
     },
     {
       "id": 34,
@@ -1303,17 +1412,27 @@
     },
     {
       "id": 38,
-      "title": "Ticket tagging",
-      "body": "Each ticket should carry multiple tags so the list can be organised by them (`ui`, `ux`, `mcp`, …).\n\n## Most of this already exists — it's a UI-only ticket\n`Ticket.labels: Vec<String>` has been in the model all along (crates/pm-core/src/pm.rs:176). Concretely, already working:\n- `PmData::set_labels` (pm.rs:496) with a `LabelsChanged` history event.\n- The MCP `edit_ticket` tool sets them (pm-mcp/src/ops.rs:164-224) and `list_tickets` **already filters by label** (ops.rs:96-107).\n- The detail pane renders each one as a `chip` tinted `colors.changed` (tickets_view.rs:620-622).\n- Real tickets in this very project are already labelled — `fremantle`, `tickets`, `ui`, `mcp`, `bug`.\n\nSo the gap is narrow and specific: **no editor and no filter in the GUI.** Labels can only be set by an agent through MCP or by hand-editing pm.json5, and the ticket list can't be narrowed by one.\n\n## First: settle the terminology\nThe model says **labels**; this ticket says **tags**. Two names for one field will confuse everything downstream (the MCP arg is already `label`). Pick one and use it everywhere — recommend keeping `labels`, since it's the name already on disk in every existing pm.json5 and in the MCP tool signature, and renaming the serialized field would break older readers (see PM-86).\n\n## In scope\n**1. A label editor in the detail pane.** The chips at :620-622 become editable — add/remove, with a text input for new ones. Worth offering completion from labels already used in the project (collect the distinct set across `state.pm.tickets`); free-text-only guarantees `ui` and `UI` and `ux ` diverge immediately.\n\n**2. Label filtering in the list.** The status filter is already there and is the pattern to follow: `ticket_filter: HashSet<Status>` (app.rs:182), `filter_button` (tickets_view.rs:217-269) opening a `menu_panel` checklist (:123-180), applied in `shown_tickets` (:274-286). A label filter is the same shape with a `HashSet<String>` — but note `shown_tickets` now composes **two** filters (status + PM-75's search), and this makes three. They must AND together, not replace each other.\n\n## Depends on\n**PM-85** (AppState mutators) — `set_labels` has no `AppState` wrapper, same as the other four fields.\n\n## Related\n- **PM-63** (make the active filter obvious) — the `filter_button` label is already the unhelpful hardcoded `\"Filter (n/5) ▾\"` (:244-247). Adding a second filter dimension makes that strictly worse, so PM-63 should probably land alongside or before this, not after.\n- **PM-50** (linking/hierarchy) lists \"lean on labels\" as one of its options — if this ticket ships a good label editor, that option gets cheaper.\n\n## Open questions\n- Free-form strings, or a project-level registry of allowed labels in pm.json5 (which would give them stable colours)? Right now every chip is the same `colors.changed` tint, so ten labels are visually indistinguishable.\n- Should the list rows show labels at all, or only the detail pane? Rows are already carrying a status dot, id, status·priority, title — and PM-4 and PM-66 both want to add more.\n\n## Verify\nAdd and remove a label in the GUI, confirm it persists to .pm/pm.json5, appears as a `LabelsChanged` history entry, and that the same label filters correctly through both the GUI list and `mcp__pm__list_tickets(label: ...)`.",
-      "status": "open",
-      "priority": "normal",
-      "labels": [],
+      "title": "Tickets: edit labels and filter work by track or readiness",
+      "body": "Groomed 2026-09-10 for PM-109, first batch with PM-29/63.\n\nExisting model, MCP label editing/filtering, LabelsChanged history, and PM-85 AppState mutators are available. PM-85 is done, not an outstanding blocker. Keep the term labels consistently.\n\nScope: add/remove freeform labels from ticket detail with suggestions from existing project labels. Trim input, reject empty values and avoid duplicates; reuse an existing spelling when selected from suggestions. Do not silently rewrite existing labels. Provide a multi-label filter: match ALL selected labels, AND status and search. Make this behavior explicit. Show selected labels and clear actions via PM-63.\n\nZagtag examples: search or metadata tracks and exploration/ready labels. Labels describe readiness without changing existing execution statuses. No label registry, new status enum, automatic readiness inference or prescribed project taxonomy.\n\nAcceptance: GUI edits round-trip through MCP and history; combined filters return the expected set; clearing one label leaves other filters intact; long label names remain usable. PM-50 relations remain a separate requirement, not replaced by labels.",
+      "status": "done",
+      "priority": "high",
+      "labels": [
+        "zagtag-adoption"
+      ],
       "assignee": null,
       "author": "",
       "created": 1788477949,
-      "updated": 1788622497,
+      "updated": 1789090450,
       "anchors": [],
-      "comments": [],
+      "comments": [
+        {
+          "id": 1,
+          "author": "codex",
+          "created": 1789090450,
+          "body": "Implemented in the current dev worktree: GUI label add/remove with existing-label suggestions, case-insensitive duplicate prevention, transactional single-label edits that preserve concurrent changes, and multi-label ALL filtering.",
+          "anchor": null
+        }
+      ],
       "history": [
         {
           "at": 1788622497,
@@ -1321,6 +1440,56 @@
           "kind": "body_changed",
           "old": "Each ticket should be able to be tagged with a certain tag so we can organize a view of tickets with a ui tag or ux tag or mcp tag. each ticket can have multiple tags",
           "new": "Each ticket should carry multiple tags so the list can be organised by them (`ui`, `ux`, `mcp`, …).\n\n## Most of this already exists — it's a UI-only ticket\n`Ticket.labels: Vec<String>` has been in the model all along (crates/pm-core/src/pm.rs:176). Concretely, already working:\n- `PmData::set_labels` (pm.rs:496) with a `LabelsChanged` history event.\n- The MCP `edit_ticket` tool sets them (pm-mcp/src/ops.rs:164-224) and `list_tickets` **already filters by label** (ops.rs:96-107).\n- The detail pane renders each one as a `chip` tinted `colors.changed` (tickets_view.rs:620-622).\n- Real tickets in this very project are already labelled — `fremantle`, `tickets`, `ui`, `mcp`, `bug`.\n\nSo the gap is narrow and specific: **no editor and no filter in the GUI.** Labels can only be set by an agent through MCP or by hand-editing pm.json5, and the ticket list can't be narrowed by one.\n\n## First: settle the terminology\nThe model says **labels**; this ticket says **tags**. Two names for one field will confuse everything downstream (the MCP arg is already `label`). Pick one and use it everywhere — recommend keeping `labels`, since it's the name already on disk in every existing pm.json5 and in the MCP tool signature, and renaming the serialized field would break older readers (see PM-86).\n\n## In scope\n**1. A label editor in the detail pane.** The chips at :620-622 become editable — add/remove, with a text input for new ones. Worth offering completion from labels already used in the project (collect the distinct set across `state.pm.tickets`); free-text-only guarantees `ui` and `UI` and `ux ` diverge immediately.\n\n**2. Label filtering in the list.** The status filter is already there and is the pattern to follow: `ticket_filter: HashSet<Status>` (app.rs:182), `filter_button` (tickets_view.rs:217-269) opening a `menu_panel` checklist (:123-180), applied in `shown_tickets` (:274-286). A label filter is the same shape with a `HashSet<String>` — but note `shown_tickets` now composes **two** filters (status + PM-75's search), and this makes three. They must AND together, not replace each other.\n\n## Depends on\n**PM-85** (AppState mutators) — `set_labels` has no `AppState` wrapper, same as the other four fields.\n\n## Related\n- **PM-63** (make the active filter obvious) — the `filter_button` label is already the unhelpful hardcoded `\"Filter (n/5) ▾\"` (:244-247). Adding a second filter dimension makes that strictly worse, so PM-63 should probably land alongside or before this, not after.\n- **PM-50** (linking/hierarchy) lists \"lean on labels\" as one of its options — if this ticket ships a good label editor, that option gets cheaper.\n\n## Open questions\n- Free-form strings, or a project-level registry of allowed labels in pm.json5 (which would give them stable colours)? Right now every chip is the same `colors.changed` tint, so ten labels are visually indistinguishable.\n- Should the list rows show labels at all, or only the detail pane? Rows are already carrying a status dot, id, status·priority, title — and PM-4 and PM-66 both want to add more.\n\n## Verify\nAdd and remove a label in the GUI, confirm it persists to .pm/pm.json5, appears as a `LabelsChanged` history entry, and that the same label filters correctly through both the GUI list and `mcp__pm__list_tickets(label: ...)`."
+        },
+        {
+          "at": 1789058102,
+          "author": "codex",
+          "kind": "title_changed",
+          "old": "Ticket tagging",
+          "new": "Tickets: edit labels and filter work by track or readiness"
+        },
+        {
+          "at": 1789058102,
+          "author": "codex",
+          "kind": "body_changed",
+          "old": "Each ticket should carry multiple tags so the list can be organised by them (`ui`, `ux`, `mcp`, …).\n\n## Most of this already exists — it's a UI-only ticket\n`Ticket.labels: Vec<String>` has been in the model all along (crates/pm-core/src/pm.rs:176). Concretely, already working:\n- `PmData::set_labels` (pm.rs:496) with a `LabelsChanged` history event.\n- The MCP `edit_ticket` tool sets them (pm-mcp/src/ops.rs:164-224) and `list_tickets` **already filters by label** (ops.rs:96-107).\n- The detail pane renders each one as a `chip` tinted `colors.changed` (tickets_view.rs:620-622).\n- Real tickets in this very project are already labelled — `fremantle`, `tickets`, `ui`, `mcp`, `bug`.\n\nSo the gap is narrow and specific: **no editor and no filter in the GUI.** Labels can only be set by an agent through MCP or by hand-editing pm.json5, and the ticket list can't be narrowed by one.\n\n## First: settle the terminology\nThe model says **labels**; this ticket says **tags**. Two names for one field will confuse everything downstream (the MCP arg is already `label`). Pick one and use it everywhere — recommend keeping `labels`, since it's the name already on disk in every existing pm.json5 and in the MCP tool signature, and renaming the serialized field would break older readers (see PM-86).\n\n## In scope\n**1. A label editor in the detail pane.** The chips at :620-622 become editable — add/remove, with a text input for new ones. Worth offering completion from labels already used in the project (collect the distinct set across `state.pm.tickets`); free-text-only guarantees `ui` and `UI` and `ux ` diverge immediately.\n\n**2. Label filtering in the list.** The status filter is already there and is the pattern to follow: `ticket_filter: HashSet<Status>` (app.rs:182), `filter_button` (tickets_view.rs:217-269) opening a `menu_panel` checklist (:123-180), applied in `shown_tickets` (:274-286). A label filter is the same shape with a `HashSet<String>` — but note `shown_tickets` now composes **two** filters (status + PM-75's search), and this makes three. They must AND together, not replace each other.\n\n## Depends on\n**PM-85** (AppState mutators) — `set_labels` has no `AppState` wrapper, same as the other four fields.\n\n## Related\n- **PM-63** (make the active filter obvious) — the `filter_button` label is already the unhelpful hardcoded `\"Filter (n/5) ▾\"` (:244-247). Adding a second filter dimension makes that strictly worse, so PM-63 should probably land alongside or before this, not after.\n- **PM-50** (linking/hierarchy) lists \"lean on labels\" as one of its options — if this ticket ships a good label editor, that option gets cheaper.\n\n## Open questions\n- Free-form strings, or a project-level registry of allowed labels in pm.json5 (which would give them stable colours)? Right now every chip is the same `colors.changed` tint, so ten labels are visually indistinguishable.\n- Should the list rows show labels at all, or only the detail pane? Rows are already carrying a status dot, id, status·priority, title — and PM-4 and PM-66 both want to add more.\n\n## Verify\nAdd and remove a label in the GUI, confirm it persists to .pm/pm.json5, appears as a `LabelsChanged` history entry, and that the same label filters correctly through both the GUI list and `mcp__pm__list_tickets(label: ...)`.",
+          "new": "Groomed 2026-09-10 for PM-109, first batch with PM-29/63.\n\nExisting model, MCP label editing/filtering, LabelsChanged history, and PM-85 AppState mutators are available. PM-85 is done, not an outstanding blocker. Keep the term labels consistently.\n\nScope: add/remove freeform labels from ticket detail with suggestions from existing project labels. Trim input, reject empty values and avoid duplicates; reuse an existing spelling when selected from suggestions. Do not silently rewrite existing labels. Provide a multi-label filter: match ALL selected labels, AND status and search. Make this behavior explicit. Show selected labels and clear actions via PM-63.\n\nZagtag examples: search or metadata tracks and exploration/ready labels. Labels describe readiness without changing existing execution statuses. No label registry, new status enum, automatic readiness inference or prescribed project taxonomy.\n\nAcceptance: GUI edits round-trip through MCP and history; combined filters return the expected set; clearing one label leaves other filters intact; long label names remain usable. PM-50 relations remain a separate requirement, not replaced by labels."
+        },
+        {
+          "at": 1789058102,
+          "author": "codex",
+          "kind": "priority_changed",
+          "old": "normal",
+          "new": "high"
+        },
+        {
+          "at": 1789058102,
+          "author": "codex",
+          "kind": "labels_changed",
+          "old": [],
+          "new": [
+            "zagtag-adoption"
+          ]
+        },
+        {
+          "at": 1789058508,
+          "author": "codex",
+          "kind": "status_changed",
+          "old": "open",
+          "new": "in_progress"
+        },
+        {
+          "at": 1789090450,
+          "author": "codex",
+          "kind": "commented",
+          "comment_id": 1
+        },
+        {
+          "at": 1789090450,
+          "author": "codex",
+          "kind": "status_changed",
+          "old": "in_progress",
+          "new": "done"
         }
       ]
     },
@@ -1516,18 +1685,44 @@
     },
     {
       "id": 45,
-      "title": "For files that doesn't have a diff, it should just be a full file view without the diff split",
-      "body": "",
+      "title": "Files: show unchanged files in a single readable pane",
+      "body": "Groomed 2026-09-10. Supports PM-110 document navigation and PM-109 Zagtag adoption.\n\nWhen an opened file has no changes against the selected comparison target, show one full-width read-only file pane instead of identical side-by-side columns. Preserve syntax highlighting, selection/copy, scrolling and file navigation. Choose the correct content for the active target; do not substitute the working file for historical content.\n\nAcceptance: open an unchanged Markdown phase and read the complete source in one pane; changed files retain their diff; switching files/targets does not retain stale contents or scroll bounds; existing large/binary-file handling remains correct.\n\nRendered Markdown preview, editing, document linking and heading jumps are separate work. PM-110 can first open files through existing navigation, so this is not a bootstrap blocker.",
       "status": "open",
       "priority": "normal",
-      "labels": [],
+      "labels": [
+        "zagtag-adoption"
+      ],
       "assignee": null,
       "author": "reaganiwadha",
       "created": 1788486452,
-      "updated": 1788486452,
+      "updated": 1789058102,
       "anchors": [],
       "comments": [],
-      "history": []
+      "history": [
+        {
+          "at": 1789058102,
+          "author": "codex",
+          "kind": "title_changed",
+          "old": "For files that doesn't have a diff, it should just be a full file view without the diff split",
+          "new": "Files: show unchanged files in a single readable pane"
+        },
+        {
+          "at": 1789058102,
+          "author": "codex",
+          "kind": "body_changed",
+          "old": "",
+          "new": "Groomed 2026-09-10. Supports PM-110 document navigation and PM-109 Zagtag adoption.\n\nWhen an opened file has no changes against the selected comparison target, show one full-width read-only file pane instead of identical side-by-side columns. Preserve syntax highlighting, selection/copy, scrolling and file navigation. Choose the correct content for the active target; do not substitute the working file for historical content.\n\nAcceptance: open an unchanged Markdown phase and read the complete source in one pane; changed files retain their diff; switching files/targets does not retain stale contents or scroll bounds; existing large/binary-file handling remains correct.\n\nRendered Markdown preview, editing, document linking and heading jumps are separate work. PM-110 can first open files through existing navigation, so this is not a bootstrap blocker."
+        },
+        {
+          "at": 1789058102,
+          "author": "codex",
+          "kind": "labels_changed",
+          "old": [],
+          "new": [
+            "zagtag-adoption"
+          ]
+        }
+      ]
     },
     {
       "id": 46,
@@ -1624,16 +1819,26 @@
     {
       "id": 50,
       "title": "Ticket linking: typed relations (blocks, parent/child, closes, relates) + hierarchy view",
-      "body": "**Scope settled 2026-09-05.** Earlier draft offered three options and recommended the cheapest (linkify prose mentions). That was overruled deliberately: the goal is **semantics and hierarchy**, not just navigation. All four relation kinds are wanted.\n\n## What exists today\nNothing. `Ticket` (crates/pm-core/src/pm.rs:165-197) has no relation field of any kind; `HistoryEvent` (:141) has no link variant.\n\nThe need is already being met by hand, badly, and it decays. Bodies across this project carry prose dependencies — \"Part of PM-55 (phase 3/5)\", \"unblocks PM-2\", \"closes PM-28\", \"Blocked on PM-71 and PM-72\". PM-55 maintains a five-phase plan as a numbered list in its body; PM-81's entire content is \"split into PM-82 → PM-83 → PM-84\". None of it is machine-readable, and it goes stale silently: **PM-78 sat at `blocked` after both of its blockers had shipped**, because the dependency existed only as English.\n\n## Model\nAdd to `Ticket`:\n\n```rust\n#[serde(default)]\npub links: Vec<Link>,\n\npub struct Link { pub kind: LinkKind, pub target: u64 }\n\npub enum LinkKind { Blocks, ParentOf, Closes, DuplicateOf, Relates }\n```\n\n**Store one canonical direction; derive the inverse.** \"PM-82 blocks PM-83\" is stored once, on PM-82; PM-83's \"blocked by\" list is computed by scanning. Storing both sides means two writers (GUI and MCP, pm-mcp/src/ops.rs:164-224) must keep them consistent forever, and any crash between the two writes leaves a dangling half-link. Lookups are already linear scans (`ticket()`/`ticket_mut()`, pm.rs:327/331) over ~90 tickets — deriving costs nothing at this scale, and if it ever does, build an index rather than denormalising.\n\n`Relates` is the one symmetric kind; either store it canonically on the lower id, or accept it being one-directional and always render both ways.\n\nNeeds: a `LinksChanged` variant on `HistoryEvent` (pm.rs:141), a `set_links` mutator following the `set_labels` template (pm.rs:496-516), the `AppState` wrapper (see PM-85, which is adding five of these already — this is a sixth), and `links` on the MCP `edit_ticket` tool.\n\n## Behaviour, per kind\n- **Blocks / blocked-by** — the one that drives behaviour. A ticket whose blockers are all `Done` should be visibly *ready*; a ticket with open blockers should say which. Add a \"ready to work on\" filter alongside the status filter (tickets_view.rs:217-269).\n- **Parent / child** — tree indentation in the ticket list and a progress rollup (\"3 of 5 done\"). Note the list is currently plain `div`s in an `overflow_y_scroll` container (tickets_view.rs:365-427) with no indentation concept — `tree_view.rs` already solves indent+chevron rendering for files and is the reference, and PM-74 is extracting exactly that pattern into fremantle. **Sequence this after PM-74** if the hierarchy view wants to reuse it.\n- **Closes** — when PM-84 goes `Done`, PM-28 should be closed too.\n- **Duplicate-of** — PM-16 may duplicate PM-28. Mostly a display concern: collapse duplicates in the list, redirect to the canonical ticket.\n\n## Do not auto-mutate status\nRecommendation, to be argued with rather than assumed: pm should *surface* consequences, not silently apply them. Auto-closing PM-28 when PM-84 lands writes a history entry nobody asked for, and auto-flipping `blocked`→`open` fights the user every time they set it deliberately. Prefer a visible affordance (\"PM-84 closed this — close PM-28 too?\") plus the ready filter. The exception worth considering is *un*blocking, since that's the failure PM-78 actually demonstrated.\n\n## Validation\n- **Cycle detection** on `ParentOf` (and arguably `Blocks`) — a parent loop hangs any tree render.\n- **Dangling targets**: there is no ticket deletion today, so links can't be orphaned yet — but `target` ids are unvalidated on write, and the MCP server will happily accept a typo. Validate on write, render unknown ids as inert.\n- Cross-project links are out of scope; ids are only unique within one pm.json5. Relevant to PM-67 (multi-project workspace) if that ever merges ticket lists.\n\n## Bootstrap from the prose that's already there\nOne-time migration worth building: scan every body for `{project.key}-{id}` mentions near the phrases already in use (\"part of\", \"closes\", \"blocked on\", \"unblocks\", \"depends on\") and offer them as real links to confirm. PM-55, PM-70..74, PM-81..84 and PM-2 would populate the graph immediately, and it turns the existing hand-maintained plans into live data instead of stranding them.\n\nSeparately, and much cheaper: **linkify bare `PM-N` mentions at render time** so they're clickable even where no typed link exists. That was option (c) of the old draft; it's still worth doing, it just isn't the whole ticket any more. It pairs with **PM-9** (markdown engine) — same inline-span pass.\n\n## Depends on\n- **PM-86** — `links` is precisely the field an older binary silently deletes on save, and losing the dependency graph is worse than losing a label. Land PM-86's guard first.\n- **PM-85** — the `AppState` mutator layer.\n- **PM-74** — if the hierarchy view reuses the extracted tree/list primitive.\n\n## Open questions\n1. Should `Closes` fire automatically, or prompt? (See above — I'd prompt.)\n2. Can a ticket have multiple parents? Recommend no; it makes the tree a DAG and the rollup ambiguous.\n3. Does the ticket list default to flat-with-indent, or a real collapsible tree? Collapsible means persisting expansion state (compare PM-39, which wants pane state in the config store).\n\n## Verify\nBuild the PM-81 → PM-82/83/84 hierarchy and the PM-55 → PM-70..74 phase chain as real links. Confirm: the tree renders with a correct rollup; PM-78's blockers show as satisfied (both `Done`) and it appears in the ready filter; a cycle is rejected; the links round-trip through `mcp__pm__get_ticket` and survive a GUI save; and a ticket with no links renders exactly as it does today.",
-      "status": "open",
+      "body": "## Current delivery sequence — 2026-09-10\nPart of PM-109. Preserve the full typed-relation scope below; deliver parent/child and blockers first for Zagtag progression. PM-85 and PM-86 are done; PM-74 is wontfix and must not gate this work. Use PM-105/106's shared transaction path.\n\nFirst slice: GUI/MCP relation editing, parent/child display and direct-child rollup, explicit blocked-by display and a dependency-satisfied filter. One parent per ticket; reject self-links, dangling targets, and parent/blocker cycles. Store each directed relation once and derive inverse views. A child marked Done counts as delivered; Wontfix is shown separately, not counted as completed delivery. Parent status stays manually controlled. A dependency-satisfied ticket can still need exploration: do not label it build-ready solely because it has no blockers. Explicit Blocked status is not silently removed when dependencies finish.\n\nKeep Closes, DuplicateOf, Relates and richer hierarchy navigation in this ticket's later slices. No automatic closure in the first slice; the older Closes behavior below describes intent to surface a consequence, not authorization for silent cascading mutations. Prose-link migration and automatic inference are not prerequisites.\n\nAcceptance for first slice: represent a partially landed phase with done and unfinished children, distinguish cancelled work, expose a hard blocker and its resolution without changing statuses, reject cycles, and preserve links through GUI/MCP saves. Establish a schema compatibility policy for new relation fields before writing them; the existence of a version guard alone does not protect same-version unknown fields.\n\n---\n\n**Scope settled 2026-09-05.** Earlier draft offered three options and recommended the cheapest (linkify prose mentions). That was overruled deliberately: the goal is **semantics and hierarchy**, not just navigation. All four relation kinds are wanted.\n\n## What exists today\nNothing. `Ticket` (crates/pm-core/src/pm.rs:165-197) has no relation field of any kind; `HistoryEvent` (:141) has no link variant.\n\nThe need is already being met by hand, badly, and it decays. Bodies across this project carry prose dependencies — \"Part of PM-55 (phase 3/5)\", \"unblocks PM-2\", \"closes PM-28\", \"Blocked on PM-71 and PM-72\". PM-55 maintains a five-phase plan as a numbered list in its body; PM-81's entire content is \"split into PM-82 → PM-83 → PM-84\". None of it is machine-readable, and it goes stale silently: **PM-78 sat at `blocked` after both of its blockers had shipped**, because the dependency existed only as English.\n\n## Model\nAdd to `Ticket`:\n\n```rust\n#[serde(default)]\npub links: Vec<Link>,\n\npub struct Link { pub kind: LinkKind, pub target: u64 }\n\npub enum LinkKind { Blocks, ParentOf, Closes, DuplicateOf, Relates }\n```\n\n**Store one canonical direction; derive the inverse.** \"PM-82 blocks PM-83\" is stored once, on PM-82; PM-83's \"blocked by\" list is computed by scanning. Storing both sides means two writers (GUI and MCP, pm-mcp/src/ops.rs:164-224) must keep them consistent forever, and any crash between the two writes leaves a dangling half-link. Lookups are already linear scans (`ticket()`/`ticket_mut()`, pm.rs:327/331) over ~90 tickets — deriving costs nothing at this scale, and if it ever does, build an index rather than denormalising.\n\n`Relates` is the one symmetric kind; either store it canonically on the lower id, or accept it being one-directional and always render both ways.\n\nNeeds: a `LinksChanged` variant on `HistoryEvent` (pm.rs:141), a `set_links` mutator following the `set_labels` template (pm.rs:496-516), the `AppState` wrapper (see PM-85, which is adding five of these already — this is a sixth), and `links` on the MCP `edit_ticket` tool.\n\n## Behaviour, per kind\n- **Blocks / blocked-by** — the one that drives behaviour. A ticket whose blockers are all `Done` should be visibly *ready*; a ticket with open blockers should say which. Add a \"ready to work on\" filter alongside the status filter (tickets_view.rs:217-269).\n- **Parent / child** — tree indentation in the ticket list and a progress rollup (\"3 of 5 done\"). Note the list is currently plain `div`s in an `overflow_y_scroll` container (tickets_view.rs:365-427) with no indentation concept — `tree_view.rs` already solves indent+chevron rendering for files and is the reference, PM-74 is wontfix and is not a prerequisite; use existing UI facilities.\n- **Closes** — when PM-84 goes `Done`, PM-28 should be closed too.\n- **Duplicate-of** — PM-16 may duplicate PM-28. Mostly a display concern: collapse duplicates in the list, redirect to the canonical ticket.\n\n## Do not auto-mutate status\nRecommendation, to be argued with rather than assumed: pm should *surface* consequences, not silently apply them. Auto-closing PM-28 when PM-84 lands writes a history entry nobody asked for, and auto-flipping `blocked`→`open` fights the user every time they set it deliberately. Prefer a visible affordance (\"PM-84 closed this — close PM-28 too?\") plus the ready filter. The exception worth considering is *un*blocking, since that's the failure PM-78 actually demonstrated.\n\n## Validation\n- **Cycle detection** on `ParentOf` (and arguably `Blocks`) — a parent loop hangs any tree render.\n- **Dangling targets**: there is no ticket deletion today, so links can't be orphaned yet — but `target` ids are unvalidated on write, and the MCP server will happily accept a typo. Validate on write, render unknown ids as inert.\n- Cross-project links are out of scope; ids are only unique within one pm.json5. Relevant to PM-67 (multi-project workspace) if that ever merges ticket lists.\n\n## Bootstrap from the prose that's already there\nOne-time migration worth building: scan every body for `{project.key}-{id}` mentions near the phrases already in use (\"part of\", \"closes\", \"blocked on\", \"unblocks\", \"depends on\") and offer them as real links to confirm. PM-55, PM-70..74, PM-81..84 and PM-2 would populate the graph immediately, and it turns the existing hand-maintained plans into live data instead of stranding them.\n\nSeparately, and much cheaper: **linkify bare `PM-N` mentions at render time** so they're clickable even where no typed link exists. That was option (c) of the old draft; it's still worth doing, it just isn't the whole ticket any more. It pairs with **PM-9** (markdown engine) — same inline-span pass.\n\n## Depends on\n- **PM-86** — `links` is precisely the field an older binary silently deletes on save, and losing the dependency graph is worse than losing a label. Land PM-86's guard first.\n- **PM-85** — the `AppState` mutator layer.\n- PM-74 is wontfix; no extracted generic list primitive is required.\n\n## Open questions\n1. Should `Closes` fire automatically, or prompt? (See above — I'd prompt.)\n2. Can a ticket have multiple parents? Recommend no; it makes the tree a DAG and the rollup ambiguous.\n3. Does the ticket list default to flat-with-indent, or a real collapsible tree? Collapsible means persisting expansion state (compare PM-39, which wants pane state in the config store).\n\n## Verify\nBuild the PM-81 → PM-82/83/84 hierarchy and the PM-55 → PM-70..74 phase chain as real links. Confirm: the tree renders with a correct rollup; PM-78's blockers show as satisfied (both `Done`) and it appears in the ready filter; a cycle is rejected; the links round-trip through `mcp__pm__get_ticket` and survive a GUI save; and a ticket with no links renders exactly as it does today.",
+      "status": "done",
       "priority": "high",
-      "labels": [],
+      "labels": [
+        "zagtag-adoption"
+      ],
       "assignee": null,
       "author": "reaganiwadha",
       "created": 1788491393,
-      "updated": 1788623445,
+      "updated": 1789090450,
       "anchors": [],
-      "comments": [],
+      "comments": [
+        {
+          "id": 1,
+          "author": "codex",
+          "created": 1789090450,
+          "body": "Implemented the first usable typed-relations slice in the current dev worktree. Added schema v2 canonical links, atomic single-parent replacement, cycle/dangling/self-link validation, incoming and outgoing MCP views, link_tickets/set_ticket_parent tools, and history on both endpoints. The GUI adds a searchable relation editor, navigable relation cards, indented collapsible hierarchy rows, parent context under filters, child rollups that separate Done from Won't Fix, visible blockers, and a dependency-satisfied filter. Statuses are never changed automatically. Tests cover graph validation, rollups, dependency semantics, schema promotion, hierarchy context, and MCP round trips.",
+          "anchor": null
+        }
+      ],
       "history": [
         {
           "at": 1788622586,
@@ -1662,6 +1867,42 @@
           "kind": "priority_changed",
           "old": "normal",
           "new": "high"
+        },
+        {
+          "at": 1789058140,
+          "author": "codex",
+          "kind": "body_changed",
+          "old": "**Scope settled 2026-09-05.** Earlier draft offered three options and recommended the cheapest (linkify prose mentions). That was overruled deliberately: the goal is **semantics and hierarchy**, not just navigation. All four relation kinds are wanted.\n\n## What exists today\nNothing. `Ticket` (crates/pm-core/src/pm.rs:165-197) has no relation field of any kind; `HistoryEvent` (:141) has no link variant.\n\nThe need is already being met by hand, badly, and it decays. Bodies across this project carry prose dependencies — \"Part of PM-55 (phase 3/5)\", \"unblocks PM-2\", \"closes PM-28\", \"Blocked on PM-71 and PM-72\". PM-55 maintains a five-phase plan as a numbered list in its body; PM-81's entire content is \"split into PM-82 → PM-83 → PM-84\". None of it is machine-readable, and it goes stale silently: **PM-78 sat at `blocked` after both of its blockers had shipped**, because the dependency existed only as English.\n\n## Model\nAdd to `Ticket`:\n\n```rust\n#[serde(default)]\npub links: Vec<Link>,\n\npub struct Link { pub kind: LinkKind, pub target: u64 }\n\npub enum LinkKind { Blocks, ParentOf, Closes, DuplicateOf, Relates }\n```\n\n**Store one canonical direction; derive the inverse.** \"PM-82 blocks PM-83\" is stored once, on PM-82; PM-83's \"blocked by\" list is computed by scanning. Storing both sides means two writers (GUI and MCP, pm-mcp/src/ops.rs:164-224) must keep them consistent forever, and any crash between the two writes leaves a dangling half-link. Lookups are already linear scans (`ticket()`/`ticket_mut()`, pm.rs:327/331) over ~90 tickets — deriving costs nothing at this scale, and if it ever does, build an index rather than denormalising.\n\n`Relates` is the one symmetric kind; either store it canonically on the lower id, or accept it being one-directional and always render both ways.\n\nNeeds: a `LinksChanged` variant on `HistoryEvent` (pm.rs:141), a `set_links` mutator following the `set_labels` template (pm.rs:496-516), the `AppState` wrapper (see PM-85, which is adding five of these already — this is a sixth), and `links` on the MCP `edit_ticket` tool.\n\n## Behaviour, per kind\n- **Blocks / blocked-by** — the one that drives behaviour. A ticket whose blockers are all `Done` should be visibly *ready*; a ticket with open blockers should say which. Add a \"ready to work on\" filter alongside the status filter (tickets_view.rs:217-269).\n- **Parent / child** — tree indentation in the ticket list and a progress rollup (\"3 of 5 done\"). Note the list is currently plain `div`s in an `overflow_y_scroll` container (tickets_view.rs:365-427) with no indentation concept — `tree_view.rs` already solves indent+chevron rendering for files and is the reference, and PM-74 is extracting exactly that pattern into fremantle. **Sequence this after PM-74** if the hierarchy view wants to reuse it.\n- **Closes** — when PM-84 goes `Done`, PM-28 should be closed too.\n- **Duplicate-of** — PM-16 may duplicate PM-28. Mostly a display concern: collapse duplicates in the list, redirect to the canonical ticket.\n\n## Do not auto-mutate status\nRecommendation, to be argued with rather than assumed: pm should *surface* consequences, not silently apply them. Auto-closing PM-28 when PM-84 lands writes a history entry nobody asked for, and auto-flipping `blocked`→`open` fights the user every time they set it deliberately. Prefer a visible affordance (\"PM-84 closed this — close PM-28 too?\") plus the ready filter. The exception worth considering is *un*blocking, since that's the failure PM-78 actually demonstrated.\n\n## Validation\n- **Cycle detection** on `ParentOf` (and arguably `Blocks`) — a parent loop hangs any tree render.\n- **Dangling targets**: there is no ticket deletion today, so links can't be orphaned yet — but `target` ids are unvalidated on write, and the MCP server will happily accept a typo. Validate on write, render unknown ids as inert.\n- Cross-project links are out of scope; ids are only unique within one pm.json5. Relevant to PM-67 (multi-project workspace) if that ever merges ticket lists.\n\n## Bootstrap from the prose that's already there\nOne-time migration worth building: scan every body for `{project.key}-{id}` mentions near the phrases already in use (\"part of\", \"closes\", \"blocked on\", \"unblocks\", \"depends on\") and offer them as real links to confirm. PM-55, PM-70..74, PM-81..84 and PM-2 would populate the graph immediately, and it turns the existing hand-maintained plans into live data instead of stranding them.\n\nSeparately, and much cheaper: **linkify bare `PM-N` mentions at render time** so they're clickable even where no typed link exists. That was option (c) of the old draft; it's still worth doing, it just isn't the whole ticket any more. It pairs with **PM-9** (markdown engine) — same inline-span pass.\n\n## Depends on\n- **PM-86** — `links` is precisely the field an older binary silently deletes on save, and losing the dependency graph is worse than losing a label. Land PM-86's guard first.\n- **PM-85** — the `AppState` mutator layer.\n- **PM-74** — if the hierarchy view reuses the extracted tree/list primitive.\n\n## Open questions\n1. Should `Closes` fire automatically, or prompt? (See above — I'd prompt.)\n2. Can a ticket have multiple parents? Recommend no; it makes the tree a DAG and the rollup ambiguous.\n3. Does the ticket list default to flat-with-indent, or a real collapsible tree? Collapsible means persisting expansion state (compare PM-39, which wants pane state in the config store).\n\n## Verify\nBuild the PM-81 → PM-82/83/84 hierarchy and the PM-55 → PM-70..74 phase chain as real links. Confirm: the tree renders with a correct rollup; PM-78's blockers show as satisfied (both `Done`) and it appears in the ready filter; a cycle is rejected; the links round-trip through `mcp__pm__get_ticket` and survive a GUI save; and a ticket with no links renders exactly as it does today.",
+          "new": "## Current delivery sequence — 2026-09-10\nPart of PM-109. Preserve the full typed-relation scope below; deliver parent/child and blockers first for Zagtag progression. PM-85 and PM-86 are done; PM-74 is wontfix and must not gate this work. Use PM-105/106's shared transaction path.\n\nFirst slice: GUI/MCP relation editing, parent/child display and direct-child rollup, explicit blocked-by display and a dependency-satisfied filter. One parent per ticket; reject self-links, dangling targets, and parent/blocker cycles. Store each directed relation once and derive inverse views. A child marked Done counts as delivered; Wontfix is shown separately, not counted as completed delivery. Parent status stays manually controlled. A dependency-satisfied ticket can still need exploration: do not label it build-ready solely because it has no blockers. Explicit Blocked status is not silently removed when dependencies finish.\n\nKeep Closes, DuplicateOf, Relates and richer hierarchy navigation in this ticket's later slices. No automatic closure in the first slice; the older Closes behavior below describes intent to surface a consequence, not authorization for silent cascading mutations. Prose-link migration and automatic inference are not prerequisites.\n\nAcceptance for first slice: represent a partially landed phase with done and unfinished children, distinguish cancelled work, expose a hard blocker and its resolution without changing statuses, reject cycles, and preserve links through GUI/MCP saves. Establish a schema compatibility policy for new relation fields before writing them; the existence of a version guard alone does not protect same-version unknown fields.\n\n---\n\n**Scope settled 2026-09-05.** Earlier draft offered three options and recommended the cheapest (linkify prose mentions). That was overruled deliberately: the goal is **semantics and hierarchy**, not just navigation. All four relation kinds are wanted.\n\n## What exists today\nNothing. `Ticket` (crates/pm-core/src/pm.rs:165-197) has no relation field of any kind; `HistoryEvent` (:141) has no link variant.\n\nThe need is already being met by hand, badly, and it decays. Bodies across this project carry prose dependencies — \"Part of PM-55 (phase 3/5)\", \"unblocks PM-2\", \"closes PM-28\", \"Blocked on PM-71 and PM-72\". PM-55 maintains a five-phase plan as a numbered list in its body; PM-81's entire content is \"split into PM-82 → PM-83 → PM-84\". None of it is machine-readable, and it goes stale silently: **PM-78 sat at `blocked` after both of its blockers had shipped**, because the dependency existed only as English.\n\n## Model\nAdd to `Ticket`:\n\n```rust\n#[serde(default)]\npub links: Vec<Link>,\n\npub struct Link { pub kind: LinkKind, pub target: u64 }\n\npub enum LinkKind { Blocks, ParentOf, Closes, DuplicateOf, Relates }\n```\n\n**Store one canonical direction; derive the inverse.** \"PM-82 blocks PM-83\" is stored once, on PM-82; PM-83's \"blocked by\" list is computed by scanning. Storing both sides means two writers (GUI and MCP, pm-mcp/src/ops.rs:164-224) must keep them consistent forever, and any crash between the two writes leaves a dangling half-link. Lookups are already linear scans (`ticket()`/`ticket_mut()`, pm.rs:327/331) over ~90 tickets — deriving costs nothing at this scale, and if it ever does, build an index rather than denormalising.\n\n`Relates` is the one symmetric kind; either store it canonically on the lower id, or accept it being one-directional and always render both ways.\n\nNeeds: a `LinksChanged` variant on `HistoryEvent` (pm.rs:141), a `set_links` mutator following the `set_labels` template (pm.rs:496-516), the `AppState` wrapper (see PM-85, which is adding five of these already — this is a sixth), and `links` on the MCP `edit_ticket` tool.\n\n## Behaviour, per kind\n- **Blocks / blocked-by** — the one that drives behaviour. A ticket whose blockers are all `Done` should be visibly *ready*; a ticket with open blockers should say which. Add a \"ready to work on\" filter alongside the status filter (tickets_view.rs:217-269).\n- **Parent / child** — tree indentation in the ticket list and a progress rollup (\"3 of 5 done\"). Note the list is currently plain `div`s in an `overflow_y_scroll` container (tickets_view.rs:365-427) with no indentation concept — `tree_view.rs` already solves indent+chevron rendering for files and is the reference, PM-74 is wontfix and is not a prerequisite; use existing UI facilities.\n- **Closes** — when PM-84 goes `Done`, PM-28 should be closed too.\n- **Duplicate-of** — PM-16 may duplicate PM-28. Mostly a display concern: collapse duplicates in the list, redirect to the canonical ticket.\n\n## Do not auto-mutate status\nRecommendation, to be argued with rather than assumed: pm should *surface* consequences, not silently apply them. Auto-closing PM-28 when PM-84 lands writes a history entry nobody asked for, and auto-flipping `blocked`→`open` fights the user every time they set it deliberately. Prefer a visible affordance (\"PM-84 closed this — close PM-28 too?\") plus the ready filter. The exception worth considering is *un*blocking, since that's the failure PM-78 actually demonstrated.\n\n## Validation\n- **Cycle detection** on `ParentOf` (and arguably `Blocks`) — a parent loop hangs any tree render.\n- **Dangling targets**: there is no ticket deletion today, so links can't be orphaned yet — but `target` ids are unvalidated on write, and the MCP server will happily accept a typo. Validate on write, render unknown ids as inert.\n- Cross-project links are out of scope; ids are only unique within one pm.json5. Relevant to PM-67 (multi-project workspace) if that ever merges ticket lists.\n\n## Bootstrap from the prose that's already there\nOne-time migration worth building: scan every body for `{project.key}-{id}` mentions near the phrases already in use (\"part of\", \"closes\", \"blocked on\", \"unblocks\", \"depends on\") and offer them as real links to confirm. PM-55, PM-70..74, PM-81..84 and PM-2 would populate the graph immediately, and it turns the existing hand-maintained plans into live data instead of stranding them.\n\nSeparately, and much cheaper: **linkify bare `PM-N` mentions at render time** so they're clickable even where no typed link exists. That was option (c) of the old draft; it's still worth doing, it just isn't the whole ticket any more. It pairs with **PM-9** (markdown engine) — same inline-span pass.\n\n## Depends on\n- **PM-86** — `links` is precisely the field an older binary silently deletes on save, and losing the dependency graph is worse than losing a label. Land PM-86's guard first.\n- **PM-85** — the `AppState` mutator layer.\n- PM-74 is wontfix; no extracted generic list primitive is required.\n\n## Open questions\n1. Should `Closes` fire automatically, or prompt? (See above — I'd prompt.)\n2. Can a ticket have multiple parents? Recommend no; it makes the tree a DAG and the rollup ambiguous.\n3. Does the ticket list default to flat-with-indent, or a real collapsible tree? Collapsible means persisting expansion state (compare PM-39, which wants pane state in the config store).\n\n## Verify\nBuild the PM-81 → PM-82/83/84 hierarchy and the PM-55 → PM-70..74 phase chain as real links. Confirm: the tree renders with a correct rollup; PM-78's blockers show as satisfied (both `Done`) and it appears in the ready filter; a cycle is rejected; the links round-trip through `mcp__pm__get_ticket` and survive a GUI save; and a ticket with no links renders exactly as it does today."
+        },
+        {
+          "at": 1789058140,
+          "author": "codex",
+          "kind": "labels_changed",
+          "old": [],
+          "new": [
+            "zagtag-adoption"
+          ]
+        },
+        {
+          "at": 1789088569,
+          "author": "codex",
+          "kind": "status_changed",
+          "old": "open",
+          "new": "in_progress"
+        },
+        {
+          "at": 1789090450,
+          "author": "codex",
+          "kind": "commented",
+          "comment_id": 1
+        },
+        {
+          "at": 1789090450,
+          "author": "codex",
+          "kind": "status_changed",
+          "old": "in_progress",
+          "new": "done"
         }
       ]
     },
@@ -2037,17 +2278,27 @@
     },
     {
       "id": 63,
-      "title": "A UI More obvious about what filters is being selected",
-      "body": "## What exists today\nThe list header (tickets_view.rs:319-363) carries three separate, uncoordinated pieces of filter state:\n\n1. **Status filter** — `filter_button` (:217-269), labelled with the hardcoded format string `\"Filter ({}/5) ▾\"` (:244-247). It reports *how many* statuses are checked and never *which*. `\"Filter (3/5)\"` is the default (Open/InProgress/Blocked — Done and Wontfix hidden, app.rs:290-293), and there is no way to tell from the header that closed tickets are being hidden. That is the actual bug: someone looks for a ticket they know exists, doesn't find it, and has to open a popover to discover why.\n2. **Search** (PM-75) — `search_toggle_button` (:184-214). Collapsed by default, so when the box is hidden the query is invisible too. Closing the toggle resets the input, but while collapsed-with-text there's no indicator.\n3. **The result count** — the header title already shows `\"Tickets (n)\"` or `\"Tickets (n of m)\"` (:313-317), which is the one honest signal that something is being hidden, but it doesn't say what.\n\nBoth filters compose in `shown_tickets` (:274-286), and PM-38 (label filter) and PM-29 (sort) each want to add a fourth and fifth dimension to the same header.\n\n## In scope\nMake the active filter state readable **without opening anything**. The concrete minimum:\n- Name the active statuses instead of counting them — `\"Open, In Progress, Blocked\"`, elided to `\"3 statuses\"` when it doesn't fit. Or invert it: say what's *hidden*, since that's the surprising part.\n- Show the search query when the box is collapsed but non-empty, and make it clearable in one click.\n- Give the whole header a visible \"filtered\" state, so a narrowed list never looks like a complete one.\n\n## Design note\nWorth deciding whether these stay as separate popovers or collapse into one filter strip / chip row (each active filter as a dismissable chip — `chip()` already exists at :24-32). Given PM-29 and PM-38 are both queuing up to add to this header, settling the pattern here is the point of the ticket; adding a fourth independent dropdown makes it worse.\n\n## Related\n- **PM-29** (sort) — a persisted sort order is subject to exactly the same \"why does the list look like this\" problem, so it belongs in whatever indicator this ticket builds.\n- **PM-38** (label filter) — should land after or with this, not before.\n- **PM-75** shipped the search; this is its follow-up.\n\n## Verify\nWith a non-default status set, a search query, and the search box collapsed, the header should make all of it plain at a glance — and the count in the title should reconcile with what's on screen.",
-      "status": "open",
-      "priority": "normal",
-      "labels": [],
+      "title": "Tickets: show active filters, sort order and clear actions",
+      "body": "Groomed 2026-09-10 for PM-109; deliver alongside PM-29/38.\n\nProblem: Filter (3/5) obscures which statuses are hidden. Adding label filters and sorting must leave it obvious why a phase is absent and why results are ordered this way.\n\nScope: visible status summary (including hidden closed tickets), selected label chips, active query and named sort. Show filtered/total count, clear individual constraints, and Reset filters to the documented default status set with no labels/query; reset does not change sort. Empty results explain that filters/search may be excluding tickets and provide a recovery action. Keep controls usable in a narrow sidebar.\n\nCorrection: closing the current search toggle clears its query; do not invent a hidden-query bug. If behavior changes to preserve collapsed queries, expose their active state. Search relevance ordering introduced by PM-91 must also be visible.\n\nAcceptance: combine status, multiple labels and query; infer the active constraints without opening menus; clear each independently; reset reliably; count matches results. Persisted sort is always named. No new modal framework required.",
+      "status": "done",
+      "priority": "high",
+      "labels": [
+        "zagtag-adoption"
+      ],
       "assignee": null,
       "author": "reaganiwadha",
       "created": 1788584307,
-      "updated": 1788622543,
+      "updated": 1789090450,
       "anchors": [],
-      "comments": [],
+      "comments": [
+        {
+          "id": 1,
+          "author": "codex",
+          "created": 1789090450,
+          "body": "Implemented in the current dev worktree: visible sort/status/label/search state, individual clear actions, show-all statuses, reset filters, empty-result guidance, hierarchy/flat toggle, and dependency-satisfied filtering.",
+          "anchor": null
+        }
+      ],
       "history": [
         {
           "at": 1788622543,
@@ -2055,6 +2306,56 @@
           "kind": "body_changed",
           "old": "",
           "new": "## What exists today\nThe list header (tickets_view.rs:319-363) carries three separate, uncoordinated pieces of filter state:\n\n1. **Status filter** — `filter_button` (:217-269), labelled with the hardcoded format string `\"Filter ({}/5) ▾\"` (:244-247). It reports *how many* statuses are checked and never *which*. `\"Filter (3/5)\"` is the default (Open/InProgress/Blocked — Done and Wontfix hidden, app.rs:290-293), and there is no way to tell from the header that closed tickets are being hidden. That is the actual bug: someone looks for a ticket they know exists, doesn't find it, and has to open a popover to discover why.\n2. **Search** (PM-75) — `search_toggle_button` (:184-214). Collapsed by default, so when the box is hidden the query is invisible too. Closing the toggle resets the input, but while collapsed-with-text there's no indicator.\n3. **The result count** — the header title already shows `\"Tickets (n)\"` or `\"Tickets (n of m)\"` (:313-317), which is the one honest signal that something is being hidden, but it doesn't say what.\n\nBoth filters compose in `shown_tickets` (:274-286), and PM-38 (label filter) and PM-29 (sort) each want to add a fourth and fifth dimension to the same header.\n\n## In scope\nMake the active filter state readable **without opening anything**. The concrete minimum:\n- Name the active statuses instead of counting them — `\"Open, In Progress, Blocked\"`, elided to `\"3 statuses\"` when it doesn't fit. Or invert it: say what's *hidden*, since that's the surprising part.\n- Show the search query when the box is collapsed but non-empty, and make it clearable in one click.\n- Give the whole header a visible \"filtered\" state, so a narrowed list never looks like a complete one.\n\n## Design note\nWorth deciding whether these stay as separate popovers or collapse into one filter strip / chip row (each active filter as a dismissable chip — `chip()` already exists at :24-32). Given PM-29 and PM-38 are both queuing up to add to this header, settling the pattern here is the point of the ticket; adding a fourth independent dropdown makes it worse.\n\n## Related\n- **PM-29** (sort) — a persisted sort order is subject to exactly the same \"why does the list look like this\" problem, so it belongs in whatever indicator this ticket builds.\n- **PM-38** (label filter) — should land after or with this, not before.\n- **PM-75** shipped the search; this is its follow-up.\n\n## Verify\nWith a non-default status set, a search query, and the search box collapsed, the header should make all of it plain at a glance — and the count in the title should reconcile with what's on screen."
+        },
+        {
+          "at": 1789058102,
+          "author": "codex",
+          "kind": "title_changed",
+          "old": "A UI More obvious about what filters is being selected",
+          "new": "Tickets: show active filters, sort order and clear actions"
+        },
+        {
+          "at": 1789058102,
+          "author": "codex",
+          "kind": "body_changed",
+          "old": "## What exists today\nThe list header (tickets_view.rs:319-363) carries three separate, uncoordinated pieces of filter state:\n\n1. **Status filter** — `filter_button` (:217-269), labelled with the hardcoded format string `\"Filter ({}/5) ▾\"` (:244-247). It reports *how many* statuses are checked and never *which*. `\"Filter (3/5)\"` is the default (Open/InProgress/Blocked — Done and Wontfix hidden, app.rs:290-293), and there is no way to tell from the header that closed tickets are being hidden. That is the actual bug: someone looks for a ticket they know exists, doesn't find it, and has to open a popover to discover why.\n2. **Search** (PM-75) — `search_toggle_button` (:184-214). Collapsed by default, so when the box is hidden the query is invisible too. Closing the toggle resets the input, but while collapsed-with-text there's no indicator.\n3. **The result count** — the header title already shows `\"Tickets (n)\"` or `\"Tickets (n of m)\"` (:313-317), which is the one honest signal that something is being hidden, but it doesn't say what.\n\nBoth filters compose in `shown_tickets` (:274-286), and PM-38 (label filter) and PM-29 (sort) each want to add a fourth and fifth dimension to the same header.\n\n## In scope\nMake the active filter state readable **without opening anything**. The concrete minimum:\n- Name the active statuses instead of counting them — `\"Open, In Progress, Blocked\"`, elided to `\"3 statuses\"` when it doesn't fit. Or invert it: say what's *hidden*, since that's the surprising part.\n- Show the search query when the box is collapsed but non-empty, and make it clearable in one click.\n- Give the whole header a visible \"filtered\" state, so a narrowed list never looks like a complete one.\n\n## Design note\nWorth deciding whether these stay as separate popovers or collapse into one filter strip / chip row (each active filter as a dismissable chip — `chip()` already exists at :24-32). Given PM-29 and PM-38 are both queuing up to add to this header, settling the pattern here is the point of the ticket; adding a fourth independent dropdown makes it worse.\n\n## Related\n- **PM-29** (sort) — a persisted sort order is subject to exactly the same \"why does the list look like this\" problem, so it belongs in whatever indicator this ticket builds.\n- **PM-38** (label filter) — should land after or with this, not before.\n- **PM-75** shipped the search; this is its follow-up.\n\n## Verify\nWith a non-default status set, a search query, and the search box collapsed, the header should make all of it plain at a glance — and the count in the title should reconcile with what's on screen.",
+          "new": "Groomed 2026-09-10 for PM-109; deliver alongside PM-29/38.\n\nProblem: Filter (3/5) obscures which statuses are hidden. Adding label filters and sorting must leave it obvious why a phase is absent and why results are ordered this way.\n\nScope: visible status summary (including hidden closed tickets), selected label chips, active query and named sort. Show filtered/total count, clear individual constraints, and Reset filters to the documented default status set with no labels/query; reset does not change sort. Empty results explain that filters/search may be excluding tickets and provide a recovery action. Keep controls usable in a narrow sidebar.\n\nCorrection: closing the current search toggle clears its query; do not invent a hidden-query bug. If behavior changes to preserve collapsed queries, expose their active state. Search relevance ordering introduced by PM-91 must also be visible.\n\nAcceptance: combine status, multiple labels and query; infer the active constraints without opening menus; clear each independently; reset reliably; count matches results. Persisted sort is always named. No new modal framework required."
+        },
+        {
+          "at": 1789058102,
+          "author": "codex",
+          "kind": "priority_changed",
+          "old": "normal",
+          "new": "high"
+        },
+        {
+          "at": 1789058102,
+          "author": "codex",
+          "kind": "labels_changed",
+          "old": [],
+          "new": [
+            "zagtag-adoption"
+          ]
+        },
+        {
+          "at": 1789058508,
+          "author": "codex",
+          "kind": "status_changed",
+          "old": "open",
+          "new": "in_progress"
+        },
+        {
+          "at": 1789090450,
+          "author": "codex",
+          "kind": "commented",
+          "comment_id": 1
+        },
+        {
+          "at": 1789090450,
+          "author": "codex",
+          "kind": "status_changed",
+          "old": "in_progress",
+          "new": "done"
         }
       ]
     },
@@ -2526,15 +2827,17 @@
     },
     {
       "id": 76,
-      "title": "MCP and Watermarking needs to be obvious to coding agents so that coding agents use it and warns the user and utilizes pm properly when it's a pm project",
-      "body": "Umbrella ticket. Body written 2026-09-05 in response to its own \"Needs Claude Code input\" — the concrete pieces are split into subtickets below; what remains here is the **discoverability** half, which nothing else covers.\n\n## The problem, split in two\n**(a) Capability** — can an agent do the right thing with pm? Mostly a matter of missing tools; see the subtickets.\n\n**(b) Discoverability** — does an agent *know* pm is here and that it should care? This is the harder half and the one this ticket keeps.\n\n## Nothing currently signals \"this is a pm project\"\nVerified by grep across the repo: pm writes **no** `CLAUDE.md`, `AGENTS.md`, `.cursorrules`, `.github/copilot-instructions.md`, project-level `.mcp.json`, README badge, or `.gitignore` entry. `PmData::save_in` (crates/pm-core/src/pm.rs:310-325) creates `.pm/` and writes exactly one file into it: `pm.json5`.\n\nSo the total set of signals available to an agent today is:\n1. The MCP `instructions` string (crates/pm-mcp/src/lib.rs:194-200) — **global and static**, identical for every project, and only visible if the pm server is already registered.\n2. Per-tool descriptions (lib.rs:126-186).\n3. `list_projects` — useful only to an agent that already knows to ask.\n4. The `~/.claude.json` registration written by `pm --setup` (setup.rs:385-421) — Claude Code only, user scope, **Windows only**.\n\nAn agent working in a checkout of this repo with no pm MCP server registered has no way to discover that 95 tickets of context exist. It will do the work and file nothing.\n\n## What \"watermarking\" could mean\nDeliberately not deciding here — this wants a design pass:\n- A project-level hint file (`AGENTS.md`, or a section appended to an existing `CLAUDE.md`) written when a project first becomes a pm project. **The natural hook already exists**: the store-location dialog (app.rs:1488-1530, applied :478-499) is the exact moment pm decides a repo is a pm project, and today it writes nothing but config state.\n- A project-level `.mcp.json` so the server registers itself for anyone who opens the repo.\n- Something in `.pm/` itself — a README next to `pm.json5` explaining what it is to whoever finds it.\n\nOpen question worth taking seriously: **writing files into someone's repo is intrusive**, and doubly so if it's committed and affects their teammates. Opt-in at store-choice time seems right; silently generating an `AGENTS.md` does not. There's also a real question of whether pm should *edit* an existing `CLAUDE.md` it didn't write.\n\n## \"Warns the user\" (from the title)\nUnresolved and worth pinning down: warn about what, exactly? Candidates — a coding agent made changes without touching any ticket; a ticket's referenced code has changed since it was written (compare PM-89 on anchor staleness); a commit message mentions `PM-N` but that ticket is still open. The last one is real and demonstrated: PM-72, PM-75, PM-80 and PM-22 all shipped with the ticket id in the commit message and all stayed `open`. pm already has the git layer to detect it (`Repo::log`, git.rs:229).\n\n## Subtickets\n- **PM-90** — rewrite the MCP instructions to say *when* to use pm. Cheapest, highest leverage.\n- **PM-91** — a search/query tool (agents can't check for existing tickets today).\n- **PM-92** — bulk body reads in `list_tickets`, and fix its misleading description.\n- **PM-93** — dedupe warning on `create_ticket`.\n- **PM-94** — batch edits.\n- **PM-95** — agent-vs-human provenance.\n- **PM-89** — anchors as a first-class feature; the MCP surface can't write them at all, which is the single largest capability gap.\n\n## Also relevant\n- **PM-88** — once two binaries exist, \"which pm is the agent driving\" becomes ambiguous; `open_project`'s binary resolution (ops.rs:237-256) and the MCP registration both need to say which variant they mean.\n- `crates/pm-mcp/README.md:55` recommends registering from source as `cargo run -q -p pm -- --mcp`, which makes the MCP server hold cargo's build lock on `target/` — an agent whose MCP server is cargo deadlocks against its own builds. That advice should be corrected or warned about.\n\n## Verify\nThe end state is behavioural, not mechanical: a fresh agent session opened on a pm project it has never seen should discover the ticket store on its own, check it before starting work, and close what it finishes — without the user mentioning pm.",
+      "title": "Agents: discover pm projects and record resumable progress",
+      "body": "Groomed 2026-09-10 for PM-109. PM-90's MCP guidance is done; remaining first slice is project discovery and a concrete session convention.\n\nProvide a copyable project instruction snippet, plus an explicit install/update action for a managed section in an existing agent guide. Preserve surrounding project instructions; repeated installation must be idempotent. A snippet can ship before automated guide editing or more client registration support.\n\nSession convention: discover the project store; find/read the relevant ticket and linked phase/design docs before work; update execution status when starting; afterward append Outcome, Evidence, Remaining/questions and Next action. Capture resolved questions and rejected approaches as exploration progress, without implying implementation completion. Close only when acceptance is met; retain remaining follow-ups explicitly. Use existing edit_ticket/add_comment; PM-112 later improves presentation.\n\nFor Zagtag, retain its CLAUDE.md/AGENT.md routing and phase Decisions log. Design decisions belong in source phase docs with a short linked checkpoint in pm, avoiding duplicated full specs. PM-111 bootstraps the initial tickets. PM-91/92 improve retrieval but do not gate the snippet.\n\nAcceptance: a fresh agent following the project guide locates the store and correct phase, reads its context, and leaves a resumable update through existing tools. No warning system, automatic commit-based closure, forced ticket for every trivial action, or automatic replacement of agent guides in this slice. Broader watermarking/client setup ideas remain follow-ups.",
       "status": "open",
-      "priority": "normal",
-      "labels": [],
+      "priority": "high",
+      "labels": [
+        "zagtag-adoption"
+      ],
       "assignee": null,
       "author": "reaganiwadha",
       "created": 1788591064,
-      "updated": 1788624664,
+      "updated": 1789058102,
       "anchors": [],
       "comments": [
         {
@@ -2558,6 +2861,36 @@
           "kind": "body_changed",
           "old": "Needs Claude Code input",
           "new": "Umbrella ticket. Body written 2026-09-05 in response to its own \"Needs Claude Code input\" — the concrete pieces are split into subtickets below; what remains here is the **discoverability** half, which nothing else covers.\n\n## The problem, split in two\n**(a) Capability** — can an agent do the right thing with pm? Mostly a matter of missing tools; see the subtickets.\n\n**(b) Discoverability** — does an agent *know* pm is here and that it should care? This is the harder half and the one this ticket keeps.\n\n## Nothing currently signals \"this is a pm project\"\nVerified by grep across the repo: pm writes **no** `CLAUDE.md`, `AGENTS.md`, `.cursorrules`, `.github/copilot-instructions.md`, project-level `.mcp.json`, README badge, or `.gitignore` entry. `PmData::save_in` (crates/pm-core/src/pm.rs:310-325) creates `.pm/` and writes exactly one file into it: `pm.json5`.\n\nSo the total set of signals available to an agent today is:\n1. The MCP `instructions` string (crates/pm-mcp/src/lib.rs:194-200) — **global and static**, identical for every project, and only visible if the pm server is already registered.\n2. Per-tool descriptions (lib.rs:126-186).\n3. `list_projects` — useful only to an agent that already knows to ask.\n4. The `~/.claude.json` registration written by `pm --setup` (setup.rs:385-421) — Claude Code only, user scope, **Windows only**.\n\nAn agent working in a checkout of this repo with no pm MCP server registered has no way to discover that 95 tickets of context exist. It will do the work and file nothing.\n\n## What \"watermarking\" could mean\nDeliberately not deciding here — this wants a design pass:\n- A project-level hint file (`AGENTS.md`, or a section appended to an existing `CLAUDE.md`) written when a project first becomes a pm project. **The natural hook already exists**: the store-location dialog (app.rs:1488-1530, applied :478-499) is the exact moment pm decides a repo is a pm project, and today it writes nothing but config state.\n- A project-level `.mcp.json` so the server registers itself for anyone who opens the repo.\n- Something in `.pm/` itself — a README next to `pm.json5` explaining what it is to whoever finds it.\n\nOpen question worth taking seriously: **writing files into someone's repo is intrusive**, and doubly so if it's committed and affects their teammates. Opt-in at store-choice time seems right; silently generating an `AGENTS.md` does not. There's also a real question of whether pm should *edit* an existing `CLAUDE.md` it didn't write.\n\n## \"Warns the user\" (from the title)\nUnresolved and worth pinning down: warn about what, exactly? Candidates — a coding agent made changes without touching any ticket; a ticket's referenced code has changed since it was written (compare PM-89 on anchor staleness); a commit message mentions `PM-N` but that ticket is still open. The last one is real and demonstrated: PM-72, PM-75, PM-80 and PM-22 all shipped with the ticket id in the commit message and all stayed `open`. pm already has the git layer to detect it (`Repo::log`, git.rs:229).\n\n## Subtickets\n- **PM-90** — rewrite the MCP instructions to say *when* to use pm. Cheapest, highest leverage.\n- **PM-91** — a search/query tool (agents can't check for existing tickets today).\n- **PM-92** — bulk body reads in `list_tickets`, and fix its misleading description.\n- **PM-93** — dedupe warning on `create_ticket`.\n- **PM-94** — batch edits.\n- **PM-95** — agent-vs-human provenance.\n- **PM-89** — anchors as a first-class feature; the MCP surface can't write them at all, which is the single largest capability gap.\n\n## Also relevant\n- **PM-88** — once two binaries exist, \"which pm is the agent driving\" becomes ambiguous; `open_project`'s binary resolution (ops.rs:237-256) and the MCP registration both need to say which variant they mean.\n- `crates/pm-mcp/README.md:55` recommends registering from source as `cargo run -q -p pm -- --mcp`, which makes the MCP server hold cargo's build lock on `target/` — an agent whose MCP server is cargo deadlocks against its own builds. That advice should be corrected or warned about.\n\n## Verify\nThe end state is behavioural, not mechanical: a fresh agent session opened on a pm project it has never seen should discover the ticket store on its own, check it before starting work, and close what it finishes — without the user mentioning pm."
+        },
+        {
+          "at": 1789058102,
+          "author": "codex",
+          "kind": "title_changed",
+          "old": "MCP and Watermarking needs to be obvious to coding agents so that coding agents use it and warns the user and utilizes pm properly when it's a pm project",
+          "new": "Agents: discover pm projects and record resumable progress"
+        },
+        {
+          "at": 1789058102,
+          "author": "codex",
+          "kind": "body_changed",
+          "old": "Umbrella ticket. Body written 2026-09-05 in response to its own \"Needs Claude Code input\" — the concrete pieces are split into subtickets below; what remains here is the **discoverability** half, which nothing else covers.\n\n## The problem, split in two\n**(a) Capability** — can an agent do the right thing with pm? Mostly a matter of missing tools; see the subtickets.\n\n**(b) Discoverability** — does an agent *know* pm is here and that it should care? This is the harder half and the one this ticket keeps.\n\n## Nothing currently signals \"this is a pm project\"\nVerified by grep across the repo: pm writes **no** `CLAUDE.md`, `AGENTS.md`, `.cursorrules`, `.github/copilot-instructions.md`, project-level `.mcp.json`, README badge, or `.gitignore` entry. `PmData::save_in` (crates/pm-core/src/pm.rs:310-325) creates `.pm/` and writes exactly one file into it: `pm.json5`.\n\nSo the total set of signals available to an agent today is:\n1. The MCP `instructions` string (crates/pm-mcp/src/lib.rs:194-200) — **global and static**, identical for every project, and only visible if the pm server is already registered.\n2. Per-tool descriptions (lib.rs:126-186).\n3. `list_projects` — useful only to an agent that already knows to ask.\n4. The `~/.claude.json` registration written by `pm --setup` (setup.rs:385-421) — Claude Code only, user scope, **Windows only**.\n\nAn agent working in a checkout of this repo with no pm MCP server registered has no way to discover that 95 tickets of context exist. It will do the work and file nothing.\n\n## What \"watermarking\" could mean\nDeliberately not deciding here — this wants a design pass:\n- A project-level hint file (`AGENTS.md`, or a section appended to an existing `CLAUDE.md`) written when a project first becomes a pm project. **The natural hook already exists**: the store-location dialog (app.rs:1488-1530, applied :478-499) is the exact moment pm decides a repo is a pm project, and today it writes nothing but config state.\n- A project-level `.mcp.json` so the server registers itself for anyone who opens the repo.\n- Something in `.pm/` itself — a README next to `pm.json5` explaining what it is to whoever finds it.\n\nOpen question worth taking seriously: **writing files into someone's repo is intrusive**, and doubly so if it's committed and affects their teammates. Opt-in at store-choice time seems right; silently generating an `AGENTS.md` does not. There's also a real question of whether pm should *edit* an existing `CLAUDE.md` it didn't write.\n\n## \"Warns the user\" (from the title)\nUnresolved and worth pinning down: warn about what, exactly? Candidates — a coding agent made changes without touching any ticket; a ticket's referenced code has changed since it was written (compare PM-89 on anchor staleness); a commit message mentions `PM-N` but that ticket is still open. The last one is real and demonstrated: PM-72, PM-75, PM-80 and PM-22 all shipped with the ticket id in the commit message and all stayed `open`. pm already has the git layer to detect it (`Repo::log`, git.rs:229).\n\n## Subtickets\n- **PM-90** — rewrite the MCP instructions to say *when* to use pm. Cheapest, highest leverage.\n- **PM-91** — a search/query tool (agents can't check for existing tickets today).\n- **PM-92** — bulk body reads in `list_tickets`, and fix its misleading description.\n- **PM-93** — dedupe warning on `create_ticket`.\n- **PM-94** — batch edits.\n- **PM-95** — agent-vs-human provenance.\n- **PM-89** — anchors as a first-class feature; the MCP surface can't write them at all, which is the single largest capability gap.\n\n## Also relevant\n- **PM-88** — once two binaries exist, \"which pm is the agent driving\" becomes ambiguous; `open_project`'s binary resolution (ops.rs:237-256) and the MCP registration both need to say which variant they mean.\n- `crates/pm-mcp/README.md:55` recommends registering from source as `cargo run -q -p pm -- --mcp`, which makes the MCP server hold cargo's build lock on `target/` — an agent whose MCP server is cargo deadlocks against its own builds. That advice should be corrected or warned about.\n\n## Verify\nThe end state is behavioural, not mechanical: a fresh agent session opened on a pm project it has never seen should discover the ticket store on its own, check it before starting work, and close what it finishes — without the user mentioning pm.",
+          "new": "Groomed 2026-09-10 for PM-109. PM-90's MCP guidance is done; remaining first slice is project discovery and a concrete session convention.\n\nProvide a copyable project instruction snippet, plus an explicit install/update action for a managed section in an existing agent guide. Preserve surrounding project instructions; repeated installation must be idempotent. A snippet can ship before automated guide editing or more client registration support.\n\nSession convention: discover the project store; find/read the relevant ticket and linked phase/design docs before work; update execution status when starting; afterward append Outcome, Evidence, Remaining/questions and Next action. Capture resolved questions and rejected approaches as exploration progress, without implying implementation completion. Close only when acceptance is met; retain remaining follow-ups explicitly. Use existing edit_ticket/add_comment; PM-112 later improves presentation.\n\nFor Zagtag, retain its CLAUDE.md/AGENT.md routing and phase Decisions log. Design decisions belong in source phase docs with a short linked checkpoint in pm, avoiding duplicated full specs. PM-111 bootstraps the initial tickets. PM-91/92 improve retrieval but do not gate the snippet.\n\nAcceptance: a fresh agent following the project guide locates the store and correct phase, reads its context, and leaves a resumable update through existing tools. No warning system, automatic commit-based closure, forced ticket for every trivial action, or automatic replacement of agent guides in this slice. Broader watermarking/client setup ideas remain follow-ups."
+        },
+        {
+          "at": 1789058102,
+          "author": "codex",
+          "kind": "priority_changed",
+          "old": "normal",
+          "new": "high"
+        },
+        {
+          "at": 1789058102,
+          "author": "codex",
+          "kind": "labels_changed",
+          "old": [],
+          "new": [
+            "zagtag-adoption"
+          ]
         }
       ]
     },
@@ -3318,17 +3651,18 @@
     },
     {
       "id": 91,
-      "title": "MCP: a search/query tool over tickets (mirror what PM-75 shipped in the GUI)",
-      "body": "## The gap\n`list_tickets` (crates/pm-mcp/src/lib.rs:126-130, args at :44-52) filters on exactly two things: `status` and `label`. There is no text search of any kind.\n\nThe GUI is ahead here — **PM-75** shipped fuzzy search over title, body and labels with narrow-to-select (tickets_view.rs:184-214, filtering in `shown_tickets` :274-286). MCP got none of it.\n\nSo an agent asking the most common question there is — *\"is there already a ticket about this?\"* — has to list all 89 tickets and read the titles. That's how duplicates get filed, and it's a poor use of context for what should be one call returning three candidates.\n\n## In scope\nA query capability over the ticket store. Either a new `search_tickets` tool or a `query` argument on `list_tickets` — the latter is probably better, since it composes with the existing `status`/`label` filters rather than creating a second entry point that has to re-implement them.\n\nMatch scope should follow what PM-75 settled on for the GUI: **title, body and labels, weighted, case-insensitive**. Keeping the two surfaces consistent matters more than either being individually optimal — an agent and a human searching the same words should find the same tickets.\n\nThe GUI uses a fuzzy library. Worth deciding whether MCP shares that implementation (put the matcher in `pm-core` so both call it) or does something simpler. Sharing is the obvious call and would let PM-75's weighting be tuned once.\n\n## Also want\n- Return **ranked** results with scores, not an unordered filtered list — the point is \"the three most likely matches\", not \"everything containing this substring\".\n- Include enough per hit to decide without a follow-up `get_ticket`: at minimum a body excerpt around the match. This overlaps the bulk-read ticket; settle the response shape across both.\n- Search **comments** too, or not? Comments carry a lot of the real reasoning in this project (PM-44's scoping notes, PM-79's split recommendation). Leaning yes, flagged as an open question because it changes the result shape — a hit on a comment isn't a hit on a ticket.\n\n## Related\n- **PM-75** — the GUI equivalent, already shipped; share the matcher.\n- The `create_ticket` dedupe ticket depends on this — dedupe is just this search run automatically at file time.\n- **PM-20** (spotlight-style global search) is the other search surface; if a shared matcher lands in `pm-core` it serves all three.\n\n## Verify\nSearch for terms that appear only in a body (e.g. \"ConPTY\", which is in PM-60's comment) and only in a title, and confirm both are found and sensibly ranked. Compare results against the GUI search for the same query — they should agree.",
+      "title": "Search: find ticket bodies, labels and comments in GUI and MCP",
+      "body": "Groomed 2026-09-10 for PM-109, second batch with PM-92.\n\nVerified correction: current GUI shown_tickets searches title and display ID using case-insensitive substring matching. It does NOT implement fuzzy title/body/label search. MCP list_tickets has status/label filters but no query.\n\nScope: implement a shared pm-core matcher over ID, title, labels, body and comments. Add query to MCP list_tickets and use the same matcher in GUI. Define deterministic case-insensitive token matching and ranking: exact ID/title first, then other title/label matches, then body/comment matches; stable ID tie-breaker. No embedding service or fuzzy-search dependency required. Search comments explicitly, because exploratory decisions live there. Exclude old audit-trail body snapshots from this slice.\n\nReturn bounded hits with matched field, comment ID when relevant, and a Unicode-safe excerpt. Reuse PM-92's bounded response contract. Compose with status/label filters. With a query, show Relevance ordering explicitly; clearing it restores PM-29's chosen order.\n\nAcceptance: terms found only in body, label and comment all return the correct ticket; exact ID ranks first; GUI/MCP return the same candidates/order under equivalent filters; empty queries retain ordinary list behavior; long Unicode content is excerpted safely. PM-93 dedupe and PM-20 global search are follow-ups.",
       "status": "open",
       "priority": "high",
       "labels": [
-        "mcp"
+        "mcp",
+        "zagtag-adoption"
       ],
       "assignee": null,
       "author": "claude",
       "created": 1788624567,
-      "updated": 1788624567,
+      "updated": 1789058102,
       "anchors": [],
       "comments": [],
       "history": [
@@ -3347,22 +3681,49 @@
           "new": [
             "mcp"
           ]
+        },
+        {
+          "at": 1789058102,
+          "author": "codex",
+          "kind": "title_changed",
+          "old": "MCP: a search/query tool over tickets (mirror what PM-75 shipped in the GUI)",
+          "new": "Search: find ticket bodies, labels and comments in GUI and MCP"
+        },
+        {
+          "at": 1789058102,
+          "author": "codex",
+          "kind": "body_changed",
+          "old": "## The gap\n`list_tickets` (crates/pm-mcp/src/lib.rs:126-130, args at :44-52) filters on exactly two things: `status` and `label`. There is no text search of any kind.\n\nThe GUI is ahead here — **PM-75** shipped fuzzy search over title, body and labels with narrow-to-select (tickets_view.rs:184-214, filtering in `shown_tickets` :274-286). MCP got none of it.\n\nSo an agent asking the most common question there is — *\"is there already a ticket about this?\"* — has to list all 89 tickets and read the titles. That's how duplicates get filed, and it's a poor use of context for what should be one call returning three candidates.\n\n## In scope\nA query capability over the ticket store. Either a new `search_tickets` tool or a `query` argument on `list_tickets` — the latter is probably better, since it composes with the existing `status`/`label` filters rather than creating a second entry point that has to re-implement them.\n\nMatch scope should follow what PM-75 settled on for the GUI: **title, body and labels, weighted, case-insensitive**. Keeping the two surfaces consistent matters more than either being individually optimal — an agent and a human searching the same words should find the same tickets.\n\nThe GUI uses a fuzzy library. Worth deciding whether MCP shares that implementation (put the matcher in `pm-core` so both call it) or does something simpler. Sharing is the obvious call and would let PM-75's weighting be tuned once.\n\n## Also want\n- Return **ranked** results with scores, not an unordered filtered list — the point is \"the three most likely matches\", not \"everything containing this substring\".\n- Include enough per hit to decide without a follow-up `get_ticket`: at minimum a body excerpt around the match. This overlaps the bulk-read ticket; settle the response shape across both.\n- Search **comments** too, or not? Comments carry a lot of the real reasoning in this project (PM-44's scoping notes, PM-79's split recommendation). Leaning yes, flagged as an open question because it changes the result shape — a hit on a comment isn't a hit on a ticket.\n\n## Related\n- **PM-75** — the GUI equivalent, already shipped; share the matcher.\n- The `create_ticket` dedupe ticket depends on this — dedupe is just this search run automatically at file time.\n- **PM-20** (spotlight-style global search) is the other search surface; if a shared matcher lands in `pm-core` it serves all three.\n\n## Verify\nSearch for terms that appear only in a body (e.g. \"ConPTY\", which is in PM-60's comment) and only in a title, and confirm both are found and sensibly ranked. Compare results against the GUI search for the same query — they should agree.",
+          "new": "Groomed 2026-09-10 for PM-109, second batch with PM-92.\n\nVerified correction: current GUI shown_tickets searches title and display ID using case-insensitive substring matching. It does NOT implement fuzzy title/body/label search. MCP list_tickets has status/label filters but no query.\n\nScope: implement a shared pm-core matcher over ID, title, labels, body and comments. Add query to MCP list_tickets and use the same matcher in GUI. Define deterministic case-insensitive token matching and ranking: exact ID/title first, then other title/label matches, then body/comment matches; stable ID tie-breaker. No embedding service or fuzzy-search dependency required. Search comments explicitly, because exploratory decisions live there. Exclude old audit-trail body snapshots from this slice.\n\nReturn bounded hits with matched field, comment ID when relevant, and a Unicode-safe excerpt. Reuse PM-92's bounded response contract. Compose with status/label filters. With a query, show Relevance ordering explicitly; clearing it restores PM-29's chosen order.\n\nAcceptance: terms found only in body, label and comment all return the correct ticket; exact ID ranks first; GUI/MCP return the same candidates/order under equivalent filters; empty queries retain ordinary list behavior; long Unicode content is excerpted safely. PM-93 dedupe and PM-20 global search are follow-ups."
+        },
+        {
+          "at": 1789058102,
+          "author": "codex",
+          "kind": "labels_changed",
+          "old": [
+            "mcp"
+          ],
+          "new": [
+            "mcp",
+            "zagtag-adoption"
+          ]
         }
       ]
     },
     {
       "id": 92,
-      "title": "MCP: let list_tickets return bodies in bulk (and fix its misleading description)",
-      "body": "## The gap, with a worked example\n`list_tickets` returns id, title, status, priority, author, labels, assignee, updated and comment *count* — no bodies. `get_ticket` (lib.rs:132-136) returns one ticket in full. There is nothing in between.\n\nSo surveying a backlog costs N round-trips. Grooming this project on 2026-09-05 needed the bodies of ~50 open tickets; the honest outcome is that **MCP was abandoned for that step** and `.pm/pm.json5` was read straight off disk with a Python one-liner instead. A tool that agents route around for the most common bulk operation isn't doing its job.\n\n## Two fixes\n**1. An opt-in bulk read.** Either `include_bodies: bool` or a general `fields` parameter on `list_tickets`. Opt-in matters — the default response should stay small, since dumping 89 full bodies into context unprompted is its own problem. A `truncate` / excerpt length would make the middle ground usable: enough body to judge relevance, not the whole thing.\n\n**2. Fix the description.** It currently reads *\"List tickets in a pm project (id, title, status, priority, author).\"* (lib.rs:126). That's a promise about the response shape which is *nearly* right and therefore worse than vague — it omits labels, assignee, updated and comment count, which it does return, and it doesn't say bodies are excluded, which is the thing a caller needs to know. Whatever shape this lands in, the description should state exactly what comes back and what doesn't.\n\n## Response-shape decision, shared with the search ticket\nThe MCP search tool wants the same thing — hits with enough excerpt to judge relevance. Settle one shape and use it for both rather than inventing two.\n\n## Worth checking while in here\nThe other tool descriptions are similarly thin (lib.rs:126-186). `create_ticket` doesn't mention that `priority` defaults to Normal or that ids are per-project; `edit_ticket` doesn't say that omitted fields are left alone (they are — ops.rs:164-224) which is genuinely non-obvious for a tool named \"edit\"; `list_projects` doesn't mention its depth default of 3 or that, unlike every other tool, it does **not** walk up to find a project root (lib.rs:181-185).\n\n## Verify\nOne `list_tickets` call with bodies enabled returns the whole backlog in a form an agent can survey without follow-ups — and the default call is no larger than it is today.",
+      "title": "MCP: bounded bulk ticket bodies and context excerpts",
+      "body": "Groomed 2026-09-10 for PM-109, second batch with PM-91.\n\nCurrent list_tickets returns metadata and comment count; get_ticket returns one full ticket. Agents need a middle ground for surveying phases without dumping the entire history or reading every ticket separately.\n\nScope: opt-in bodies (include_bodies), optional excerpt length, and bounded result pagination with a continuation mechanism. Preserve today's compact metadata response by default. Clearly report truncation and how to retrieve remaining content; never imply truncated context is complete. Share hit/excerpt representation and limits with PM-91. Comments are not bulk-returned by default; search may return a matching comment excerpt and ID. get_ticket remains the full-detail path.\n\nUpdate tool descriptions with actual fields, defaults, omitted-field behavior and pagination. Keep this independently implementable but coordinate response design with PM-91.\n\nAcceptance: retrieve selected phase bodies in a bounded call; traverse results without duplicates/omissions for an unchanged store; default calls omit bodies/history; long/Unicode bodies have explicit safe truncation; filtering and query compose with pagination.",
       "status": "open",
-      "priority": "normal",
+      "priority": "high",
       "labels": [
-        "mcp"
+        "mcp",
+        "zagtag-adoption"
       ],
       "assignee": null,
       "author": "claude",
       "created": 1788624584,
-      "updated": 1788624584,
+      "updated": 1789058102,
       "anchors": [],
       "comments": [],
       "history": [
@@ -3373,6 +3734,39 @@
           "old": [],
           "new": [
             "mcp"
+          ]
+        },
+        {
+          "at": 1789058102,
+          "author": "codex",
+          "kind": "title_changed",
+          "old": "MCP: let list_tickets return bodies in bulk (and fix its misleading description)",
+          "new": "MCP: bounded bulk ticket bodies and context excerpts"
+        },
+        {
+          "at": 1789058102,
+          "author": "codex",
+          "kind": "body_changed",
+          "old": "## The gap, with a worked example\n`list_tickets` returns id, title, status, priority, author, labels, assignee, updated and comment *count* — no bodies. `get_ticket` (lib.rs:132-136) returns one ticket in full. There is nothing in between.\n\nSo surveying a backlog costs N round-trips. Grooming this project on 2026-09-05 needed the bodies of ~50 open tickets; the honest outcome is that **MCP was abandoned for that step** and `.pm/pm.json5` was read straight off disk with a Python one-liner instead. A tool that agents route around for the most common bulk operation isn't doing its job.\n\n## Two fixes\n**1. An opt-in bulk read.** Either `include_bodies: bool` or a general `fields` parameter on `list_tickets`. Opt-in matters — the default response should stay small, since dumping 89 full bodies into context unprompted is its own problem. A `truncate` / excerpt length would make the middle ground usable: enough body to judge relevance, not the whole thing.\n\n**2. Fix the description.** It currently reads *\"List tickets in a pm project (id, title, status, priority, author).\"* (lib.rs:126). That's a promise about the response shape which is *nearly* right and therefore worse than vague — it omits labels, assignee, updated and comment count, which it does return, and it doesn't say bodies are excluded, which is the thing a caller needs to know. Whatever shape this lands in, the description should state exactly what comes back and what doesn't.\n\n## Response-shape decision, shared with the search ticket\nThe MCP search tool wants the same thing — hits with enough excerpt to judge relevance. Settle one shape and use it for both rather than inventing two.\n\n## Worth checking while in here\nThe other tool descriptions are similarly thin (lib.rs:126-186). `create_ticket` doesn't mention that `priority` defaults to Normal or that ids are per-project; `edit_ticket` doesn't say that omitted fields are left alone (they are — ops.rs:164-224) which is genuinely non-obvious for a tool named \"edit\"; `list_projects` doesn't mention its depth default of 3 or that, unlike every other tool, it does **not** walk up to find a project root (lib.rs:181-185).\n\n## Verify\nOne `list_tickets` call with bodies enabled returns the whole backlog in a form an agent can survey without follow-ups — and the default call is no larger than it is today.",
+          "new": "Groomed 2026-09-10 for PM-109, second batch with PM-91.\n\nCurrent list_tickets returns metadata and comment count; get_ticket returns one full ticket. Agents need a middle ground for surveying phases without dumping the entire history or reading every ticket separately.\n\nScope: opt-in bodies (include_bodies), optional excerpt length, and bounded result pagination with a continuation mechanism. Preserve today's compact metadata response by default. Clearly report truncation and how to retrieve remaining content; never imply truncated context is complete. Share hit/excerpt representation and limits with PM-91. Comments are not bulk-returned by default; search may return a matching comment excerpt and ID. get_ticket remains the full-detail path.\n\nUpdate tool descriptions with actual fields, defaults, omitted-field behavior and pagination. Keep this independently implementable but coordinate response design with PM-91.\n\nAcceptance: retrieve selected phase bodies in a bounded call; traverse results without duplicates/omissions for an unchanged store; default calls omit bodies/history; long/Unicode bodies have explicit safe truncation; filtering and query compose with pagination."
+        },
+        {
+          "at": 1789058102,
+          "author": "codex",
+          "kind": "priority_changed",
+          "old": "normal",
+          "new": "high"
+        },
+        {
+          "at": 1789058102,
+          "author": "codex",
+          "kind": "labels_changed",
+          "old": [
+            "mcp"
+          ],
+          "new": [
+            "mcp",
+            "zagtag-adoption"
           ]
         }
       ]
@@ -3416,7 +3810,7 @@
       "assignee": null,
       "author": "claude",
       "created": 1788624618,
-      "updated": 1788748482,
+      "updated": 1789058182,
       "anchors": [],
       "comments": [
         {
@@ -3424,6 +3818,13 @@
           "author": "codex",
           "created": 1788748482,
           "body": "Groomed 2026-09-07: Batching reduces rewrites but does not solve lost updates; it must share the transaction layer.",
+          "anchor": null
+        },
+        {
+          "id": 2,
+          "author": "codex",
+          "created": 1789058182,
+          "body": "Groomed 2026-09-10: PM-105/106 are done and their shared transaction API is the current write foundation; the older process-only-lock description above is historical. This remains a follow-up optimization, not a prerequisite for PM-111's small Zagtag bootstrap or PM-109's first adoption batch. Keep all-or-nothing validation and one commit; do not promise exactly one filesystem notification (watchers may coalesce or multiply events).",
           "anchor": null
         }
       ],
@@ -3449,6 +3850,12 @@
           "author": "codex",
           "kind": "commented",
           "comment_id": 1
+        },
+        {
+          "at": 1789058182,
+          "author": "codex",
+          "kind": "commented",
+          "comment_id": 2
         }
       ]
     },
@@ -3946,6 +4353,142 @@
       "anchors": [],
       "comments": [],
       "history": []
+    },
+    {
+      "id": 109,
+      "title": "Zagtag adoption: resume a Markdown-led phase in pm",
+      "body": "Milestone groomed 2026-09-10 from the user's immediate need to use pm on ../zagtag for exploratory work and progression tracking.\n\nOutcome: open pm, find the active phase, understand its current state and next action, read its source documents, and record useful progress after a work session.\n\nDelivery order:\n1. PM-29 + PM-38 + PM-63: latest-update/priority sorting, editable track/readiness labels, visible filters.\n2. PM-91 + PM-92: shared GUI/MCP search including comments and bounded bulk context.\n3. PM-110: link existing repository Markdown documents; PM-45 improves unchanged-file reading.\n4. PM-50 first slice: parent/child progress and explicit blockers.\n5. PM-112: surface the latest progress checkpoint.\n\nStart PM-111 (small Zagtag bootstrap) and PM-76 (agent guide/session convention) using existing tools; neither needs to wait for the feature sequence. All milestone tickets carry zagtag-adoption for MCP filtering.\n\nUse comments for outcomes, evidence, remaining questions and next action. Keep long design foundations in their source docs. PM-102/103 remain important long-text usability companions; PM-44 matters if Zagtag scans cause stalls. Kanban, cloud, broad anchor indexing and generic framework work are outside this milestone.\n\nAcceptance: use a small real set containing an exploratory phase, a partially landed phase and a blocked phase; after one work session, a fresh reader identifies the latest outcome, remaining work, blocker and next action without rereading all discussion. Preserve source design docs and distinguish exploration outcomes from implementation completion. Child counts are not project completion percentages.",
+      "status": "open",
+      "priority": "high",
+      "labels": [
+        "zagtag-adoption"
+      ],
+      "assignee": null,
+      "author": "codex",
+      "created": 1789058040,
+      "updated": 1789058140,
+      "anchors": [],
+      "comments": [],
+      "history": [
+        {
+          "at": 1789058040,
+          "author": "codex",
+          "kind": "priority_changed",
+          "old": "normal",
+          "new": "high"
+        },
+        {
+          "at": 1789058040,
+          "author": "codex",
+          "kind": "labels_changed",
+          "old": [],
+          "new": [
+            "zagtag-adoption"
+          ]
+        },
+        {
+          "at": 1789058140,
+          "author": "codex",
+          "kind": "body_changed",
+          "old": "Milestone groomed 2026-09-10 from the user's immediate need to use pm on ../zagtag for exploratory work and progression tracking.\n\nOutcome: open pm, find the active phase, understand its current state and next action, read its source documents, and record useful progress after a work session.\n\nDelivery order:\n1. PM-29 + PM-38 + PM-63: latest-update/priority sorting, editable track/readiness labels, visible filters.\n2. PM-91 + PM-92: shared GUI/MCP search including comments and bounded bulk context.\n3. Linked repository documents and a small Zagtag bootstrap (separate tickets).\n4. PM-50 first slice: parent/child progress and explicit blockers.\n5. PM-76: project discovery and a repeatable session update convention.\n\nStart dogfooding with existing comments/status/labels; document linking and hierarchy improve the workflow but do not gate initial adoption. PM-102/103 remain important long-text usability companions; PM-44 matters if Zagtag scans cause stalls. Kanban, cloud, broad anchor indexing and generic UI framework work are outside this milestone.\n\nAcceptance: use a small real set containing an exploratory phase, a partially landed phase, and a blocked phase; after one work session, a fresh reader can identify the latest outcome, remaining work, blocker and next action without rereading all discussion. Preserve source design docs and distinguish exploration outcomes from implementation completion. Ticket counts are not project completion percentages.",
+          "new": "Milestone groomed 2026-09-10 from the user's immediate need to use pm on ../zagtag for exploratory work and progression tracking.\n\nOutcome: open pm, find the active phase, understand its current state and next action, read its source documents, and record useful progress after a work session.\n\nDelivery order:\n1. PM-29 + PM-38 + PM-63: latest-update/priority sorting, editable track/readiness labels, visible filters.\n2. PM-91 + PM-92: shared GUI/MCP search including comments and bounded bulk context.\n3. PM-110: link existing repository Markdown documents; PM-45 improves unchanged-file reading.\n4. PM-50 first slice: parent/child progress and explicit blockers.\n5. PM-112: surface the latest progress checkpoint.\n\nStart PM-111 (small Zagtag bootstrap) and PM-76 (agent guide/session convention) using existing tools; neither needs to wait for the feature sequence. All milestone tickets carry zagtag-adoption for MCP filtering.\n\nUse comments for outcomes, evidence, remaining questions and next action. Keep long design foundations in their source docs. PM-102/103 remain important long-text usability companions; PM-44 matters if Zagtag scans cause stalls. Kanban, cloud, broad anchor indexing and generic framework work are outside this milestone.\n\nAcceptance: use a small real set containing an exploratory phase, a partially landed phase and a blocked phase; after one work session, a fresh reader identifies the latest outcome, remaining work, blocker and next action without rereading all discussion. Preserve source design docs and distinguish exploration outcomes from implementation completion. Child counts are not project completion percentages."
+        }
+      ]
+    },
+    {
+      "id": 110,
+      "title": "Tickets: link repository Markdown documents and open their current contents",
+      "body": "Zagtag's foundations live in DESIGN.md and docs/, while executable and exploratory plans live in docs/phases/. A ticket should provide a short current-state summary and navigation to these existing sources.\n\nFirst slice: add/edit/remove repository-relative document references in ticket detail and through MCP, persist via the shared transaction API with history, and open the current file from the ticket. Resolve paths against the selected project, not pm's cwd. Support multiple documents; preserve their contents rather than copying them into ticket bodies. Display missing/moved targets clearly without silently finding a different file. Establish schema compatibility before adding fields so older writers cannot erase references.\n\nPM-45 supplies a readable single-pane source view for unchanged files; it is useful but a basic open action can ship first. Reuse Markdown rendering for a preview only if it keeps this slice bounded. Heading jumps, backlink indexes, file-move tracking, Markdown editing, automatic extraction and bidirectional synchronization are follow-ups. Coordinate with PM-89, but document references need no fabricated code line range or revision.\n\nAcceptance: associate docs/phases/temporal-tagging.md plus a design reference with a ticket, reopen pm, navigate to the intended current contents, observe an external edit after refresh, and see a useful missing-file state. GUI/MCP round-trip the same references without modifying source Markdown.",
+      "status": "open",
+      "priority": "high",
+      "labels": [
+        "zagtag-adoption"
+      ],
+      "assignee": null,
+      "author": "codex",
+      "created": 1789058040,
+      "updated": 1789058040,
+      "anchors": [],
+      "comments": [],
+      "history": [
+        {
+          "at": 1789058040,
+          "author": "codex",
+          "kind": "priority_changed",
+          "old": "normal",
+          "new": "high"
+        },
+        {
+          "at": 1789058040,
+          "author": "codex",
+          "kind": "labels_changed",
+          "old": [],
+          "new": [
+            "zagtag-adoption"
+          ]
+        }
+      ]
+    },
+    {
+      "id": 111,
+      "title": "Zagtag adoption: bootstrap a small set of phases into pm",
+      "body": "Operational dogfooding task, not a general-purpose Markdown importer. Start with roughly 5 actively relevant phases chosen from ../zagtag/docs/phases/index.md, including temporal-tagging (exploration) and search-algo-v2 (partly landed), plus a concrete blocked example. Recheck source docs at execution time; the index and older roadmaps can disagree.\n\nFor each, create or reuse one phase ticket containing source paths, current state, next concrete action, open questions/blockers, and acceptance remaining. Use existing labels for track and exploration/ready distinction, and existing statuses for execution. Do not equate planned with ready, landed with fully accepted, or Wontfix with delivered. Source docs remain authoritative for design; pm owns the tracked session state. Surface contradictions as unverified rather than claiming a code audit occurred.\n\nUse existing MCP primitives; no dependency on a new importer, batch tool, hierarchy or document-reference schema. Plain source paths work initially. Check for existing phase tickets before creating anything so rerunning the bootstrap does not duplicate them. Do not import every Markdown page, research paragraph or checkbox as a ticket. Preserve Zagtag's existing agent guide and phase workflow.\n\nAcceptance: pilot tickets exist in Zagtag's own store, can be viewed in pm, retain accurate source links, and one pilot completes an actual read -> work -> progress-update -> resume cycle. Add explicit parent/child links later under PM-50 when necessary. Capture observed friction back in pm tickets. This ticket authorizes planning the bootstrap; perform actual Zagtag writes only within the execution session's filesystem permissions.",
+      "status": "open",
+      "priority": "high",
+      "labels": [
+        "zagtag-adoption"
+      ],
+      "assignee": null,
+      "author": "codex",
+      "created": 1789058040,
+      "updated": 1789058040,
+      "anchors": [],
+      "comments": [],
+      "history": [
+        {
+          "at": 1789058040,
+          "author": "codex",
+          "kind": "priority_changed",
+          "old": "normal",
+          "new": "high"
+        },
+        {
+          "at": 1789058040,
+          "author": "codex",
+          "kind": "labels_changed",
+          "old": [],
+          "new": [
+            "zagtag-adoption"
+          ]
+        }
+      ]
+    },
+    {
+      "id": 112,
+      "title": "Tickets: show the latest progress update beside the current work summary",
+      "body": "Exploration can produce decisions, rejected approaches and answered questions without closing a ticket. Existing PM-58 history and comments preserve events, but a long discussion is expensive to reconstruct when resuming.\n\nFirst slice: define a lightweight progress-comment convention (Outcome; Evidence; Remaining/questions; Next action), provide a composer template, and surface the newest matching update with author/date near the ticket summary while retaining all previous updates in the timeline. Ordinary freeform comments remain supported. Share the convention with PM-76 so agents can use existing add_comment immediately. Avoid a new lifecycle/status enum or a new event-storage system for this slice. Decide and document the minimal marker used to identify a progress update; do not infer it from arbitrary prose.\n\nA progress update is a checkpoint, not proof that work is implemented. Evidence may be a test result, commit, source document, or exploration result; explicitly allow unverified claims. Do not automatically close tickets from a comment or commit message.\n\nAcceptance: after multiple discussion comments and two progress updates, the latest checkpoint is visible without scrolling the full thread; older checkpoints remain readable; a fresh reader can distinguish a resolved design question from completed implementation. PM-91 finds checkpoint content. PM-29's updated sort makes recent work discoverable. This convenience is a follow-up to basic adoption, not its prerequisite.",
+      "status": "open",
+      "priority": "normal",
+      "labels": [
+        "zagtag-adoption"
+      ],
+      "assignee": null,
+      "author": "codex",
+      "created": 1789058040,
+      "updated": 1789058040,
+      "anchors": [],
+      "comments": [],
+      "history": [
+        {
+          "at": 1789058040,
+          "author": "codex",
+          "kind": "labels_changed",
+          "old": [],
+          "new": [
+            "zagtag-adoption"
+          ]
+        }
+      ]
     }
   ]
 }

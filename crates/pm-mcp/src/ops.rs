@@ -71,6 +71,10 @@ fn ticket_summary(data: &PmData, t: &pm_core::Ticket) -> Value {
         "assignee": t.assignee,
         "updated": t.updated,
         "comments": t.comments.len(),
+        "parent": data.parent_id(t.id),
+        "children": data.child_progress(t.id),
+        "blockers": data.blockers(t.id).iter().map(|t| t.id).collect::<Vec<_>>(),
+        "dependencies_satisfied": data.dependencies_satisfied(t.id),
     })
 }
 
@@ -78,6 +82,28 @@ fn ticket_full(data: &PmData, t: &pm_core::Ticket) -> Value {
     let mut v = serde_json::to_value(t).unwrap_or_else(|_| json!({}));
     if let Value::Object(ref mut m) = v {
         m.insert("display_id".into(), json!(data.display_id(t)));
+        m.insert("parent".into(), json!(data.parent_id(t.id)));
+        m.insert("child_progress".into(), json!(data.child_progress(t.id)));
+        m.insert(
+            "children".into(),
+            json!(data.children(t.id).iter().map(|t| t.id).collect::<Vec<_>>()),
+        );
+        m.insert(
+            "dependencies_satisfied".into(),
+            json!(data.dependencies_satisfied(t.id)),
+        );
+        m.insert(
+            "incoming_links".into(),
+            json!(data
+                .tickets
+                .iter()
+                .flat_map(|source| source
+                    .links
+                    .iter()
+                    .filter(move |l| l.target == t.id)
+                    .map(move |l| json!({"source":source.id,"kind":l.kind})))
+                .collect::<Vec<_>>()),
+        );
     }
     v
 }
@@ -217,6 +243,38 @@ pub fn edit_ticket(
         Ok((changed, dirty))
     })?;
     Ok(json!({ "ok": true, "id": id, "changed": changed }))
+}
+
+pub fn change_link(
+    root: &Path,
+    source: u64,
+    target: u64,
+    kind: &str,
+    remove: bool,
+    author: Option<&str>,
+) -> Result<Value> {
+    let kind = serde_json::from_value::<pm_core::relations::LinkKind>(json!(kind))
+        .context("kind must be parent_of, blocks, relates, closes or duplicate_of")?;
+    let author = resolve_author(author, &Repo::open(root));
+    let (_, changed) = pm::transact_in(&store_dir(root), |data| {
+        let changed = data.change_link(source, target, kind, remove, &author, pm::now_unix())?;
+        Ok((changed, changed))
+    })?;
+    Ok(json!({"ok":true,"changed":changed}))
+}
+
+pub fn set_parent(
+    root: &Path,
+    child: u64,
+    parent: Option<u64>,
+    author: Option<&str>,
+) -> Result<Value> {
+    let author = resolve_author(author, &Repo::open(root));
+    let (_, changed) = pm::transact_in(&store_dir(root), |data| {
+        let changed = data.set_parent(child, parent, &author, pm::now_unix())?;
+        Ok((changed, changed))
+    })?;
+    Ok(json!({"ok":true,"changed":changed,"child":child,"parent":parent}))
 }
 
 pub fn open_project(root: &Path) -> Result<Value> {
@@ -415,6 +473,37 @@ mod tests {
         let t = get_ticket(&d, id).unwrap();
         assert_eq!(t["comments"].as_array().unwrap().len(), 12);
         let _ = std::fs::remove_dir_all(&d);
+    }
+
+    #[test]
+    fn relation_tools_round_trip_and_reparent_atomically() {
+        let root = tmp_project();
+        let parent = create_ticket(&root, "Phase", None, Some("test"), None, None).unwrap()["id"]
+            .as_u64()
+            .unwrap();
+        let child = create_ticket(&root, "Slice", None, Some("test"), None, None).unwrap()["id"]
+            .as_u64()
+            .unwrap();
+        let blocker = create_ticket(&root, "Prerequisite", None, Some("test"), None, None).unwrap()
+            ["id"]
+            .as_u64()
+            .unwrap();
+        assert_eq!(
+            set_parent(&root, child, Some(parent), Some("test")).unwrap()["changed"],
+            true
+        );
+        assert_eq!(
+            change_link(&root, blocker, child, "blocks", false, Some("test")).unwrap()["changed"],
+            true
+        );
+        let full = get_ticket(&root, child).unwrap();
+        assert_eq!(full["parent"], parent);
+        assert_eq!(full["incoming_links"][0]["source"], parent);
+        assert_eq!(full["incoming_links"][1]["source"], blocker);
+        assert_eq!(full["dependencies_satisfied"], false);
+        assert!(set_parent(&root, child, Some(child), Some("test")).is_err());
+        assert_eq!(get_ticket(&root, child).unwrap()["parent"], parent);
+        let _ = std::fs::remove_dir_all(root);
     }
 
     #[test]

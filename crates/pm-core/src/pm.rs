@@ -28,7 +28,7 @@ static TEMP_ID: AtomicU64 = AtomicU64::new(0);
 /// refuses to write it back so a stale binary can't silently truncate fields it
 /// doesn't know about (PM-86). Bump this only for a genuinely incompatible
 /// reshape.
-pub const SCHEMA_VERSION: u32 = 1;
+pub const SCHEMA_VERSION: u32 = 2;
 
 /// Seconds since the Unix epoch, right now.
 pub fn now_unix() -> i64 {
@@ -154,6 +154,12 @@ pub struct Comment {
 #[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum HistoryEvent {
+    RelationChanged {
+        source: u64,
+        target: u64,
+        relation: crate::relations::LinkKind,
+        removed: bool,
+    },
     TitleChanged {
         old: String,
         new: String,
@@ -222,6 +228,8 @@ pub struct Ticket {
     pub updated: i64,
     #[serde(default)]
     pub anchors: Vec<Anchor>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub links: Vec<crate::relations::Link>,
     #[serde(default)]
     pub comments: Vec<Comment>,
     /// Audit trail of field edits and comments, oldest first (PM-58). Absent on
@@ -411,7 +419,20 @@ pub fn transact_in<T>(
 impl PmData {
     /// Pretty-printed JSON text (a valid JSON5 subset).
     pub fn to_pretty(&self) -> String {
-        let mut s = serde_json::to_string_pretty(self).unwrap_or_default();
+        let mut data = std::borrow::Cow::Borrowed(self);
+        // Even a hand-edited v1 store carrying relations must not be written as
+        // v1: older binaries would otherwise silently discard those links.
+        if self.tickets.iter().any(|t| {
+            !t.links.is_empty()
+                || t.history
+                    .iter()
+                    .any(|h| matches!(h.event, HistoryEvent::RelationChanged { .. }))
+        }) {
+            if self.version < 2 {
+                data.to_mut().version = 2;
+            }
+        }
+        let mut s = serde_json::to_string_pretty(data.as_ref()).unwrap_or_default();
         s.push('\n');
         s
     }
@@ -446,7 +467,11 @@ impl PmData {
         let (tmp, mut file) = loop {
             let nonce = TEMP_ID.fetch_add(1, Ordering::Relaxed);
             let candidate = dir.join(format!(".{FILE}.{}.{nonce}.tmp", std::process::id()));
-            match OpenOptions::new().write(true).create_new(true).open(&candidate) {
+            match OpenOptions::new()
+                .write(true)
+                .create_new(true)
+                .open(&candidate)
+            {
                 Ok(file) => break (candidate, file),
                 Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => continue,
                 Err(e) => {
@@ -540,6 +565,7 @@ impl PmData {
             created: now,
             updated: now,
             anchors: Vec::new(),
+            links: Vec::new(),
             comments: Vec::new(),
             history: Vec::new(),
         });
@@ -807,7 +833,7 @@ mod tests {
         std::fs::create_dir_all(d.join(".pm")).unwrap();
         std::fs::write(
             d.join(".pm").join(FILE),
-            r#"{ version: 2, next_id: 2, tickets: [
+            r#"{ version: 3, next_id: 2, tickets: [
                 { id: 1, title: "from the future", unknown_field: "keep me" },
             ] }"#,
         )
@@ -815,12 +841,12 @@ mod tests {
 
         // Reads fine — the tickets still load.
         let data = load(&d).unwrap();
-        assert_eq!(data.version, 2);
+        assert_eq!(data.version, 3);
         assert_eq!(data.tickets[0].title, "from the future");
 
         // But saving it back is refused, so the unknown field on disk survives.
         let err = data.save(&d).unwrap_err().to_string();
-        assert!(err.contains("schema v2"), "unexpected: {err}");
+        assert!(err.contains("schema v3"), "unexpected: {err}");
         let raw = std::fs::read_to_string(d.join(".pm").join(FILE)).unwrap();
         assert!(raw.contains("unknown_field"));
 
@@ -832,7 +858,7 @@ mod tests {
         let d = tmp();
         let mut data = PmData::default();
         data.create_ticket("ok", "", "", 0);
-        assert_eq!(data.version, SCHEMA_VERSION);
+        data.version = SCHEMA_VERSION;
         data.save(&d).unwrap();
         let _ = std::fs::remove_dir_all(&d);
     }
@@ -925,7 +951,10 @@ mod tests {
         assert_eq!(attempts, 2);
         let saved = load_in(&store).unwrap();
         assert_eq!(saved.tickets.len(), 2);
-        assert_eq!(saved.tickets.iter().filter(|t| t.title == "retry").count(), 1);
+        assert_eq!(
+            saved.tickets.iter().filter(|t| t.title == "retry").count(),
+            1
+        );
         let _ = std::fs::remove_dir_all(&d);
     }
 

@@ -236,6 +236,7 @@ impl Pm {
                 cx.listener(|pm, _, _, cx| {
                     pm.user_menu_open = !pm.user_menu_open;
                     pm.filter_menu_open = false;
+                    pm.sort_menu_open = false;
                     pm.status_menu_open = false;
                     cx.notify();
                     cx.stop_propagation();

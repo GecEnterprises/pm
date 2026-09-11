@@ -21,11 +21,11 @@ use pm_core::state::Content;
 use fremantle::decorations::{client_side_decorations, DecorationStyle};
 use fremantle::scroll::{ScrollDrag, ScrollState};
 
+use crate::config::ConfigStore;
 use crate::diff_view::{diff_view, ShapeCache};
 use crate::history_view::history_view;
 use crate::image_view::ImageView;
 use crate::list_view::list_view;
-use crate::config::ConfigStore;
 use crate::menu::{
     About, Copy, FindTickets, NextView, PrevView, Refresh, SelectAll, ToggleChanges,
     ToggleExplorer, ToggleHistory, ToggleWatchJump, ViewFiles, ViewSummary, ViewTickets, ZoomIn,
@@ -184,6 +184,16 @@ pub struct Pm {
     /// The ticket-list search box (PM-75) — filters the list header, applied
     /// on top of `ticket_filter`.
     pub ticket_search: Entity<TextInput>,
+    pub ticket_label_input: Entity<TextInput>,
+    /// A draft belongs to one ticket; never submit it to a new selection.
+    pub editing_ticket_labels: Option<u64>,
+    pub ticket_label_filter: std::collections::HashSet<String>,
+    pub sort_menu_open: bool,
+    pub relation_query: Entity<TextInput>,
+    pub relation_editor: Option<(u64, crate::ticket_relations::RelationMode)>,
+    pub collapsed_tickets: std::collections::HashSet<u64>,
+    pub ticket_hierarchy: bool,
+    pub dependency_filter: bool,
     /// Identity field shown in the status-bar "Acting as" popover — the name
     /// written as the author of tickets / comments, persisted to `Config.author`
     /// (PM-15, PM-56).
@@ -231,7 +241,18 @@ impl Pm {
         let new_ticket_body =
             cx.new(|cx| TextInput::multi(cx).placeholder("Description (optional)"));
         let comment_box = cx.new(|cx| TextInput::multi(cx).placeholder("Add a comment\u{2026}"));
-        let ticket_search = cx.new(|cx| TextInput::single(cx).placeholder("Search tickets\u{2026}"));
+        let ticket_search =
+            cx.new(|cx| TextInput::single(cx).placeholder("Search tickets\u{2026}"));
+        let ticket_label_input = cx.new(|cx| TextInput::single(cx).placeholder("Add a label"));
+        let relation_query =
+            cx.new(|cx| TextInput::single(cx).placeholder("Find a ticket by ID or title"));
+        cx.subscribe(&relation_query, |_, _, _, cx| cx.notify())
+            .detach();
+        cx.subscribe(&ticket_label_input, |pm, _, ev, cx| match ev {
+            TextInputEvent::Submit => pm.submit_ticket_label(cx),
+            TextInputEvent::Changed => cx.notify(),
+        })
+        .detach();
         // PM-75: narrowing the search re-selects the first visible ticket;
         // widening it back out leaves the current selection alone.
         cx.subscribe(&ticket_search, |pm, _, ev, cx| match ev {
@@ -243,8 +264,11 @@ impl Pm {
         let scale = ConfigStore::get(cx).ui_scale();
 
         let state = AppState::new(repo, store_dir);
-        let author_box =
-            cx.new(|cx| TextInput::single(cx).placeholder("author").text(state.author.clone(), cx));
+        let author_box = cx.new(|cx| {
+            TextInput::single(cx)
+                .placeholder("author")
+                .text(state.author.clone(), cx)
+        });
         cx.subscribe(&author_box, |pm, _, ev, cx| match ev {
             TextInputEvent::Submit => {
                 pm.commit_user(cx);
@@ -298,6 +322,15 @@ impl Pm {
             new_ticket_body,
             comment_box,
             ticket_search,
+            ticket_label_input,
+            editing_ticket_labels: None,
+            ticket_label_filter: Default::default(),
+            sort_menu_open: false,
+            relation_query,
+            relation_editor: None,
+            collapsed_tickets: Default::default(),
+            ticket_hierarchy: true,
+            dependency_filter: false,
             author_box,
             user_menu_open: false,
             ticket_hover: None,
@@ -356,6 +389,18 @@ impl Pm {
         self.author_box.update(cx, |ti, cx| ti.set_text(author, cx));
         self.empty = false;
         self.selected_ticket = None;
+        self.editing_ticket_labels = None;
+        self.relation_editor = None;
+        self.collapsed_tickets.clear();
+        self.dependency_filter = false;
+        self.ticket_label_input.update(cx, |ti, cx| ti.reset(cx));
+        self.ticket_label_filter.clear();
+        self.ticket_filter = pm_core::ticket_list::active_statuses();
+        self.ticket_search.update(cx, |ti, cx| ti.reset(cx));
+        self.ticket_list_shown_count = None;
+        self.filter_menu_open = false;
+        self.sort_menu_open = false;
+        self.status_menu_open = false;
         self.pending_store_choice = None;
         self.shaped.clear();
         self.diff = DiffScroll::default();
@@ -440,7 +485,9 @@ impl Pm {
         match self.selected_ticket.and_then(|id| self.state.pm.ticket(id)) {
             Some(t) => {
                 let title: String = t.title.chars().take(50).collect();
-                format!("{} {title}", self.state.pm.display_id(t)).trim().to_string()
+                format!("{} {title}", self.state.pm.display_id(t))
+                    .trim()
+                    .to_string()
             }
             None => "Tickets".to_string(),
         }
@@ -490,11 +537,7 @@ impl Pm {
 
     /// Record the storage choice for the pending project (PM-34), re-point the
     /// ticket store, and restart the watcher.
-    fn apply_store_choice(
-        &mut self,
-        loc: pm_core::config::StoreLocation,
-        cx: &mut Context<Self>,
-    ) {
+    fn apply_store_choice(&mut self, loc: pm_core::config::StoreLocation, cx: &mut Context<Self>) {
         let Some(root) = self.pending_store_choice.take() else {
             return;
         };
@@ -544,7 +587,8 @@ impl Pm {
         let cfg_author = ConfigStore::get(cx).author;
         if !cfg_author.trim().is_empty() && cfg_author != self.state.author {
             self.state.author = cfg_author.clone();
-            self.author_box.update(cx, |ti, cx| ti.set_text(cfg_author, cx));
+            self.author_box
+                .update(cx, |ti, cx| ti.set_text(cfg_author, cx));
         }
     }
 
@@ -656,7 +700,12 @@ impl Pm {
     /// Scroll the diff so the first changed row sits near the top and drop a
     /// caret on it — the "jump to the changed line" half of watchjump (PM-30).
     fn scroll_to_first_change(&mut self, cx: &App) {
-        let Some(i) = self.state.rows.iter().position(|r| r.kind != RowKind::Equal) else {
+        let Some(i) = self
+            .state
+            .rows
+            .iter()
+            .position(|r| r.kind != RowKind::Equal)
+        else {
             return;
         };
         // A few rows of lead-in for context; the next paint clamps the rest.
@@ -670,8 +719,16 @@ impl Pm {
             _ => (1usize, row.right_no),
         };
         if let Some(n) = line_no {
-            let pos = BufferPos { file_row: n.saturating_sub(1), byte: 0 };
-            self.state.caret = Some(DiffCursor { col, anchor: pos, head: pos, goal_x: None });
+            let pos = BufferPos {
+                file_row: n.saturating_sub(1),
+                byte: 0,
+            };
+            self.state.caret = Some(DiffCursor {
+                col,
+                anchor: pos,
+                head: pos,
+                goal_x: None,
+            });
         }
     }
 
@@ -685,7 +742,11 @@ impl Pm {
         // Room the three section headers + the one split handle always take.
         let avail = (rh - (3.0 * m.section_header_h + m.section_split_h) * sc).max(0.0);
         self.history_h = self.history_h.clamp(0.0, avail);
-        let history_used = if self.history_collapsed { 0.0 } else { self.history_h };
+        let history_used = if self.history_collapsed {
+            0.0
+        } else {
+            self.history_h
+        };
         self.changes_h = self.changes_h.clamp(0.0, (avail - history_used).max(0.0));
         self.diff_split = self.diff_split.clamp(m.diff_split_min, m.diff_split_max);
     }
@@ -711,12 +772,21 @@ impl Pm {
     ) {
         let row = self.state.snap_file_row(col, disp_row);
         let byte = self.byte_at_x(col, row, x_local);
-        let at = BufferPos { file_row: row, byte };
+        let at = BufferPos {
+            file_row: row,
+            byte,
+        };
         if clicks >= 3 {
             self.state.caret = Some(DiffCursor {
                 col,
-                anchor: BufferPos { file_row: row, byte: 0 },
-                head: BufferPos { file_row: row, byte: self.state.line_len(col, row) },
+                anchor: BufferPos {
+                    file_row: row,
+                    byte: 0,
+                },
+                head: BufferPos {
+                    file_row: row,
+                    byte: self.state.line_len(col, row),
+                },
                 goal_x: None,
             });
             self.text_drag = false;
@@ -724,18 +794,32 @@ impl Pm {
             let (s, e) = self.state.word_bounds(col, row, byte);
             self.state.caret = Some(DiffCursor {
                 col,
-                anchor: BufferPos { file_row: row, byte: s },
-                head: BufferPos { file_row: row, byte: e },
+                anchor: BufferPos {
+                    file_row: row,
+                    byte: s,
+                },
+                head: BufferPos {
+                    file_row: row,
+                    byte: e,
+                },
                 goal_x: None,
             });
             self.text_drag = false;
         } else {
             let anchor = if shift {
-                self.state.caret.filter(|c| c.col == col).map_or(at, |c| c.anchor)
+                self.state
+                    .caret
+                    .filter(|c| c.col == col)
+                    .map_or(at, |c| c.anchor)
             } else {
                 at
             };
-            self.state.caret = Some(DiffCursor { col, anchor, head: at, goal_x: None });
+            self.state.caret = Some(DiffCursor {
+                col,
+                anchor,
+                head: at,
+                goal_x: None,
+            });
             self.text_drag = true;
         }
         cx.notify();
@@ -743,15 +827,19 @@ impl Pm {
 
     /// Extend the selection head to a drag position (same column as the caret).
     pub fn drag_text(&mut self, disp_row: usize, x_local: f32, cx: &mut Context<Self>) {
-        let Some(mut cur) = self.state.caret else { return };
+        let Some(mut cur) = self.state.caret else {
+            return;
+        };
         let row = self.state.snap_file_row(cur.col, disp_row);
-        cur.head = BufferPos { file_row: row, byte: self.byte_at_x(cur.col, row, x_local) };
+        cur.head = BufferPos {
+            file_row: row,
+            byte: self.byte_at_x(cur.col, row, x_local),
+        };
         cur.goal_x = None;
         self.state.caret = Some(cur);
         self.scroll_caret_into_view(cx);
         cx.notify();
     }
-
 
     fn scroll_caret_into_view(&mut self, cx: &App) {
         let Some(cur) = self.state.caret else { return };
@@ -759,7 +847,9 @@ impl Pm {
         if vh <= 0.0 {
             return;
         }
-        let Some(disp) = self.state.disp_row(cur.col, cur.head.file_row) else { return };
+        let Some(disp) = self.state.disp_row(cur.col, cur.head.file_row) else {
+            return;
+        };
         let rh = self.diff_row_h(cx);
         let caret_top = disp as f32 * rh;
         let off = f32::from(self.diff.y.offset.y);
@@ -779,11 +869,21 @@ impl Pm {
         let shift = e.keystroke.modifiers.shift;
         let ctrl = e.keystroke.modifiers.secondary();
 
-        let default_col = if self.state.text.line_count(1) > 0 { 1 } else { 0 };
+        let default_col = if self.state.text.line_count(1) > 0 {
+            1
+        } else {
+            0
+        };
         let mut cur = self.state.caret.unwrap_or(DiffCursor {
             col: default_col,
-            anchor: BufferPos { file_row: 0, byte: 0 },
-            head: BufferPos { file_row: 0, byte: 0 },
+            anchor: BufferPos {
+                file_row: 0,
+                byte: 0,
+            },
+            head: BufferPos {
+                file_row: 0,
+                byte: 0,
+            },
             goal_x: None,
         });
         let lines = self.state.text.line_count(cur.col);
@@ -819,15 +919,24 @@ impl Pm {
             }
             "home" => {
                 cur.head = if ctrl {
-                    BufferPos { file_row: 0, byte: 0 }
+                    BufferPos {
+                        file_row: 0,
+                        byte: 0,
+                    }
                 } else {
-                    BufferPos { file_row: cur.head.file_row, byte: 0 }
+                    BufferPos {
+                        file_row: cur.head.file_row,
+                        byte: 0,
+                    }
                 };
                 cur.goal_x = None;
             }
             "end" => {
                 cur.head = if ctrl {
-                    BufferPos { file_row: last, byte: self.state.line_len(cur.col, last) }
+                    BufferPos {
+                        file_row: last,
+                        byte: self.state.line_len(cur.col, last),
+                    }
                 } else {
                     BufferPos {
                         file_row: cur.head.file_row,
@@ -848,7 +957,8 @@ impl Pm {
                         x
                     }
                 };
-                let page = ((self.diff_viewport_h / self.diff_row_h(cx)).floor() as isize - 1).max(1);
+                let page =
+                    ((self.diff_viewport_h / self.diff_row_h(cx)).floor() as isize - 1).max(1);
                 let step: isize = match key {
                     "up" => -1,
                     "down" => 1,
@@ -856,7 +966,10 @@ impl Pm {
                     _ => page,
                 };
                 let nr = (cur.head.file_row as isize + step).clamp(0, last as isize) as usize;
-                cur.head = BufferPos { file_row: nr, byte: self.byte_at_x(cur.col, nr, g) };
+                cur.head = BufferPos {
+                    file_row: nr,
+                    byte: self.byte_at_x(cur.col, nr, g),
+                };
             }
             _ => return,
         }
@@ -884,7 +997,11 @@ impl Pm {
             .state
             .caret
             .map(|c| c.col)
-            .unwrap_or(if self.state.text.line_count(1) > 0 { 1 } else { 0 });
+            .unwrap_or(if self.state.text.line_count(1) > 0 {
+                1
+            } else {
+                0
+            });
         let lines = self.state.text.line_count(col);
         if lines == 0 {
             return;
@@ -892,13 +1009,18 @@ impl Pm {
         let last = lines - 1;
         self.state.caret = Some(DiffCursor {
             col,
-            anchor: BufferPos { file_row: 0, byte: 0 },
-            head: BufferPos { file_row: last, byte: self.state.line_len(col, last) },
+            anchor: BufferPos {
+                file_row: 0,
+                byte: 0,
+            },
+            head: BufferPos {
+                file_row: last,
+                byte: self.state.line_len(col, last),
+            },
             goal_x: None,
         });
         cx.notify();
     }
-
 }
 
 impl Render for Pm {
@@ -986,24 +1108,27 @@ impl Render for Pm {
                     if pm.pending_store_choice.is_some() {
                         // Esc = accept the preselection: keep tickets in the repo.
                         pm.apply_store_choice(pm_core::config::StoreLocation::InRepo, cx);
+                    } else if pm.filter_menu_open || pm.sort_menu_open || pm.status_menu_open {
+                        pm.filter_menu_open = false;
+                        pm.sort_menu_open = false;
+                        pm.status_menu_open = false;
+                        cx.notify();
                     } else if pm.open_menu.take().is_some() || std::mem::take(&mut pm.show_about) {
                         cx.notify();
                     }
                 }
             }))
             .when(self.open_menu.is_some(), |r| {
-                r.child(deferred(
-                    div().absolute().inset_0().on_mouse_down(
-                        MouseButton::Left,
-                        cx.listener(|pm, _, _, cx| {
-                            pm.open_menu = None;
-                            cx.notify();
-                            // Stop the click reaching the menu button underneath,
-                            // whose toggle would otherwise reopen the menu.
-                            cx.stop_propagation();
-                        }),
-                    ),
-                ))
+                r.child(deferred(div().absolute().inset_0().on_mouse_down(
+                    MouseButton::Left,
+                    cx.listener(|pm, _, _, cx| {
+                        pm.open_menu = None;
+                        cx.notify();
+                        // Stop the click reaching the menu button underneath,
+                        // whose toggle would otherwise reopen the menu.
+                        cx.stop_propagation();
+                    }),
+                )))
             })
             .child(self.title_bar(window, cx))
             .child(body)
@@ -1277,8 +1402,8 @@ impl Pm {
                 .absolute()
                 .size_full(),
             )
-            .on_drag_move(cx.listener(
-                |pm, ev: &DragMoveEvent<ResizeHandle>, _window, cx| {
+            .on_drag_move(
+                cx.listener(|pm, ev: &DragMoveEvent<ResizeHandle>, _window, cx| {
                     let root = pm.root_bounds;
                     let x = f32::from(ev.event.position.x) - f32::from(root.left());
                     let y = f32::from(ev.event.position.y) - f32::from(root.top());
@@ -1296,8 +1421,8 @@ impl Pm {
                     }
                     pm.clamp_layout(root, cx);
                     cx.notify();
-                },
-            ))
+                }),
+            )
             .child(self.left_column(cx))
             .child(self.diff_pane(cx))
     }
@@ -1335,7 +1460,10 @@ impl Pm {
                         .text_size(cx.theme().rm(12.0))
                         .text_color(cx.theme().colors.dim)
                         .cursor_pointer()
-                        .hover(|s| s.bg(cx.theme().colors.panel).text_color(cx.theme().colors.text))
+                        .hover(|s| {
+                            s.bg(cx.theme().colors.panel)
+                                .text_color(cx.theme().colors.text)
+                        })
                         .child(label)
                         .on_mouse_down(
                             MouseButton::Left,
@@ -1464,11 +1592,19 @@ impl Pm {
                 .py_2()
                 .rounded_md()
                 .border_1()
-                .border_color(if primary { cx.theme().colors.select } else { cx.theme().colors.border })
+                .border_color(if primary {
+                    cx.theme().colors.select
+                } else {
+                    cx.theme().colors.border
+                })
                 .when(primary, |d| d.bg(cx.theme().colors.select))
                 .cursor_pointer()
                 .hover(|s| s.bg(cx.theme().colors.select))
-                .child(div().text_color(cx.theme().colors.text).child(SharedString::from(label)))
+                .child(
+                    div()
+                        .text_color(cx.theme().colors.text)
+                        .child(SharedString::from(label)),
+                )
                 .child(
                     div()
                         .text_size(cx.theme().rm(11.0))
@@ -1506,9 +1642,11 @@ impl Pm {
                                 .text_color(cx.theme().colors.text)
                                 .child("Where should this project's tickets live?"),
                         )
-                        .child(div().text_color(cx.theme().colors.dim).child(SharedString::from(
-                            "This project has no .pm/ folder yet.",
-                        )))
+                        .child(
+                            div()
+                                .text_color(cx.theme().colors.dim)
+                                .child(SharedString::from("This project has no .pm/ folder yet.")),
+                        )
                         .child(
                             button(
                                 "store-in-repo",
@@ -1536,10 +1674,7 @@ impl Pm {
                             .on_mouse_down(
                                 MouseButton::Left,
                                 cx.listener(|pm, _, _, cx| {
-                                    pm.apply_store_choice(
-                                        pm_core::config::StoreLocation::Home,
-                                        cx,
-                                    );
+                                    pm.apply_store_choice(pm_core::config::StoreLocation::Home, cx);
                                 }),
                             ),
                         ),
@@ -1588,18 +1723,20 @@ impl Pm {
                                 .text_color(cx.theme().colors.dim)
                                 .child(SharedString::from(pm_core::buildinfo::long_version())),
                         )
-                        .child(div().text_color(cx.theme().colors.dim).child(SharedString::from(
-                            self.state.repo.root().display().to_string(),
-                        )))
+                        .child(
+                            div()
+                                .text_color(cx.theme().colors.dim)
+                                .child(SharedString::from(
+                                    self.state.repo.root().display().to_string(),
+                                )),
+                        )
                         .when_some(UpdateStatus::available(cx), |d, rel| {
-                            d.child(
-                                div()
-                                    .text_color(cx.theme().colors.changed)
-                                    .child(SharedString::from(format!(
-                                        "Update available: {}  \u{2014}  run  pm update",
-                                        rel.tag
-                                    ))),
-                            )
+                            d.child(div().text_color(cx.theme().colors.changed).child(
+                                SharedString::from(format!(
+                                    "Update available: {}  \u{2014}  run  pm update",
+                                    rel.tag
+                                )),
+                            ))
                         })
                         .child(
                             div()
@@ -1609,7 +1746,10 @@ impl Pm {
                                 .overflow_y_scroll()
                                 .text_size(cx.theme().rm(11.0))
                                 .text_color(cx.theme().colors.dim)
-                                .child(crate::markdown::view(pm_core::buildinfo::RELEASE_NOTES, cx)),
+                                .child(crate::markdown::view(
+                                    pm_core::buildinfo::RELEASE_NOTES,
+                                    cx,
+                                )),
                         ),
                 ),
         )

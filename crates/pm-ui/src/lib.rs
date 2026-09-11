@@ -9,8 +9,9 @@ pub mod menu;
 pub mod status_bar;
 pub mod theme;
 
-pub use fremantle::text_input;
 pub use fremantle::markdown;
+pub use fremantle::text_input;
+pub mod ticket_relations;
 pub mod tickets_view;
 pub mod title_bar;
 pub mod tree_view;
@@ -18,10 +19,10 @@ pub mod update;
 
 pub use app::{set_app_label, Pm, View};
 pub use config::ConfigStore;
-pub use update::UpdateStatus;
-pub use text_input::{TextInput, TextInputEvent};
 pub use menu::{
     app_menus, About, Copy, FindTickets, NextView, OpenFolder, PrevView, Quit, Refresh, SelectAll,
     ToggleChanges, ToggleExplorer, ToggleHistory, ToggleWatchJump, ViewFiles, ViewSummary,
     ViewTickets, ZoomIn, ZoomOut, ZoomReset,
 };
+pub use text_input::{TextInput, TextInputEvent};
+pub use update::UpdateStatus;

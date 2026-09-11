@@ -42,6 +42,8 @@ pub struct Config {
     /// list opens that file in the diff pane (PM-30). Toggled from the footer.
     #[serde(default)]
     pub watchjump: bool,
+    #[serde(default)]
+    pub ticket_sort: crate::ticket_list::TicketSort,
     /// Per-project ticket-store locations (PM-34). A project whose root isn't
     /// listed here uses the in-repo default (`<root>/.pm`).
     #[serde(default)]
@@ -56,6 +58,7 @@ impl Default for Config {
             author: String::new(),
             recent: Vec::new(),
             watchjump: false,
+            ticket_sort: Default::default(),
             stores: Vec::new(),
         }
     }
@@ -169,7 +172,11 @@ impl Config {
                 .join(project_slug(&root)),
         };
         self.stores.retain(|s| s.root != root);
-        self.stores.push(ProjectStore { root, location, dir: dir.clone() });
+        self.stores.push(ProjectStore {
+            root,
+            location,
+            dir: dir.clone(),
+        });
         dir
     }
 
@@ -286,6 +293,7 @@ mod tests {
             author: "alice".into(),
             recent: vec![PathBuf::from("/tmp/a"), PathBuf::from("/tmp/b")],
             watchjump: true,
+            ticket_sort: crate::ticket_list::TicketSort::Priority,
             stores: vec![ProjectStore {
                 root: PathBuf::from("/tmp/proj"),
                 location: StoreLocation::Home,
@@ -312,6 +320,10 @@ mod tests {
         std::fs::create_dir_all(p.parent().unwrap()).unwrap();
         std::fs::write(&p, r#"{ "ui_scale": 2.0, "future_setting": "hi" }"#).unwrap();
         assert_eq!(Config::load_from(&p).ui_scale, 2.0);
+        assert_eq!(
+            Config::load_from(&p).ticket_sort,
+            crate::ticket_list::TicketSort::Updated
+        );
         let _ = std::fs::remove_dir_all(p.parent().unwrap());
     }
 
@@ -324,7 +336,9 @@ mod tests {
             project_slug(Path::new("/home/u/a-b")),
             project_slug(Path::new("/home/u/a/b"))
         );
-        assert!(a.chars().all(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '_' | '-')));
+        assert!(a
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '_' | '-')));
     }
 
     #[test]
@@ -345,7 +359,10 @@ mod tests {
 
     #[test]
     fn ui_scale_is_clamped() {
-        let mk = |s| Config { ui_scale: s, ..Config::default() };
+        let mk = |s| Config {
+            ui_scale: s,
+            ..Config::default()
+        };
         assert_eq!(mk(99.0).ui_scale(), 3.0);
         assert_eq!(mk(0.1).ui_scale(), 0.5);
     }
